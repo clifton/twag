@@ -925,6 +925,139 @@ def db_rebuild_fts():
     click.echo(f"Indexed {count} tweets")
 
 
+@db.command("dump")
+@click.argument("output", type=click.Path(), default=None, required=False)
+@click.option("--stdout", is_flag=True, help="Output to stdout instead of file")
+def db_dump(output: str | None, stdout: bool):
+    """Dump database to SQL file.
+
+    \b
+    Examples:
+      twag db dump                    # Creates twag-YYYYMMDD-HHMMSS.sql
+      twag db dump backup.sql         # Creates backup.sql
+      twag db dump --stdout | gzip    # Pipe to compression
+    """
+    db_file = get_database_path()
+
+    if not db_file.exists():
+        click.echo(f"Database not found: {db_file}", err=True)
+        sys.exit(1)
+
+    if stdout:
+        # Stream directly to stdout
+        import sqlite3
+        conn = sqlite3.connect(db_file)
+        for line in conn.iterdump():
+            click.echo(line)
+        conn.close()
+    else:
+        # Write to file
+        if output is None:
+            timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            output = f"twag-{timestamp}.sql"
+
+        output_path = Path(output)
+
+        import sqlite3
+        conn = sqlite3.connect(db_file)
+
+        with open(output_path, "w") as f:
+            for line in conn.iterdump():
+                f.write(f"{line}\n")
+
+        conn.close()
+
+        # Get file size
+        size_bytes = output_path.stat().st_size
+        if size_bytes >= 1024 * 1024:
+            size_str = f"{size_bytes / (1024 * 1024):.1f} MB"
+        elif size_bytes >= 1024:
+            size_str = f"{size_bytes / 1024:.1f} KB"
+        else:
+            size_str = f"{size_bytes} bytes"
+
+        click.echo(f"Dumped database to: {output_path} ({size_str})")
+
+
+@db.command("restore")
+@click.argument("input_file", type=click.Path(exists=True))
+@click.option("--force", is_flag=True, help="Overwrite existing database without prompting")
+def db_restore(input_file: str, force: bool):
+    """Restore database from SQL dump.
+
+    \b
+    WARNING: This will replace the existing database!
+
+    \b
+    Examples:
+      twag db restore backup.sql
+      twag db restore twag-20240115-120000.sql --force
+      zcat backup.sql.gz | twag db restore /dev/stdin --force
+    """
+    import sqlite3
+
+    db_file = get_database_path()
+    input_path = Path(input_file)
+
+    # Warn about overwriting
+    if db_file.exists() and not force:
+        # Get current DB stats
+        try:
+            with get_connection() as conn:
+                cursor = conn.execute("SELECT COUNT(*) FROM tweets")
+                tweet_count = cursor.fetchone()[0]
+            msg = f"This will replace the existing database ({tweet_count} tweets). Continue?"
+        except Exception:
+            msg = "This will replace the existing database. Continue?"
+
+        if not click.confirm(msg):
+            click.echo("Aborted.")
+            return
+
+    # Backup existing database
+    if db_file.exists():
+        backup_path = db_file.with_suffix(".db.bak")
+        import shutil
+        shutil.copy2(db_file, backup_path)
+        click.echo(f"Backed up existing database to: {backup_path}")
+
+    # Read the SQL dump
+    click.echo(f"Restoring from: {input_path}")
+
+    with open(input_path, "r") as f:
+        sql_script = f.read()
+
+    # Remove existing database and create new one
+    if db_file.exists():
+        db_file.unlink()
+
+    # Execute the SQL script
+    conn = sqlite3.connect(db_file)
+    try:
+        conn.executescript(sql_script)
+        conn.commit()
+
+        # Verify restoration
+        cursor = conn.execute("SELECT COUNT(*) FROM tweets")
+        tweet_count = cursor.fetchone()[0]
+
+        cursor = conn.execute("SELECT COUNT(*) FROM accounts")
+        account_count = cursor.fetchone()[0]
+
+        click.echo(f"Restored database: {tweet_count} tweets, {account_count} accounts")
+    except Exception as e:
+        click.echo(f"Error restoring database: {e}", err=True)
+        # Attempt to restore backup
+        backup_path = db_file.with_suffix(".db.bak")
+        if backup_path.exists():
+            import shutil
+            shutil.copy2(backup_path, db_file)
+            click.echo("Restored previous database from backup.")
+        sys.exit(1)
+    finally:
+        conn.close()
+
+
 # ============================================================================
 # Search command
 # ============================================================================
