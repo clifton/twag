@@ -1,128 +1,216 @@
 ---
-name: aggregating-twitter
-description: Aggregates and curates Twitter/X feed for market-relevant signals. Use when processing twitter feed, managing followed accounts, or generating daily digests.
+name: twag
+description: Twitter/X aggregator for market-relevant signals with LLM-powered scoring. Fetches, processes, and curates tweets for market analysis.
+read_when:
+  - Processing Twitter/X feed for market signals
+  - Searching for market-relevant tweets
+  - Generating daily tweet digests
+  - Managing followed Twitter accounts
+  - Finding tweets about specific tickers or topics
+homepage: https://github.com/clifton/twag
+metadata: {"clawdbot":{"emoji":"📊","requires":{"bins":["twag","bird"],"env":["GEMINI_API_KEY","AUTH_TOKEN","CT0"]},"install":[{"id":"pip","kind":"pip","package":"twag","bins":["twag"],"label":"Install twag (pip)"}]}}
+allowed-tools: Bash(twag:*)
 ---
 
-# Twitter Aggregator
+# Twitter Aggregator (twag)
 
-CLI tool for curating market-relevant Twitter content.
+## Installation
 
-## Quick Start
+### pip (recommended)
 
 ```bash
-# Fetch and process new tweets
-twag fetch && twag process && twag digest
-
-# Check what's new
-twag stats --today
+pip install twag
+npm install -g @anthropics/bird
+twag init
+twag doctor
 ```
 
-## Daily Workflow
-
-1. **Morning fetch** (cron runs at 7 AM):
-   - Fetches tier-1 accounts + home timeline
-   - Stores raw tweets in SQLite
-
-2. **Processing** (agent-triggered or cron):
-   - LLM scores each tweet for relevance
-   - Expands quotes, links, images for high-signal
-   - Updates account weights
-
-3. **Digest generation**:
-   - Renders curated markdown to `~/.local/share/twag/digests/YYYY-MM-DD.md`
-   - Or `$TWAG_DATA_DIR/digests/YYYY-MM-DD.md` if set
-
-## What's Moving Markets?
-
-Use `twag search` to find market-relevant signals:
+### From Source
 
 ```bash
-# What's happening since market close?
+git clone https://github.com/clifton/twag.git
+cd twag
+pip install -e .
+twag init
+```
+
+## Quick start
+
+```bash
+twag fetch && twag process && twag digest   # Full cycle
+twag stats --today                          # Check what's new
+twag search "market" --today -s 7           # Search high-signal tweets
+```
+
+## Core workflow
+
+1. **Fetch**: `twag fetch` - Pull tweets from timeline and tier-1 accounts
+2. **Process**: `twag process` - Score tweets with LLM (0-10), categorize, enrich
+3. **Digest**: `twag digest` - Generate markdown summary of high-signal content
+
+## Commands
+
+### Search (most common)
+
+```bash
+twag search "inflation fed"              # Full-text search
+twag search "rate hike" -c fed_policy    # Filter by category
+twag search "NVDA" -a zerohedge          # Filter by author
+twag search "earnings" --ticker AAPL     # Filter by ticker
+twag search "breaking" --today -s 8      # High-signal since market close
+twag search "fed" --time 7d              # Last 7 days
+twag search "macro" --bookmarks          # Bookmarked only
+twag search "fed" --format full          # Digest-style output
+twag search "fed" --format json          # JSON output
+```
+
+**Query syntax:**
+- Simple: `inflation fed` (matches both)
+- Phrase: `"rate hike"` (exact)
+- Boolean: `inflation AND fed`, `fed NOT fomc`
+- Prefix: `infla*` (wildcard)
+
+**Time filters:**
+- `--today`: Since previous 4pm ET market close
+- `--time 7d`: Last 7 days
+- `--since 2026-01-15`: From specific date
+
+### Fetch & Process
+
+```bash
+twag fetch                    # Home timeline + tier-1 accounts
+twag fetch --no-tier1         # Home only
+twag fetch -u @NickTimiraos   # Specific user
+twag fetch --source search -q "Fed Powell"  # Search tweets
+
+twag process                  # Score unprocessed tweets
+twag process -n 100           # Limit batch size
+twag process --dry-run        # Preview only
+twag process --no-notify      # Skip Telegram alerts
+```
+
+### Digest
+
+```bash
+twag digest                   # Generate today's digest
+twag digest -d 2026-01-29     # Specific date
+twag digest --stdout          # Output to terminal
+twag digest --min-score 6     # Custom threshold
+```
+
+### Account Management
+
+```bash
+twag accounts list            # All accounts
+twag accounts list -t 1       # Tier-1 only
+twag accounts add @handle     # Add account
+twag accounts add @handle -t 1  # Add as tier-1
+twag accounts promote @handle # Promote to tier-1
+twag accounts mute @handle    # Mute account
+twag accounts boost @handle --amount 10  # Boost weight
+twag accounts decay           # Apply daily decay
+twag accounts import          # Import from following.txt
+```
+
+### Stats & Maintenance
+
+```bash
+twag stats                    # All-time stats
+twag stats --today            # Today's stats
+twag stats -d 2026-01-29      # Specific date
+
+twag prune --days 14          # Delete old tweets
+twag prune --days 14 --dry-run  # Preview prune
+twag export --days 7          # Export recent data
+```
+
+### Database
+
+```bash
+twag db path                  # Show database location
+twag db shell                 # Open SQLite shell
+twag db rebuild-fts           # Rebuild search index
+```
+
+### Web Interface
+
+```bash
+twag web                      # Start web UI (default: localhost:5000)
+twag web --port 8080          # Custom port
+```
+
+### Configuration
+
+```bash
+twag config show              # Show current config
+twag config path              # Show config file path
+twag config set llm.triage_model gemini-3-flash-preview
+twag config set scoring.alert_threshold 9
+```
+
+## Examples
+
+### Morning market check
+
+```bash
+twag fetch && twag process
 twag search "market" --today -s 7
-
-# Fed/macro moves
-twag search "fed rate" -c fed_policy --today
-twag search "inflation CPI" --today -o score
-twag search "tariff" --time 7d
-
-# Specific tickers
-twag search "earnings" --ticker NVDA
-twag search "guidance" --ticker AAPL --today
-twag search "upgrade OR downgrade" -T TSLA
-
-# High-signal only
-twag search "breaking" --today -s 8
-twag search "selloff OR rally" --today -s 7
-
-# By author
-twag search "fed" -a NickTimiraos --time 7d
-twag search "market" -a zerohedge --today
-
-# Full context on a topic
-twag search "tariff china" --today -f full
+twag digest --stdout
 ```
 
-### Search Tips
-
-- `--today` = since previous 4pm ET market close (smart weekend handling)
-- `-s 7` = high-signal tweets only (relevance score ≥7)
-- `-o score` = sort by relevance score instead of text match
-- `-f full` = show full tweet content with links
-- `-f json` = machine-readable output
-
-Query syntax supports: phrases (`"rate hike"`), boolean (`fed AND rate`), prefix (`infla*`).
-
-### Categories
-
-`fed_policy`, `inflation`, `job_market`, `macro_data`, `earnings`, `equities`, `rates_fx`, `credit`, `banks`, `consumer_spending`, `capex`, `commodities`, `energy`, `metals_mining`, `geopolitical`, `sanctions`, `tech_business`, `ai_advancement`, `crypto`, `noise`
-
-## Common Commands
+### Track Fed commentary
 
 ```bash
-# Fetch tweets
-twag fetch                      # Home + tier-1
-twag fetch --source user -u @NickTimiraos  # Specific user
-
-# Process and score
-twag process                    # Score unprocessed tweets
-twag process --dry-run          # Preview what would be processed
-
-# Generate digest
-twag digest                     # Today's digest
-twag digest --date 2026-01-29   # Specific date
-
-# Search (see above for more examples)
-twag search "market" --today    # What's moving since close
-twag search "fed" -c fed_policy # Fed policy tweets
-
-# Account management
-twag accounts list              # Show all accounts
-twag accounts add @handle --tier 1  # Add tier-1 account
-twag accounts promote @handle   # Promote to tier-1
-twag accounts import            # Import from following.txt
-
-# Stats
-twag stats --today              # Today's statistics
-
-# Maintenance
-twag db rebuild-fts             # Rebuild search index
+twag search "fed rate" -c fed_policy --today
+twag search "powell" -a NickTimiraos --time 7d
 ```
+
+### Monitor specific ticker
+
+```bash
+twag search "earnings guidance" --ticker NVDA --today
+twag search "AAPL" -s 6 --time 7d
+```
+
+### Find high-signal breaking news
+
+```bash
+twag search "breaking" --today -s 8
+```
+
+## Categories
+
+`fed_policy`, `inflation`, `job_market`, `macro_data`, `earnings`, `equities`, `rates_fx`, `credit`, `banks`, `consumer_spending`, `commodities`, `energy`, `geopolitical`, `tech_business`, `ai_advancement`, `crypto`
 
 ## Configuration
 
-Config at `~/.config/twag/config.json`. Key settings:
-- `llm.triage_model`: Model for fast scoring (default: haiku)
-- `llm.enrichment_model`: Model for deep analysis (default: sonnet)
-- `scoring.high_signal_threshold`: Score cutoff for expansion (default: 7)
-- `scoring.alert_threshold`: Score cutoff for Telegram alerts (default: 8)
+Config file: `~/.config/twag/config.json`
 
-## Integration
+Key settings:
+- `llm.triage_model`: Model for scoring (default: gemini-3-flash-preview)
+- `scoring.alert_threshold`: Score threshold for Telegram alerts (default: 8)
+- `paths.data_dir`: Custom data directory
 
-Output format matches existing `memory/twitter-feed/YYYY-MM-DD.md` structure.
-Implements processing pipeline from `TWITTER_MONITOR.md`.
+## Environment Variables
 
-## Telegram Digest
+**Required:**
+- `GEMINI_API_KEY` - Google Gemini API key for triage/vision
+- `AUTH_TOKEN` - Twitter auth token (from browser cookies)
+- `CT0` - Twitter CT0 token (from browser cookies)
 
-If you're sending a digest to Telegram, see [TELEGRAM_DIGEST_FORMAT.md](TELEGRAM_DIGEST_FORMAT.md) for the exact format to use.
+**Optional:**
+- `ANTHROPIC_API_KEY` - For enrichment (higher-quality summaries)
+- `TELEGRAM_BOT_TOKEN` - For real-time alerts
+- `TELEGRAM_CHAT_ID` - Telegram chat for alerts
+- `TWAG_DATA_DIR` - Override data directory
 
-See [README.md](README.md) for full CLI documentation.
+## Notes
+
+- Uses `bird` CLI for Twitter API access
+- Scores range 0-10: 7+ is high signal, 8+ triggers alerts
+- `--today` means since previous 4pm ET market close
+- Data stored in `~/.local/share/twag/` by default
+
+## Reporting Issues
+
+https://github.com/clifton/twag/issues
