@@ -1,0 +1,298 @@
+{% for tweet in tweets %}
+<div class="tweet-card tier-{{ tweet.signal_tier or 'news' }}" id="tweet-{{ tweet.id }}">
+    <!-- Header -->
+    <div class="tweet-header">
+        <div class="tweet-author">
+            <a href="https://x.com/{{ tweet.author_handle }}" target="_blank"
+               class="tweet-handle">
+                @{{ tweet.author_handle }}
+            </a>
+            {% if tweet.author_name %}
+            <span class="tweet-name">{{ tweet.author_name }}</span>
+            {% endif %}
+            {% if tweet.bookmarked %}
+            <span class="tweet-bookmark" title="Bookmarked">&#x2B50;</span>
+            {% endif %}
+        </div>
+        <div class="tweet-badges">
+            <!-- Score -->
+            {% if tweet.relevance_score is not none %}
+            <span class="{% if tweet.relevance_score >= 8 %}score-high{% elif tweet.relevance_score >= 6 %}score-medium{% else %}score-low{% endif %}"
+                  title="Relevance Score">
+                {{ "%.1f"|format(tweet.relevance_score) }}
+            </span>
+            {% endif %}
+            <!-- Tier badge -->
+            {% if tweet.signal_tier %}
+            <span class="tier-pill
+                {% if tweet.signal_tier == 'high_signal' %}bg-green-100 text-green-800
+                {% elif tweet.signal_tier == 'market_relevant' %}bg-blue-100 text-blue-800
+                {% elif tweet.signal_tier == 'news' %}bg-gray-100 text-gray-700
+                {% else %}bg-gray-50 text-gray-500{% endif %}">
+                {{ tweet.signal_tier|replace('_', ' ')|title }}
+            </span>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Content -->
+    <div class="tweet-content">
+        {% if tweet.content_summary %}
+        <p class="tweet-body">{{ tweet.content_summary|unescape }}</p>
+        <details class="tweet-details">
+            <summary>Show full content</summary>
+            <p>
+                {% if tweet.display_content is defined %}
+                {{ tweet.display_content|unescape }}
+                {% else %}
+                {{ tweet.content|unescape }}
+                {% endif %}
+            </p>
+        </details>
+        {% else %}
+        {% if tweet.display_content is defined %}
+        <p class="tweet-body">
+            {{ tweet.display_content[:800]|unescape }}{% if tweet.display_content|length > 800 %}...{% endif %}
+        </p>
+        {% else %}
+        <p class="tweet-body">{{ tweet.content[:800]|unescape }}{% if tweet.content|length > 800 %}...{% endif %}</p>
+        {% endif %}
+        {% endif %}
+    </div>
+
+    <!-- Summary -->
+    {% if tweet.summary %}
+    <div class="tweet-summary">
+        {{ tweet.summary|unescape }}
+    </div>
+    {% endif %}
+
+    <!-- Metadata: Categories & Tickers -->
+    <div class="tweet-tags">
+        {% for cat in tweet.categories %}
+        <span class="category-badge">{{ cat|replace('_', ' ')|title }}</span>
+        {% endfor %}
+        {% for ticker in tweet.tickers %}
+        <span class="ticker-badge">${{ ticker }}</span>
+        {% endfor %}
+    </div>
+
+    <!-- Additional info (media, links) -->
+    {% if tweet.has_media or tweet.has_link %}
+    <div class="tweet-meta">
+        {% if tweet.has_media %}
+        <span>&#x1F5BC; Has media</span>
+        {% endif %}
+        {% if tweet.has_link %}
+        <span>&#x1F517; Has link</span>
+        {% if tweet.link_summary %}
+        <details class="inline">
+            <summary>Link summary</summary>
+            <p>{{ tweet.link_summary }}</p>
+        </details>
+        {% endif %}
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% if tweet.media_items %}
+    <div class="media-block">
+        {% for item in tweet.media_items %}
+            {% if (item.kind == 'chart' or (item.chart and item.chart.description)) and item.url %}
+            <div class="media-chart">
+                <a href="{{ item.url }}" target="_blank" class="media-image-link">
+                    <img src="{{ item.url }}" alt="Chart image" loading="lazy" referrerpolicy="no-referrer">
+                </a>
+                {% if item.chart and item.chart.description %}
+                <p class="media-caption">{{ item.chart.description }}</p>
+                {% elif item.short_description %}
+                <p class="media-caption">{{ item.short_description }}</p>
+                {% endif %}
+            </div>
+            {% elif item.prose_summary %}
+            <div class="media-prose">
+                <p class="media-label">Document summary</p>
+                <p class="media-summary">{{ item.prose_summary }}</p>
+                {% if item.prose_text %}
+                <details class="media-details">
+                    <summary>View extracted text</summary>
+                    <pre>{{ item.prose_text }}</pre>
+                </details>
+                {% endif %}
+            </div>
+            {% elif item.kind == 'table' and item.table and item.table.columns %}
+            <div class="media-table">
+                {% if item.url %}
+                <a href="{{ item.url }}" target="_blank" class="media-image-link">
+                    <img src="{{ item.url }}" alt="Table image" loading="lazy" referrerpolicy="no-referrer">
+                </a>
+                {% endif %}
+
+                {% if item.table.summary %}
+                <p class="table-summary">{{ item.table.summary }}</p>
+                {% endif %}
+
+                {% set row_count = item.table.rows|length if item.table.rows else 0 %}
+                {% if row_count > 0 %}
+                    {% if row_count <= 10 %}
+                    <div class="table-scroll">
+                        <table class="extracted-table">
+                            <thead>
+                                <tr>
+                                {% for col in item.table.columns %}
+                                    <th>{{ col }}</th>
+                                {% endfor %}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in item.table.rows %}
+                                <tr>
+                                    {% for cell in row %}
+                                    <td>{{ cell }}</td>
+                                    {% endfor %}
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <details class="table-details">
+                        <summary>Show extracted data ({{ row_count }} rows)</summary>
+                        <div class="table-scroll">
+                            <table class="extracted-table">
+                                <thead>
+                                    <tr>
+                                    {% for col in item.table.columns %}
+                                        <th>{{ col }}</th>
+                                    {% endfor %}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for row in item.table.rows %}
+                                    <tr>
+                                        {% for cell in row %}
+                                        <td>{{ cell }}</td>
+                                        {% endfor %}
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </details>
+                    {% endif %}
+                {% endif %}
+            </div>
+            {% elif item.short_description %}
+            <div class="media-short">{{ item.short_description }}</div>
+            {% endif %}
+        {% endfor %}
+    </div>
+    {% elif tweet.media_analysis %}
+    <div class="media-block">
+        <div class="media-short">{{ tweet.media_analysis }}</div>
+    </div>
+    {% endif %}
+
+    {% if tweet.quote_embed %}
+    <div class="quote-block">
+        <div class="quote-header">
+            <a href="https://x.com/{{ tweet.quote_embed.author_handle }}/status/{{ tweet.quote_embed.id }}" target="_blank"
+               class="quote-link">
+                @{{ tweet.quote_embed.author_handle }}
+            </a>
+            {% if tweet.quote_embed.author_name %}
+            <span class="quote-name">{{ tweet.quote_embed.author_name }}</span>
+            {% endif %}
+        </div>
+        <div class="quote-body">{{ tweet.quote_embed.content|unescape }}</div>
+        <div class="quote-footer">
+            {% if tweet.quote_embed.created_at %}
+            <span class="js-local-time" data-iso="{{ tweet.quote_embed.created_at }}">{{ tweet.quote_embed.created_at }}</span>
+            {% endif %}
+            <a href="https://x.com/{{ tweet.quote_embed.author_handle }}/status/{{ tweet.quote_embed.id }}" target="_blank"
+               class="quote-link">
+                View
+            </a>
+        </div>
+    </div>
+    {% elif tweet.quote_link_id %}
+    <div class="quote-block">
+        <a href="https://x.com/i/status/{{ tweet.quote_link_id }}" target="_blank" class="quote-link">
+            &#x1F4AC; Quoted tweet
+        </a>
+    </div>
+    {% endif %}
+
+    {% if tweet.reference_links %}
+    <div class="reference-block">
+        <span class="reference-label">Referenced tweets</span>
+        <div class="reference-links">
+            {% for ref in tweet.reference_links %}
+            <a href="{{ ref.url }}" target="_blank" class="reference-link">
+                View referenced tweet
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Footer: Time & Actions -->
+    <div class="tweet-footer">
+        <div class="tweet-time">
+            {% if tweet.created_at %}
+            <span class="js-local-time" data-iso="{{ tweet.created_at.isoformat() }}">{{ tweet.created_at.isoformat() }}</span>
+            {% endif %}
+            <a href="https://x.com/{{ tweet.author_handle }}/status/{{ tweet.id }}" target="_blank"
+               class="tweet-link">View</a>
+        </div>
+
+        <!-- Reaction buttons -->
+        <div class="tweet-actions">
+            <button class="reaction-btn {% if '>>' in tweet.reactions %}active{% endif %}"
+                    data-tweet="{{ tweet.id }}" data-reaction=">>"
+                    onclick="quickReact('{{ tweet.id }}', '>>')"
+                    title="High importance - should be top-tier">
+                &gt;&gt;
+            </button>
+            <button class="reaction-btn {% if '>' in tweet.reactions %}active{% endif %}"
+                    data-tweet="{{ tweet.id }}" data-reaction=">"
+                    onclick="openReactionModal('{{ tweet.id }}', '>', '{{ tweet.author_handle }}')"
+                    title="Should be higher - underrated">
+                &gt;
+            </button>
+            <button class="reaction-btn {% if '<' in tweet.reactions %}active{% endif %}"
+                    data-tweet="{{ tweet.id }}" data-reaction="<"
+                    onclick="quickReact('{{ tweet.id }}', '<')"
+                    title="Less important - overrated">
+                &lt;
+            </button>
+            <button class="reaction-btn text-red-500"
+                    onclick="openReactionModal('{{ tweet.id }}', 'x_author', '{{ tweet.author_handle }}')"
+                    title="Mute author">
+                X
+            </button>
+            {% if tweet.relevance_score and tweet.relevance_score >= 7 %}
+            <button class="reaction-btn text-teal-600"
+                    onclick="analyzeTweet('{{ tweet.id }}')"
+                    title="Deep analyze with context">
+                &#x1F50D;
+            </button>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="text-center py-8 text-gray-500">
+    No tweets found matching your filters.
+</div>
+{% endfor %}
+
+{% if has_more %}
+<!-- Infinite scroll trigger -->
+<div hx-get="/feed?offset={{ offset }}{% if category %}&category={{ category }}{% endif %}{% if ticker %}&ticker={{ ticker }}{% endif %}{% if min_score %}&min_score={{ min_score }}{% endif %}{% if signal_tier %}&signal_tier={{ signal_tier }}{% endif %}{% if author %}&author={{ author }}{% endif %}{% if bookmarked %}&bookmarked=true{% endif %}{% if since %}&since={{ since }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}"
+     hx-trigger="revealed"
+     hx-swap="afterend"
+     class="text-center py-4">
+    <div class="inline-block animate-spin rounded-full h-6 w-6 border-2 border-gray-300 border-t-blue-500"></div>
+</div>
+{% endif %}

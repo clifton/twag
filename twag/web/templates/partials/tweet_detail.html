@@ -1,0 +1,149 @@
+{% if tweet %}
+<div class="bg-white rounded-lg shadow-lg p-6 max-w-2xl mx-auto">
+    <!-- Header -->
+    <div class="flex justify-between items-start mb-4">
+        <div>
+            <a href="https://x.com/{{ tweet.author_handle }}" target="_blank"
+               class="text-lg font-semibold text-gray-900 hover:underline">
+                @{{ tweet.author_handle }}
+            </a>
+            {% if tweet.author_name %}
+            <span class="text-gray-500 ml-2">{{ tweet.author_name }}</span>
+            {% endif %}
+        </div>
+        {% if tweet.relevance_score is not none %}
+        <span class="text-2xl font-bold {% if tweet.relevance_score >= 8 %}text-green-600{% elif tweet.relevance_score >= 6 %}text-yellow-600{% else %}text-gray-500{% endif %}">
+            {{ "%.1f"|format(tweet.relevance_score) }}
+        </span>
+        {% endif %}
+    </div>
+
+    <!-- Full content -->
+    <div class="mb-4">
+        <p class="text-gray-800 whitespace-pre-wrap">{{ tweet.content }}</p>
+    </div>
+
+    {% if tweet.content_summary %}
+    <div class="mb-4 p-3 bg-blue-50 rounded">
+        <p class="text-sm font-medium text-blue-800 mb-1">Summarized:</p>
+        <p class="text-gray-700">{{ tweet.content_summary }}</p>
+    </div>
+    {% endif %}
+
+    {% if tweet.summary %}
+    <div class="mb-4 p-3 bg-gray-50 rounded">
+        <p class="text-sm font-medium text-gray-600 mb-1">AI Summary:</p>
+        <p class="text-gray-700 italic">{{ tweet.summary }}</p>
+    </div>
+    {% endif %}
+
+    <!-- Metadata -->
+    <div class="mb-4 grid grid-cols-2 gap-4 text-sm">
+        <div>
+            <span class="text-gray-500">Signal Tier:</span>
+            <span class="ml-2 font-medium">{{ tweet.signal_tier|default('unprocessed')|replace('_', ' ')|title }}</span>
+        </div>
+        <div>
+            <span class="text-gray-500">Created:</span>
+            {% if tweet.created_at %}
+            <span class="ml-2 js-local-time" data-iso="{{ tweet.created_at }}">{{ tweet.created_at }}</span>
+            {% else %}
+            <span class="ml-2">-</span>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Categories & Tickers -->
+    {% set categories = tweet.category|default('')|safe %}
+    {% set tickers = tweet.tickers|default('')|safe %}
+    <div class="mb-4">
+        <p class="text-sm text-gray-500 mb-2">Categories & Tickers:</p>
+        <div class="flex flex-wrap gap-2">
+            <span class="category-badge">{{ categories }}</span>
+            <span class="ticker-badge">{{ tickers }}</span>
+        </div>
+    </div>
+
+    <!-- Enrichment data -->
+    {% if tweet.media_items %}
+    <div class="media-block">
+        {% for item in tweet.media_items %}
+            {% if (item.kind == 'chart' or (item.chart and item.chart.description)) and item.url %}
+            <div class="media-chart">
+                <a href="{{ item.url }}" target="_blank" class="media-image-link">
+                    <img src="{{ item.url }}" alt="Chart image" loading="lazy" referrerpolicy="no-referrer">
+                </a>
+                {% if item.chart and item.chart.description %}
+                <p class="media-caption">{{ item.chart.description }}</p>
+                {% elif item.short_description %}
+                <p class="media-caption">{{ item.short_description }}</p>
+                {% endif %}
+            </div>
+            {% elif item.prose_summary %}
+            <div class="media-prose">
+                <p class="media-label">Document summary</p>
+                <p class="media-summary">{{ item.prose_summary }}</p>
+                {% if item.prose_text %}
+                <details class="media-details">
+                    <summary>View extracted text</summary>
+                    <pre>{{ item.prose_text }}</pre>
+                </details>
+                {% endif %}
+            </div>
+            {% elif item.short_description %}
+            <div class="media-short">{{ item.short_description }}</div>
+            {% endif %}
+        {% endfor %}
+    </div>
+    {% elif tweet.media_analysis %}
+    <div class="media-block">
+        <div class="media-short">{{ tweet.media_analysis }}</div>
+    </div>
+    {% endif %}
+
+    {% if tweet.link_summary %}
+    <div class="mb-4 p-3 bg-green-50 rounded">
+        <p class="text-sm font-medium text-green-800 mb-1">Link Summary:</p>
+        <p class="text-gray-700">{{ tweet.link_summary }}</p>
+    </div>
+    {% endif %}
+
+    <!-- Reactions -->
+    {% if reactions %}
+    <div class="mb-4">
+        <p class="text-sm font-medium text-gray-600 mb-2">Reactions:</p>
+        <div class="space-y-2">
+            {% for r in reactions %}
+            <div class="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
+                <span class="font-mono">{{ r.reaction_type }}</span>
+                {% if r.reason %}
+                <span class="text-gray-600">{{ r.reason }}</span>
+                {% endif %}
+                {% if r.created_at %}
+                <span class="text-gray-400 js-local-time" data-iso="{{ r.created_at.isoformat() }}">{{ r.created_at.isoformat() }}</span>
+                {% else %}
+                <span class="text-gray-400"></span>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Actions -->
+    <div class="flex justify-between items-center pt-4 border-t">
+        <a href="https://x.com/{{ tweet.author_handle }}/status/{{ tweet.id }}" target="_blank"
+           class="text-blue-500 hover:underline">
+            View on X
+        </a>
+        <button onclick="analyzeTweet('{{ tweet.id }}')"
+                class="px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600">
+            Deep Analyze
+        </button>
+    </div>
+</div>
+{% else %}
+<div class="text-center py-8 text-gray-500">
+    Tweet not found.
+</div>
+{% endif %}

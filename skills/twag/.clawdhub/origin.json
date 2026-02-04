@@ -1,0 +1,32 @@
+{
+  "name": "twag",
+  "version": "0.1.0",
+  "description": "Twitter/X aggregator for market-relevant signals",
+  "repository": "https://github.com/clifton/twag",
+  "author": "Clifton King",
+  "license": "MIT",
+  "keywords": [
+    "twitter",
+    "x",
+    "aggregator",
+    "market",
+    "finance",
+    "signals"
+  ],
+  "install": {
+    "pip": "twag"
+  },
+  "env": {
+    "required": [
+      "GEMINI_API_KEY",
+      "AUTH_TOKEN",
+      "CT0"
+    ],
+    "optional": [
+      "ANTHROPIC_API_KEY",
+      "TWAG_DATA_DIR",
+      "TELEGRAM_BOT_TOKEN",
+      "TELEGRAM_CHAT_ID"
+    ]
+  }
+}
