@@ -53,34 +53,40 @@ def render_digest(
         ]
 
         if high_signal:
-            lines.extend([
-                "---",
-                "",
-                "## 🔥 High Signal",
-                "",
-            ])
+            lines.extend(
+                [
+                    "---",
+                    "",
+                    "## 🔥 High Signal",
+                    "",
+                ]
+            )
             for tweet in high_signal:
                 lines.extend(_render_tweet(tweet))
                 mark_tweet_in_digest(conn, tweet["id"], date)
 
         if market_relevant:
-            lines.extend([
-                "---",
-                "",
-                "## 📈 Market Relevant",
-                "",
-            ])
+            lines.extend(
+                [
+                    "---",
+                    "",
+                    "## 📈 Market Relevant",
+                    "",
+                ]
+            )
             for tweet in market_relevant:
                 lines.extend(_render_tweet(tweet))
                 mark_tweet_in_digest(conn, tweet["id"], date)
 
         if news:
-            lines.extend([
-                "---",
-                "",
-                "## 📰 News/Context",
-                "",
-            ])
+            lines.extend(
+                [
+                    "---",
+                    "",
+                    "## 📰 News/Context",
+                    "",
+                ]
+            )
             for tweet in news:
                 lines.extend(_render_tweet(tweet, compact=True))
                 mark_tweet_in_digest(conn, tweet["id"], date)
@@ -121,11 +127,11 @@ def _render_tweet(tweet: sqlite3.Row, compact: bool = False) -> list[str]:
     url = get_tweet_url(tweet["id"], handle)
 
     # Bookmark flag
-    is_bookmarked = tweet["bookmarked"] if "bookmarked" in tweet.keys() else False
+    is_bookmarked = tweet.get("bookmarked", False)
     bookmark_badge = " ⭐" if is_bookmarked else ""
 
     # Check if tweet has a content summary (long non-tier-1 tweets)
-    content_summary = tweet["content_summary"] if "content_summary" in tweet.keys() else None
+    content_summary = tweet.get("content_summary")
     is_summarized = bool(content_summary)
 
     if compact:

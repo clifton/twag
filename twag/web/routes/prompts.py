@@ -20,12 +20,14 @@ router = APIRouter(tags=["prompts"])
 
 class PromptUpdate(BaseModel):
     """Request body for updating a prompt."""
+
     template: str
     updated_by: str = "user"
 
 
 class TuneRequest(BaseModel):
     """Request body for LLM-assisted prompt tuning."""
+
     prompt_name: str
     reaction_limit: int = 50
 
@@ -212,6 +214,7 @@ SUGGESTED PROMPT:
     try:
         # Use enrichment model for prompt tuning (more capable)
         from ...config import load_config
+
         config = load_config()
         model = config["llm"]["enrichment_model"]
         provider = config["llm"].get("enrichment_provider", "anthropic")
@@ -252,7 +255,7 @@ SUGGESTED PROMPT:
         }
 
     except Exception as e:
-        return {"error": f"LLM call failed: {str(e)}"}
+        return {"error": f"LLM call failed: {e!s}"}
 
 
 @router.post("/prompts/{name}/apply-suggestion")

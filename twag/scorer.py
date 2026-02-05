@@ -3,7 +3,6 @@
 import json
 import os
 import random
-import re
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -198,6 +197,7 @@ def get_anthropic_client() -> Anthropic:
 def get_gemini_client():
     """Get a Gemini client using the new google.genai SDK."""
     from google import genai
+
     return genai.Client(api_key=_get_api_key("GEMINI_API_KEY"))
 
 
@@ -289,6 +289,7 @@ def _call_gemini_vision(model: str, image_url: str, prompt: str, max_tokens: int
 
 def _call_llm(provider: str, model: str, prompt: str, max_tokens: int = 2048, reasoning: str | None = None) -> str:
     """Call LLM based on provider."""
+
     def _invoke() -> str:
         if provider == "gemini":
             return _call_gemini(model, prompt, max_tokens, reasoning=reasoning)
@@ -299,6 +300,7 @@ def _call_llm(provider: str, model: str, prompt: str, max_tokens: int = 2048, re
 
 def _call_llm_vision(provider: str, model: str, image_url: str, prompt: str, max_tokens: int = 1024) -> str:
     """Call LLM with vision based on provider."""
+
     def _invoke() -> str:
         if provider == "gemini":
             return _call_gemini_vision(model, image_url, prompt, max_tokens)
@@ -380,7 +382,7 @@ def _parse_json_response(text: str) -> dict[str, Any] | list[dict[str, Any]]:
                 last_brace = json_text.rfind("}")
                 if last_brace > 0:
                     try:
-                        fixed = json_text[:last_brace + 1] + "]"
+                        fixed = json_text[: last_brace + 1] + "]"
                         return json.loads(fixed)
                     except json.JSONDecodeError:
                         pass
@@ -449,9 +451,7 @@ def triage_tweets_batch(
     provider = provider or config["llm"].get("triage_provider", "anthropic")
 
     # Format tweets for prompt
-    tweets_text = "\n\n".join(
-        f"[{t['id']}] @{t['handle']}: {t['text']}" for t in tweets
-    )
+    tweets_text = "\n\n".join(f"[{t['id']}] @{t['handle']}: {t['text']}" for t in tweets)
 
     prompt = BATCH_TRIAGE_PROMPT.format(tweets=tweets_text)
     text = _call_llm(provider, model, prompt, max_tokens=16384)

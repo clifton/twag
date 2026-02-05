@@ -2,10 +2,8 @@
 
 import html
 
-import pytest
-
-from twag.tables import should_show_inline, table_to_markdown
 from twag.scorer import MediaAnalysisResult
+from twag.tables import should_show_inline, table_to_markdown
 from twag.web.app import create_app
 
 

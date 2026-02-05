@@ -1,21 +1,22 @@
 """Tweet processing pipeline."""
 
-import time
-import sqlite3
-import re
 import json
+import re
+import sqlite3
+import time
 from collections import deque
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Callable
 from datetime import datetime, timezone
+from typing import Any
 
 from .config import load_config
 from .db import (
     get_accounts,
     get_authors_to_promote,
     get_connection,
-    get_unprocessed_tweets,
     get_tweet_by_id,
+    get_unprocessed_tweets,
     insert_tweet,
     is_tweet_seen,
     log_fetch,
@@ -254,7 +255,7 @@ def store_fetched_tweets(
     seen_quotes: set[str] = set()
 
     with get_connection() as conn:
-        for idx, tweet in enumerate(tweets, start=1):
+        for tweet in tweets:
             if not tweet.id:
                 if progress_cb:
                     progress_cb(1)
@@ -325,7 +326,7 @@ def store_bookmarked_tweets(
     seen_quotes: set[str] = set()
 
     with get_connection() as conn:
-        for idx, tweet in enumerate(tweets, start=1):
+        for tweet in tweets:
             if not tweet.id:
                 if progress_cb:
                     progress_cb(1)
@@ -578,16 +579,17 @@ def process_unprocessed(
 
         for row in unprocessed:
             tweet_id = row["id"]
-            tweets_for_triage.append({
-                "id": tweet_id,
-                "text": row["content"],
-                "handle": row["author_handle"],
-            })
+            tweets_for_triage.append(
+                {
+                    "id": tweet_id,
+                    "text": row["content"],
+                    "handle": row["author_handle"],
+                }
+            )
             tweet_map[tweet_id] = row
 
         if dry_run:
             if progress_cb:
-                total = len(tweets_for_triage)
                 for row in unprocessed:
                     if status_cb:
                         status_cb(f"Dry run @{row['author_handle']}")
@@ -649,11 +651,13 @@ def _triage_rows(
 
     for row in tweet_rows:
         tweet_id = row["id"]
-        tweets_for_triage.append({
-            "id": tweet_id,
-            "text": row["content"],
-            "handle": row["author_handle"],
-        })
+        tweets_for_triage.append(
+            {
+                "id": tweet_id,
+                "text": row["content"],
+                "handle": row["author_handle"],
+            }
+        )
         tweet_map[tweet_id] = row
 
     all_results: list[TriageResult] = []
@@ -668,7 +672,9 @@ def _triage_rows(
     enrich_candidates: set[str] = set()
 
     text_pool = ThreadPoolExecutor(max_workers=max_text_workers) if max_text_workers and max_text_workers > 1 else None
-    vision_pool = ThreadPoolExecutor(max_workers=max_vision_workers) if max_vision_workers and max_vision_workers > 1 else None
+    vision_pool = (
+        ThreadPoolExecutor(max_workers=max_vision_workers) if max_vision_workers and max_vision_workers > 1 else None
+    )
 
     def _complete_task(tweet_id: str) -> None:
         if tweet_id not in pending_tasks:
@@ -1093,7 +1099,9 @@ def enrich_high_signal(
 
         results: list[EnrichmentResult] = []
         futures = {}
-        text_pool = ThreadPoolExecutor(max_workers=max_text_workers) if max_text_workers and max_text_workers > 1 else None
+        text_pool = (
+            ThreadPoolExecutor(max_workers=max_text_workers) if max_text_workers and max_text_workers > 1 else None
+        )
 
         try:
             for tweet in tweets:

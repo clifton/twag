@@ -64,11 +64,7 @@ class Tweet:
         author_name = author.get("name") or data.get("authorName")
 
         # Content
-        content = (
-            data.get("text")
-            or data.get("full_text")
-            or data.get("content", "")
-        )
+        content = data.get("text") or data.get("full_text") or data.get("content", "")
 
         # Created at
         created_at = None
@@ -80,9 +76,7 @@ class Tweet:
             except (ValueError, AttributeError):
                 try:
                     # Try Twitter's format
-                    created_at = datetime.strptime(
-                        created_str, "%a %b %d %H:%M:%S %z %Y"
-                    )
+                    created_at = datetime.strptime(created_str, "%a %b %d %H:%M:%S %z %Y")
                 except ValueError:
                     pass
 
@@ -104,10 +98,7 @@ class Tweet:
         )
 
         # Links
-        has_link = bool(
-            data.get("urls")
-            or data.get("entities", {}).get("urls")
-        )
+        has_link = bool(data.get("urls") or data.get("entities", {}).get("urls"))
         # Also check for links in text
         if not has_link:
             has_link = bool(re.search(r"https?://\S+", content))
@@ -149,11 +140,7 @@ def _extract_media_items(data: dict[str, Any]) -> list[dict[str, Any]]:
     seen: set[str] = set()
 
     for item in candidates:
-        url = (
-            item.get("media_url_https")
-            or item.get("media_url")
-            or item.get("url")
-        )
+        url = item.get("media_url_https") or item.get("media_url") or item.get("url")
         if not url:
             variants = item.get("video_info", {}).get("variants", [])
             if variants:
@@ -161,19 +148,18 @@ def _extract_media_items(data: dict[str, Any]) -> list[dict[str, Any]]:
         if not url or url in seen:
             continue
         seen.add(url)
-        items.append({
-            "url": url,
-            "type": item.get("type") or item.get("media_type") or "photo",
-        })
+        items.append(
+            {
+                "url": url,
+                "type": item.get("type") or item.get("media_type") or "photo",
+            }
+        )
 
     return items
 
 
 def get_auth_env() -> dict[str, str]:
     """Get authentication environment variables."""
-    config = load_config()
-    bird_config = config.get("bird", {})
-
     # Load from ~/.env if it exists
     env_file = os.path.expanduser("~/.env")
     env = os.environ.copy()
@@ -200,7 +186,7 @@ def run_bird(args: list[str], timeout: int = 60) -> tuple[str, str, int]:
     env = get_auth_env()
 
     # Build command with auth if available
-    cmd = ["bird"] + args
+    cmd = ["bird", *args]
 
     # Add auth flags if we have the tokens
     auth_token = env.get("AUTH_TOKEN")

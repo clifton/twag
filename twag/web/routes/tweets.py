@@ -73,28 +73,30 @@ async def list_tweets(
     # Convert to JSON-serializable format
     tweets_data = []
     for t in tweets:
-        tweets_data.append({
-            "id": t.id,
-            "author_handle": t.author_handle,
-            "author_name": t.author_name,
-            "content": t.content,
-            "content_summary": t.content_summary,
-            "summary": t.summary,
-            "created_at": t.created_at.isoformat() if t.created_at else None,
-            "relevance_score": t.relevance_score,
-            "categories": t.categories,
-            "signal_tier": t.signal_tier,
-            "tickers": t.tickers,
-            "bookmarked": t.bookmarked,
-            "has_quote": t.has_quote,
-            "quote_tweet_id": t.quote_tweet_id,
-            "has_media": t.has_media,
-            "media_analysis": t.media_analysis,
-            "media_items": t.media_items,
-            "has_link": t.has_link,
-            "link_summary": t.link_summary,
-            "reactions": t.reactions,
-        })
+        tweets_data.append(
+            {
+                "id": t.id,
+                "author_handle": t.author_handle,
+                "author_name": t.author_name,
+                "content": t.content,
+                "content_summary": t.content_summary,
+                "summary": t.summary,
+                "created_at": t.created_at.isoformat() if t.created_at else None,
+                "relevance_score": t.relevance_score,
+                "categories": t.categories,
+                "signal_tier": t.signal_tier,
+                "tickers": t.tickers,
+                "bookmarked": t.bookmarked,
+                "has_quote": t.has_quote,
+                "quote_tweet_id": t.quote_tweet_id,
+                "has_media": t.has_media,
+                "media_analysis": t.media_analysis,
+                "media_items": t.media_items,
+                "has_link": t.has_link,
+                "link_summary": t.link_summary,
+                "reactions": t.reactions,
+            }
+        )
 
     return {
         "tweets": tweets_data,
@@ -178,6 +180,7 @@ async def list_categories(request: Request) -> dict[str, Any]:
 
     # Parse and aggregate categories (they may be JSON arrays)
     import json
+
     category_counts: dict[str, int] = {}
     for cat_raw, count in raw_counts.items():
         try:
@@ -193,12 +196,7 @@ async def list_categories(request: Request) -> dict[str, Any]:
     # Sort by count
     sorted_cats = sorted(category_counts.items(), key=lambda x: -x[1])
 
-    return {
-        "categories": [
-            {"name": name, "count": count}
-            for name, count in sorted_cats
-        ]
-    }
+    return {"categories": [{"name": name, "count": count} for name, count in sorted_cats]}
 
 
 @router.get("/tickers")
@@ -233,9 +231,4 @@ async def list_tickers(request: Request, limit: int = 50) -> dict[str, Any]:
     # Sort by count and limit
     sorted_tickers = sorted(ticker_counts.items(), key=lambda x: -x[1])[:limit]
 
-    return {
-        "tickers": [
-            {"symbol": symbol, "count": count}
-            for symbol, count in sorted_tickers
-        ]
-    }
+    return {"tickers": [{"symbol": symbol, "count": count} for symbol, count in sorted_tickers]}

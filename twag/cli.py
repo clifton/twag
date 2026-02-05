@@ -26,8 +26,8 @@ from .db import (
     get_active_narratives,
     get_connection,
     get_processed_counts,
-    get_unprocessed_tweets,
     get_tweet_stats,
+    get_unprocessed_tweets,
     init_db,
     mute_account,
     parse_time_range,
@@ -104,7 +104,6 @@ def init(force: bool):
     - Database (twag.db)
     - Digests directory
     """
-    import os
 
     data_dir = get_data_dir()
     config_path = get_config_path()
@@ -112,25 +111,25 @@ def init(force: bool):
     digests_dir = get_digests_dir()
     following_path = get_following_path()
 
-    click.echo(f"Initializing twag...")
+    click.echo("Initializing twag...")
     click.echo(f"  Data directory: {data_dir}")
     click.echo(f"  Config file: {config_path}")
 
     # Create data directory
     data_dir.mkdir(parents=True, exist_ok=True)
-    click.echo(f"  [OK] Data directory created")
+    click.echo("  [OK] Data directory created")
 
     # Create digests directory
     digests_dir.mkdir(parents=True, exist_ok=True)
-    click.echo(f"  [OK] Digests directory created")
+    click.echo("  [OK] Digests directory created")
 
     # Create config file
     if config_path.exists() and not force:
-        click.echo(f"  [SKIP] Config already exists (use --force to overwrite)")
+        click.echo("  [SKIP] Config already exists (use --force to overwrite)")
     else:
         config_path.parent.mkdir(parents=True, exist_ok=True)
         save_config(load_config())
-        click.echo(f"  [OK] Config file created")
+        click.echo("  [OK] Config file created")
 
     # Initialize database
     init_db()
@@ -141,7 +140,7 @@ def init(force: bool):
         following_path.write_text("# Add Twitter handles to track (one per line)\n# Example: @NickTimiraos\n")
         click.echo(f"  [OK] Following file created at {following_path}")
     else:
-        click.echo(f"  [SKIP] Following file already exists")
+        click.echo("  [SKIP] Following file already exists")
 
     click.echo("")
     click.echo("Initialization complete! Next steps:")
@@ -163,8 +162,8 @@ def doctor():
     - bird CLI is available
     - Database is accessible
     """
-    import shutil
     import os
+    import shutil
 
     issues = []
     warnings = []
@@ -175,9 +174,9 @@ def doctor():
     data_dir = get_data_dir()
     click.echo(f"Data directory: {data_dir}")
     if data_dir.exists():
-        click.echo(f"  [OK] Directory exists")
+        click.echo("  [OK] Directory exists")
     else:
-        click.echo(f"  [ERROR] Directory does not exist")
+        click.echo("  [ERROR] Directory does not exist")
         issues.append("Run 'twag init' to create data directory")
 
     # 2. Check config file
@@ -185,13 +184,13 @@ def doctor():
     click.echo(f"\nConfig file: {config_path}")
     if config_path.exists():
         try:
-            cfg = load_config()
-            click.echo(f"  [OK] Config file valid")
+            load_config()
+            click.echo("  [OK] Config file valid")
         except Exception as e:
             click.echo(f"  [ERROR] Config file invalid: {e}")
             issues.append("Fix or delete config file")
     else:
-        click.echo(f"  [WARN] Config file not found (using defaults)")
+        click.echo("  [WARN] Config file not found (using defaults)")
         warnings.append("Run 'twag init' to create config file")
 
     # 3. Check database
@@ -207,64 +206,64 @@ def doctor():
             click.echo(f"  [ERROR] Database error: {e}")
             issues.append("Run 'twag db init' to repair database")
     else:
-        click.echo(f"  [WARN] Database not found")
+        click.echo("  [WARN] Database not found")
         warnings.append("Run 'twag init' to create database")
 
     # 4. Check bird CLI
-    click.echo(f"\nbird CLI:")
+    click.echo("\nbird CLI:")
     bird_path = shutil.which("bird")
     if bird_path:
         click.echo(f"  [OK] Found at {bird_path}")
     else:
-        click.echo(f"  [ERROR] bird CLI not found in PATH")
+        click.echo("  [ERROR] bird CLI not found in PATH")
         issues.append("Install bird CLI: cargo install bird-cli or see https://github.com/...")
 
     # 5. Check API keys
-    click.echo(f"\nAPI keys:")
+    click.echo("\nAPI keys:")
 
     gemini_key = os.environ.get("GEMINI_API_KEY")
     if gemini_key:
         click.echo(f"  [OK] GEMINI_API_KEY set ({gemini_key[:8]}...)")
     else:
-        click.echo(f"  [ERROR] GEMINI_API_KEY not set")
+        click.echo("  [ERROR] GEMINI_API_KEY not set")
         issues.append("Set GEMINI_API_KEY environment variable")
 
     anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
     if anthropic_key:
         click.echo(f"  [OK] ANTHROPIC_API_KEY set ({anthropic_key[:8]}...)")
     else:
-        click.echo(f"  [WARN] ANTHROPIC_API_KEY not set (enrichment disabled)")
+        click.echo("  [WARN] ANTHROPIC_API_KEY not set (enrichment disabled)")
         warnings.append("Set ANTHROPIC_API_KEY for enrichment features")
 
     # 6. Check Twitter auth
-    click.echo(f"\nTwitter auth:")
+    click.echo("\nTwitter auth:")
     auth_token = os.environ.get("AUTH_TOKEN")
     ct0 = os.environ.get("CT0")
 
     if auth_token:
-        click.echo(f"  [OK] AUTH_TOKEN set")
+        click.echo("  [OK] AUTH_TOKEN set")
     else:
-        click.echo(f"  [ERROR] AUTH_TOKEN not set")
+        click.echo("  [ERROR] AUTH_TOKEN not set")
         issues.append("Set AUTH_TOKEN environment variable")
 
     if ct0:
-        click.echo(f"  [OK] CT0 set")
+        click.echo("  [OK] CT0 set")
     else:
-        click.echo(f"  [ERROR] CT0 not set")
+        click.echo("  [ERROR] CT0 not set")
         issues.append("Set CT0 environment variable")
 
     # 7. Check Telegram (optional)
-    click.echo(f"\nTelegram notifications:")
+    click.echo("\nTelegram notifications:")
     telegram_token = os.environ.get("TELEGRAM_BOT_TOKEN")
     telegram_chat = os.environ.get("TELEGRAM_CHAT_ID")
 
     if telegram_token and telegram_chat:
-        click.echo(f"  [OK] Telegram configured")
+        click.echo("  [OK] Telegram configured")
     elif telegram_token or telegram_chat:
-        click.echo(f"  [WARN] Partial Telegram config")
+        click.echo("  [WARN] Partial Telegram config")
         warnings.append("Set both TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID")
     else:
-        click.echo(f"  [INFO] Telegram not configured (optional)")
+        click.echo("  [INFO] Telegram not configured (optional)")
 
     # Summary
     click.echo("\n" + "=" * 50)
@@ -295,8 +294,19 @@ def doctor():
 @click.option("--tier1/--no-tier1", default=True, help="Also fetch tier-1 accounts")
 @click.option("--bookmarks/--no-bookmarks", default=True, help="Also fetch bookmarks")
 @click.option("--delay", type=float, default=None, help="Delay between tier-1 fetches (default: 3s)")
-@click.option("--stagger", type=int, default=None, help="Only fetch N tier-1 accounts (rotates by least-recently-fetched)")
-def fetch(source: str, handle: str | None, query: str | None, count: int, tier1: bool, bookmarks: bool, delay: float | None, stagger: int | None):
+@click.option(
+    "--stagger", type=int, default=None, help="Only fetch N tier-1 accounts (rotates by least-recently-fetched)"
+)
+def fetch(
+    source: str,
+    handle: str | None,
+    query: str | None,
+    count: int,
+    tier1: bool,
+    bookmarks: bool,
+    delay: float | None,
+    stagger: int | None,
+):
     """Fetch tweets from Twitter/X."""
     from .fetcher import fetch_bookmarks, fetch_home_timeline, fetch_search, fetch_user_tweets
     from .processor import auto_promote_bookmarked_authors, store_bookmarked_tweets, store_fetched_tweets
@@ -360,6 +370,7 @@ def fetch(source: str, handle: str | None, query: str | None, count: int, tier1:
         # Fetch tier-1 accounts if requested
         if tier1 and source == "home":
             import time
+
             from .config import load_config
             from .db import update_account_last_fetched
 
@@ -387,7 +398,9 @@ def fetch(source: str, handle: str | None, query: str | None, count: int, tier1:
                     try:
                         account_tweets = fetch_user_tweets(handle=account["handle"], count=20)
                         if account_tweets:
-                            with click.progressbar(length=len(account_tweets), label=f"Storing @{account['handle']}") as bar:
+                            with click.progressbar(
+                                length=len(account_tweets), label=f"Storing @{account['handle']}"
+                            ) as bar:
                                 status_cb, progress_cb, _ = _make_progress_callbacks(
                                     bar,
                                     len(account_tweets),
@@ -437,7 +450,14 @@ def fetch(source: str, handle: str | None, query: str | None, count: int, tier1:
 @click.option("--notify/--no-notify", default=True, help="Send Telegram alerts")
 @click.option("--reprocess-quotes/--no-reprocess-quotes", default=True, help="Reprocess today's quoted tweets")
 @click.option("--reprocess-min-score", type=float, default=None, help="Min score for reprocessing quoted tweets")
-def process(limit: int, dry_run: bool, model: str | None, notify: bool, reprocess_quotes: bool, reprocess_min_score: float | None):
+def process(
+    limit: int,
+    dry_run: bool,
+    model: str | None,
+    notify: bool,
+    reprocess_quotes: bool,
+    reprocess_min_score: float | None,
+):
     """Process unscored tweets through LLM."""
     from .notifier import notify_high_signal_tweet
     from .processor import process_unprocessed, reprocess_today_quoted
@@ -505,7 +525,9 @@ def process(limit: int, dry_run: bool, model: str | None, notify: bool, reproces
 
     if reprocess_quotes:
         cfg = load_config()
-        min_score = reprocess_min_score if reprocess_min_score is not None else cfg["scoring"].get("min_score_for_reprocess", 3)
+        min_score = (
+            reprocess_min_score if reprocess_min_score is not None else cfg["scoring"].get("min_score_for_reprocess", 3)
+        )
         reprocess_limit = 200
         today = datetime.now().strftime("%Y-%m-%d")
 
@@ -546,7 +568,6 @@ def process(limit: int, dry_run: bool, model: str | None, notify: bool, reproces
             click.echo(f"Reprocessed {len(reprocessed)} quoted tweets.")
         else:
             click.echo("No quoted tweets to reprocess.")
-
 
 
 # ============================================================================
@@ -653,6 +674,7 @@ def accounts_mute(handle: str):
 def accounts_demote(handle: str, tier: int):
     """Demote an account from tier 1."""
     from .db import demote_account
+
     with get_connection() as conn:
         demote_account(conn, handle, tier=tier)
         conn.commit()
@@ -666,7 +688,7 @@ def accounts_decay(rate: float):
     with get_connection() as conn:
         affected = apply_account_decay(conn, decay_rate=rate)
         conn.commit()
-    click.echo(f"Applied {rate*100:.0f}% decay to {affected} accounts")
+    click.echo(f"Applied {rate * 100:.0f}% decay to {affected} accounts")
 
 
 @accounts.command("boost")
@@ -994,14 +1016,13 @@ def db_restore(input_file: str, force: bool):
         with gzip.open(input_path, "rt", encoding="utf-8") as f:
             sql_script = f.read()
     else:
-        with open(input_path, "r") as f:
+        with open(input_path) as f:
             sql_script = f.read()
 
     try:
         counts = restore_sql(sql_script, db_file, backup=True)
         click.echo(
-            f"Restored database: {counts['tweets']} tweets, "
-            f"{counts['accounts']} accounts, {counts['fts']} FTS entries"
+            f"Restored database: {counts['tweets']} tweets, {counts['accounts']} accounts, {counts['fts']} FTS entries"
         )
     except Exception as e:
         click.echo(f"Error restoring database: {e}", err=True)
@@ -1026,10 +1047,16 @@ def db_restore(input_file: str, force: bool):
 @click.option("--today", is_flag=True, help="Since previous market close (4pm ET)")
 @click.option("--time", "time_range", help="Time range shorthand (today, 7d, etc.)")
 @click.option("--limit", "-n", type=int, default=20, help="Max results (default: 20)")
-@click.option("--order", "-o", type=click.Choice(["rank", "score", "time"]), default="rank",
-              help="Sort order: rank (relevance), score, time")
-@click.option("--format", "-f", "fmt", type=click.Choice(["brief", "full", "json"]), default="brief",
-              help="Output format")
+@click.option(
+    "--order",
+    "-o",
+    type=click.Choice(["rank", "score", "time"]),
+    default="rank",
+    help="Sort order: rank (relevance), score, time",
+)
+@click.option(
+    "--format", "-f", "fmt", type=click.Choice(["brief", "full", "json"]), default="brief", help="Output format"
+)
 def search(
     query: str,
     category: str | None,
@@ -1165,21 +1192,23 @@ def _output_json(results):
     """Output search results as JSON."""
     output = []
     for r in results:
-        output.append({
-            "id": r.id,
-            "author_handle": r.author_handle,
-            "author_name": r.author_name,
-            "content": r.content,
-            "summary": r.summary,
-            "created_at": r.created_at.isoformat() if r.created_at else None,
-            "relevance_score": r.relevance_score,
-            "categories": r.categories,
-            "signal_tier": r.signal_tier,
-            "tickers": r.tickers,
-            "bookmarked": r.bookmarked,
-            "rank": r.rank,
-            "url": f"https://x.com/{r.author_handle}/status/{r.id}",
-        })
+        output.append(
+            {
+                "id": r.id,
+                "author_handle": r.author_handle,
+                "author_name": r.author_name,
+                "content": r.content,
+                "summary": r.summary,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "relevance_score": r.relevance_score,
+                "categories": r.categories,
+                "signal_tier": r.signal_tier,
+                "tickers": r.tickers,
+                "bookmarked": r.bookmarked,
+                "rank": r.rank,
+                "url": f"https://x.com/{r.author_handle}/status/{r.id}",
+            }
+        )
     click.echo(json.dumps(output, indent=2))
 
 
@@ -1204,12 +1233,18 @@ def web(host: str, port: int, reload: bool):
 
     # Build uvicorn command - use --project to include twag itself
     cmd = [
-        "uv", "run",
-        "--project", str(project_dir),
-        "--with", "uvicorn[standard]",
-        "uvicorn", "twag.web:create_app",
-        "--host", host,
-        "--port", str(port),
+        "uv",
+        "run",
+        "--project",
+        str(project_dir),
+        "--with",
+        "uvicorn[standard]",
+        "uvicorn",
+        "twag.web:create_app",
+        "--host",
+        host,
+        "--port",
+        str(port),
         "--factory",
     ]
     if reload:

@@ -20,6 +20,7 @@ router = APIRouter(tags=["reactions"])
 
 class ReactionCreate(BaseModel):
     """Request body for creating a reaction."""
+
     tweet_id: str
     reaction_type: str  # '>>', '>', '<', 'x_author', 'x_topic'
     reason: str | None = None
@@ -159,23 +160,25 @@ async def export_reactions(
             except json.JSONDecodeError:
                 categories = [tweet["category"]]
 
-        export_data.append({
-            "reaction": {
-                "id": reaction.id,
-                "type": reaction.reaction_type,
-                "reason": reaction.reason,
-                "created_at": reaction.created_at.isoformat() if reaction.created_at else None,
-            },
-            "tweet": {
-                "id": tweet["id"],
-                "author": tweet["author_handle"],
-                "content": tweet["content"][:500],  # Truncate for export
-                "summary": tweet["summary"],
-                "score": tweet["relevance_score"],
-                "categories": categories,
-                "signal_tier": tweet["signal_tier"],
-            },
-        })
+        export_data.append(
+            {
+                "reaction": {
+                    "id": reaction.id,
+                    "type": reaction.reaction_type,
+                    "reason": reaction.reason,
+                    "created_at": reaction.created_at.isoformat() if reaction.created_at else None,
+                },
+                "tweet": {
+                    "id": tweet["id"],
+                    "author": tweet["author_handle"],
+                    "content": tweet["content"][:500],  # Truncate for export
+                    "summary": tweet["summary"],
+                    "score": tweet["relevance_score"],
+                    "categories": categories,
+                    "signal_tier": tweet["signal_tier"],
+                },
+            }
+        )
 
     return {
         "count": len(export_data),
