@@ -34,6 +34,18 @@ pip install -e .
 twag init
 ```
 
+## Automation Setup
+
+After installing twag, check [{baseDir}/SUGGESTED_CRON_SCHEDULE.md]({baseDir}/SUGGESTED_CRON_SCHEDULE.md) for recommended automation:
+
+1. **Data collection** - systemd timer (Linux) or launchd (macOS) running every 15 minutes
+2. **Telegram digests** - OpenClaw cron jobs for morning, bi-hourly, and weekend summaries
+
+Prompt the user to configure these based on their needs. Key questions:
+- Do they want automated data collection? (Recommended)
+- Do they want Telegram digest notifications?
+- What timezone are they in?
+
 ## Quick start
 
 ```bash
