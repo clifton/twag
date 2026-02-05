@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from functools import lru_cache
 from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 
 _URL_RE = re.compile(r"https?://[^\s<>()]+", re.IGNORECASE)
 _TRAILING_PUNCT_RE = re.compile(r"[)\],.?!:;]+$")
@@ -12,6 +14,8 @@ _STATUS_URL_RE = re.compile(
     r"https?://(?:www\.)?(?:mobile\.)?(?:x|twitter)\.com/(?:i/(?:web/)?|[^/]+/)?status/(\d+)(?:\?[^\s]+)?",
     re.IGNORECASE,
 )
+_SHORTENER_DOMAINS = {"t.co"}
+_MAX_SHORT_URL_EXPANSIONS = 4
 
 
 @dataclass
@@ -60,9 +64,47 @@ def _domain_for(url: str) -> str:
         return ""
 
 
+def _display_url_for(url: str) -> str:
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return url
+    host = (parsed.netloc or "").lower()
+    path = parsed.path or ""
+    query = f"?{parsed.query}" if parsed.query else ""
+    if not host:
+        return url
+    return f"{host}{path}{query}"
+
+
+def _is_shortener_url(url: str) -> bool:
+    return _domain_for(url).split(":")[0] in _SHORTENER_DOMAINS
+
+
+@lru_cache(maxsize=1024)
+def _expand_short_url(url: str) -> str:
+    """Resolve short URLs (e.g., t.co) to their final destination."""
+    cleaned = clean_url_candidate(url)
+    if not cleaned or not _is_shortener_url(cleaned):
+        return cleaned
+
+    headers = {"User-Agent": "twag/1.0"}
+    for method in ("HEAD", "GET"):
+        try:
+            request = Request(cleaned, method=method, headers=headers)
+            with urlopen(request, timeout=2.5) as response:
+                resolved = clean_url_candidate(response.geturl() or cleaned)
+                if resolved:
+                    return resolved
+        except Exception:
+            continue
+    return cleaned
+
+
 def _normalize_structured_links(text: str, links: list[dict]) -> list[dict[str, str]]:
     normalized: list[dict[str, str]] = []
     seen_keys: set[tuple[str, str]] = set()
+    short_url_expansions = 0
 
     for item in links:
         if not isinstance(item, dict):
@@ -71,6 +113,9 @@ def _normalize_structured_links(text: str, links: list[dict]) -> list[dict[str, 
         expanded_url = clean_url_candidate(str(item.get("expanded_url") or item.get("expandedUrl") or ""))
         display_url = str(item.get("display_url") or item.get("displayUrl") or "").strip()
         resolved = expanded_url or raw_url
+        if resolved and _is_shortener_url(resolved) and short_url_expansions < _MAX_SHORT_URL_EXPANSIONS:
+            resolved = _expand_short_url(resolved)
+            short_url_expansions += 1
         if not resolved:
             continue
         key = (raw_url, resolved)
@@ -81,7 +126,7 @@ def _normalize_structured_links(text: str, links: list[dict]) -> list[dict[str, 
             {
                 "url": raw_url or resolved,
                 "expanded_url": resolved,
-                "display_url": display_url,
+                "display_url": display_url or _display_url_for(resolved),
             }
         )
 
@@ -89,7 +134,11 @@ def _normalize_structured_links(text: str, links: list[dict]) -> list[dict[str, 
     for raw in extract_urls_from_text(text):
         if raw in known_urls:
             continue
-        normalized.append({"url": raw, "expanded_url": raw, "display_url": ""})
+        resolved = raw
+        if _is_shortener_url(raw) and short_url_expansions < _MAX_SHORT_URL_EXPANSIONS:
+            resolved = _expand_short_url(raw)
+            short_url_expansions += 1
+        normalized.append({"url": raw, "expanded_url": resolved, "display_url": _display_url_for(resolved)})
 
     return normalized
 
@@ -106,6 +155,26 @@ def remove_urls_from_text(text: str, urls_to_remove: set[str]) -> str:
             if not url:
                 continue
             updated = re.sub(rf"(^|\s){re.escape(url)}(?=\s|$)", " ", updated)
+        updated = re.sub(r"\s{2,}", " ", updated).strip()
+        if updated:
+            lines.append(updated)
+
+    return "\n".join(lines).strip()
+
+
+def replace_urls_in_text(text: str, replacements: dict[str, str]) -> str:
+    """Replace URL tokens in text with supplied replacements."""
+    if not text or not replacements:
+        return text
+
+    lines: list[str] = []
+    for line in text.splitlines():
+        updated = line
+        for source in sorted(replacements, key=len, reverse=True):
+            replacement = replacements[source]
+            if not source or not replacement:
+                continue
+            updated = re.sub(rf"(^|\s){re.escape(source)}(?=\s|$)", rf"\1{replacement}", updated)
         updated = re.sub(r"\s{2,}", " ", updated).strip()
         if updated:
             lines.append(updated)
@@ -131,6 +200,7 @@ def normalize_tweet_links(
     normalized_links = _normalize_structured_links(raw_text, links or [])
 
     urls_to_remove: set[str] = set()
+    external_replacements: dict[str, str] = {}
     inline_tweet_links: list[dict[str, str]] = []
     external_links: list[dict[str, str]] = []
 
@@ -159,18 +229,19 @@ def normalize_tweet_links(
         resolved = expanded_url or raw_url
         if not resolved or resolved in seen_external_urls:
             continue
-        urls_to_remove.add(raw_url)
-        urls_to_remove.add(expanded_url)
+        if raw_url and raw_url != resolved:
+            external_replacements[raw_url] = resolved
         seen_external_urls.add(resolved)
         external_links.append(
             {
                 "url": resolved,
-                "display_url": display_url or resolved,
+                "display_url": display_url or _display_url_for(resolved),
                 "domain": _domain_for(resolved),
             }
         )
 
-    display_text = remove_urls_from_text(raw_text, urls_to_remove)
+    display_text = replace_urls_in_text(raw_text, external_replacements)
+    display_text = remove_urls_from_text(display_text, urls_to_remove)
     return LinkNormalizationResult(
         display_text=display_text,
         inline_tweet_links=inline_tweet_links,

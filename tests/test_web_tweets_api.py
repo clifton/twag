@@ -251,7 +251,7 @@ def test_list_tweets_normalizes_self_and_inline_links(monkeypatch, tmp_path):
     assert response.status_code == 200
     tweet = response.json()["tweets"][0]
 
-    assert tweet["display_content"] == "Password manager with email aliasing"
+    assert tweet["display_content"] == "Password manager with email aliasing https://github.com/aliasvault/aliasvault"
     assert tweet["quote_embed"]["id"] == "2001"
     assert tweet["inline_quote_embeds"] == []
     assert tweet["external_links"] == [
