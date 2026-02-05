@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-const SUMMARY_MIN_LENGTH = 280;
+const SUMMARY_MIN_LENGTH = 500;
 
 interface TweetContentProps {
   summary: string | null;

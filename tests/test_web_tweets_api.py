@@ -98,6 +98,33 @@ def test_list_tweets_legacy_rt_text_fallback(monkeypatch, tmp_path):
     assert rt_tweet["display_content"] == "Legacy retweet text that should be attributed correctly."
 
 
+def test_list_tweets_legacy_rt_truncated_text_does_not_override_display_content(monkeypatch, tmp_path):
+    db_path = tmp_path / "twag_api_legacy_rt_truncated.db"
+    monkeypatch.setattr("twag.web.app.get_database_path", lambda: db_path)
+    app = create_app()
+
+    with get_connection(db_path) as conn:
+        _insert_processed_tweet(
+            conn,
+            tweet_id="legacy-rt-truncated",
+            author_handle="retweeter",
+            content="RT @original: Legacy retweet text clipped by upstream…",
+        )
+        conn.commit()
+
+    client = TestClient(app)
+    response = client.get("/api/tweets", params={"author": "retweeter", "sort": "latest", "since": "30d"})
+    assert response.status_code == 200
+    tweets = response.json()["tweets"]
+    assert len(tweets) == 1
+
+    rt_tweet = tweets[0]
+    assert rt_tweet["is_retweet"] is True
+    assert rt_tweet["display_author_handle"] == "original"
+    # Keep raw display text when fallback text is already truncated.
+    assert rt_tweet["display_content"] == "RT @original: Legacy retweet text clipped by upstream…"
+
+
 def test_list_tweets_builds_recursive_quote_embed(monkeypatch, tmp_path):
     db_path = tmp_path / "twag_api_quotes.db"
     monkeypatch.setattr("twag.web.app.get_database_path", lambda: db_path)

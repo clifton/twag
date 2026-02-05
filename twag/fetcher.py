@@ -14,6 +14,8 @@ from .config import load_config
 
 _BIRD_RATE_LOCK = threading.Lock()
 _BIRD_LAST_CALL = 0.0
+_TRUNCATION_SUFFIXES = ("\u2026", "...")
+_MAX_RETWEET_HYDRATIONS = 12
 
 
 def _rate_limit_bird() -> None:
@@ -146,7 +148,9 @@ class Tweet:
                 retweeted_by_handle = author_handle
                 retweeted_by_name = author_name
                 original_author_handle = rt_match.group(1)
-                original_content = rt_match.group(2).strip() or None
+                fallback_original = rt_match.group(2).strip() or None
+                if fallback_original and not _looks_truncated_text(fallback_original):
+                    original_content = fallback_original
 
         return cls(
             id=tweet_id,
@@ -189,6 +193,7 @@ def _extract_author(data: dict[str, Any]) -> tuple[str | None, str | None]:
         data.get("core", {}).get("user_results", {}).get("result", {}) if isinstance(data.get("core"), dict) else {}
     )
     core_legacy = core_result.get("legacy", {}) if isinstance(core_result, dict) else {}
+    core_profile = core_result.get("core", {}) if isinstance(core_result, dict) else {}
 
     handle = (
         author.get("username")
@@ -196,6 +201,7 @@ def _extract_author(data: dict[str, Any]) -> tuple[str | None, str | None]:
         or author.get("handle")
         or legacy.get("screen_name")
         or core_legacy.get("screen_name")
+        or core_profile.get("screen_name")
         or data.get("authorHandle")
     )
 
@@ -204,6 +210,7 @@ def _extract_author(data: dict[str, Any]) -> tuple[str | None, str | None]:
         or author.get("display_name")
         or legacy.get("name")
         or core_legacy.get("name")
+        or core_profile.get("name")
         or data.get("authorName")
     )
 
@@ -213,22 +220,34 @@ def _extract_author(data: dict[str, Any]) -> tuple[str | None, str | None]:
 def _extract_content(data: dict[str, Any]) -> str:
     """Extract tweet text from known payload variants."""
     legacy = data.get("legacy", {}) if isinstance(data.get("legacy"), dict) else {}
-    note_tweet = legacy.get("note_tweet", {}) if isinstance(legacy.get("note_tweet"), dict) else {}
-    note_results = (
-        note_tweet.get("note_tweet_results", {}).get("result", {})
-        if isinstance(note_tweet.get("note_tweet_results"), dict)
-        else {}
-    )
+    note_candidates = []
+    top_note_tweet = data.get("note_tweet", {}) if isinstance(data.get("note_tweet"), dict) else {}
+    legacy_note_tweet = legacy.get("note_tweet", {}) if isinstance(legacy.get("note_tweet"), dict) else {}
+    for note_tweet in (top_note_tweet, legacy_note_tweet):
+        note_results = (
+            note_tweet.get("note_tweet_results", {}).get("result", {})
+            if isinstance(note_tweet.get("note_tweet_results"), dict)
+            else {}
+        )
+        note_text = note_results.get("text")
+        if isinstance(note_text, str) and note_text:
+            note_candidates.append(note_text)
 
-    return (
+    base_text = (
         data.get("text")
         or data.get("full_text")
         or data.get("content")
         or legacy.get("full_text")
         or legacy.get("text")
-        or note_results.get("text")
         or ""
     )
+
+    if note_candidates:
+        longest_note = max(note_candidates, key=len)
+        if len(longest_note) > len(base_text):
+            return longest_note
+
+    return base_text
 
 
 def _extract_retweeted_tweet(data: dict[str, Any]) -> dict[str, Any] | None:
@@ -243,7 +262,59 @@ def _extract_retweeted_tweet(data: dict[str, Any]) -> dict[str, Any] | None:
         if isinstance(result, dict):
             return result
 
+    # Bird --json-full commonly nests retweeted metadata here.
+    nested_result = (
+        data.get("_raw", {}).get("legacy", {}).get("retweeted_status_result", {}).get("result")
+        if isinstance(data.get("_raw"), dict)
+        else None
+    )
+    if isinstance(nested_result, dict):
+        return nested_result
+
     return None
+
+
+def _looks_truncated_text(text: str | None) -> bool:
+    if not text:
+        return False
+    stripped = text.rstrip()
+    return bool(stripped) and stripped.endswith(_TRUNCATION_SUFFIXES)
+
+
+def _needs_retweet_hydration(tweet: Tweet) -> bool:
+    if not tweet.is_retweet:
+        return False
+    if tweet.original_tweet_id and tweet.original_content and not _looks_truncated_text(tweet.original_content):
+        return False
+    if tweet.original_content and _looks_truncated_text(tweet.original_content):
+        return True
+    return _looks_truncated_text(tweet.content)
+
+
+def _hydrate_truncated_retweets(tweets: list[Tweet]) -> list[Tweet]:
+    reads = 0
+    for tweet in tweets:
+        if reads >= _MAX_RETWEET_HYDRATIONS:
+            break
+        if not _needs_retweet_hydration(tweet):
+            continue
+
+        hydrated = read_tweet(tweet.id)
+        reads += 1
+        if not hydrated or not hydrated.is_retweet:
+            continue
+        if not hydrated.original_content or _looks_truncated_text(hydrated.original_content):
+            continue
+
+        tweet.is_retweet = True
+        tweet.retweeted_by_handle = hydrated.retweeted_by_handle or tweet.retweeted_by_handle or tweet.author_handle
+        tweet.retweeted_by_name = hydrated.retweeted_by_name or tweet.retweeted_by_name or tweet.author_name
+        tweet.original_tweet_id = hydrated.original_tweet_id or tweet.original_tweet_id
+        tweet.original_author_handle = hydrated.original_author_handle or tweet.original_author_handle
+        tweet.original_author_name = hydrated.original_author_name or tweet.original_author_name
+        tweet.original_content = hydrated.original_content
+
+    return tweets
 
 
 def _extract_article(data: dict[str, Any]) -> tuple[bool, str | None, str | None, str | None]:
@@ -502,7 +573,8 @@ def fetch_home_timeline(count: int = 100) -> list[Tweet]:
     if code != 0:
         raise RuntimeError(f"bird home failed: {stderr}")
 
-    return _parse_bird_output(stdout)
+    tweets = _parse_bird_output(stdout)
+    return _hydrate_truncated_retweets(tweets)
 
 
 def fetch_user_tweets(handle: str, count: int = 50) -> list[Tweet]:
@@ -516,7 +588,8 @@ def fetch_user_tweets(handle: str, count: int = 50) -> list[Tweet]:
     if code != 0:
         raise RuntimeError(f"bird user-tweets failed for {handle}: {stderr}")
 
-    return _parse_bird_output(stdout)
+    tweets = _parse_bird_output(stdout)
+    return _hydrate_truncated_retweets(tweets)
 
 
 def fetch_search(query: str, count: int = 30) -> list[Tweet]:
@@ -526,7 +599,8 @@ def fetch_search(query: str, count: int = 30) -> list[Tweet]:
     if code != 0:
         raise RuntimeError(f"bird search failed: {stderr}")
 
-    return _parse_bird_output(stdout)
+    tweets = _parse_bird_output(stdout)
+    return _hydrate_truncated_retweets(tweets)
 
 
 def fetch_bookmarks(count: int = 100) -> list[Tweet]:
@@ -536,7 +610,8 @@ def fetch_bookmarks(count: int = 100) -> list[Tweet]:
     if code != 0:
         raise RuntimeError(f"bird bookmarks failed: {stderr}")
 
-    return _parse_bird_output(stdout)
+    tweets = _parse_bird_output(stdout)
+    return _hydrate_truncated_retweets(tweets)
 
 
 def read_tweet(tweet_url_or_id: str) -> Tweet | None:

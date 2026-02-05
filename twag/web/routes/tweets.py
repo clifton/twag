@@ -22,6 +22,13 @@ def _inline_quote_id_from_links(tweet_id: str, links: dict[str, str]) -> str | N
     return None
 
 
+def _looks_truncated_text(text: str | None) -> bool:
+    if not text:
+        return False
+    stripped = text.rstrip()
+    return bool(stripped) and (stripped.endswith("\u2026") or stripped.endswith("..."))
+
+
 def _build_quote_embed(
     conn, quote_id: str | None, *, depth: int = 0, seen: set[str] | None = None
 ) -> dict[str, Any] | None:
@@ -166,7 +173,9 @@ async def list_tweets(
                     retweeted_by_handle = t.author_handle
                     retweeted_by_name = t.author_name
                     original_author_handle = match.group(1)
-                    original_content = match.group(2).strip() or None
+                    fallback_original = match.group(2).strip() or None
+                    if fallback_original and not _looks_truncated_text(fallback_original):
+                        original_content = fallback_original
 
             display_author_handle = original_author_handle if is_retweet and original_author_handle else t.author_handle
             display_author_name = original_author_name if is_retweet and original_author_name else t.author_name
