@@ -46,6 +46,26 @@ export interface MediaItem {
   alt_text?: string;
   content?: string;
   analysis?: string;
+  // Structured fields from vision analysis
+  kind?: string;
+  short_description?: string;
+  prose_text?: string;
+  prose_summary?: string;
+  chart?: {
+    type?: string;
+    description?: string;
+    insight?: string;
+    implication?: string;
+    tickers?: string[];
+  };
+  table?: {
+    title?: string;
+    description?: string;
+    columns?: string[];
+    rows?: string[][];
+    summary?: string;
+    tickers?: string[];
+  };
 }
 
 export interface TweetsResponse {
