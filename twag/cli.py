@@ -1472,9 +1472,9 @@ def web(host: str, port: int, reload: bool, dev: bool):
             subprocess.run(["npm", "install"], cwd=frontend_dir, check=True)
 
         click.echo("Starting dev servers:")
-        click.echo("  Vite (frontend):  http://localhost:8080")
+        click.echo(f"  Vite (frontend):  http://{host}:8080")
         click.echo(f"  FastAPI (API):    http://{host}:{port}")
-        click.echo("Open http://localhost:8080 for hot reload")
+        click.echo(f"Open http://{host}:8080 for hot reload")
         click.echo("Press Ctrl+C to stop both")
 
         env = {**os.environ, "TWAG_DEV": "1"}
