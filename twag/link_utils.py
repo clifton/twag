@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from functools import lru_cache
+from threading import Lock
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
@@ -15,7 +16,10 @@ _STATUS_URL_RE = re.compile(
     re.IGNORECASE,
 )
 _SHORTENER_DOMAINS = {"t.co"}
-_MAX_SHORT_URL_EXPANSIONS = 4
+_MAX_SHORT_URL_EXPANSIONS = 2
+_MAX_NETWORK_EXPANSION_ATTEMPTS = 12
+_network_expansion_attempts = 0
+_network_expansion_lock = Lock()
 
 
 @dataclass
@@ -87,17 +91,21 @@ def _expand_short_url(url: str) -> str:
     cleaned = clean_url_candidate(url)
     if not cleaned or not _is_shortener_url(cleaned):
         return cleaned
+    global _network_expansion_attempts
+    with _network_expansion_lock:
+        if _network_expansion_attempts >= _MAX_NETWORK_EXPANSION_ATTEMPTS:
+            return cleaned
+        _network_expansion_attempts += 1
 
     headers = {"User-Agent": "twag/1.0"}
-    for method in ("HEAD", "GET"):
-        try:
-            request = Request(cleaned, method=method, headers=headers)
-            with urlopen(request, timeout=2.5) as response:
-                resolved = clean_url_candidate(response.geturl() or cleaned)
-                if resolved:
-                    return resolved
-        except Exception:
-            continue
+    try:
+        request = Request(cleaned, method="HEAD", headers=headers)
+        with urlopen(request, timeout=0.35) as response:
+            resolved = clean_url_candidate(response.geturl() or cleaned)
+            if resolved:
+                return resolved
+    except Exception:
+        pass
     return cleaned
 
 

@@ -16,8 +16,7 @@ def test_normalize_tweet_links_expands_short_urls_without_structured_links(monke
     )
 
     assert result.display_text == (
-        "Password manager with email aliasing and built-in server\n"
-        "https://github.com/aliasvault/aliasvault"
+        "Password manager with email aliasing and built-in server\nhttps://github.com/aliasvault/aliasvault"
     )
     assert result.inline_tweet_links == []
     assert result.external_links == [
