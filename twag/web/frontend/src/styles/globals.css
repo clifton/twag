@@ -45,4 +45,11 @@
   ::-webkit-scrollbar-thumb:hover {
     background: #52525b;
   }
+
+  /* Always show actions on touch devices (no hover) */
+  @media (hover: none) {
+    .tweet-actions {
+      opacity: 1;
+    }
+  }
 }

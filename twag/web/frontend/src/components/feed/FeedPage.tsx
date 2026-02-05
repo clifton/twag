@@ -8,14 +8,15 @@ import { useFilterState } from "@/hooks/use-filter-state";
 
 function TweetSkeleton() {
   return (
-    <div className="border-b border-zinc-800/50 px-4 py-2.5">
-      <div className="flex items-start gap-2.5">
-        <Skeleton className="h-7 w-16 rounded" />
-        <div className="flex-1 space-y-2">
-          <Skeleton className="h-3 w-48" />
-          <Skeleton className="h-4 w-full" />
-          <Skeleton className="h-4 w-3/4" />
-        </div>
+    <div className="border-b border-zinc-800/40 px-4 py-3">
+      <Skeleton className="h-3 w-40" />
+      <div className="mt-2 space-y-1.5">
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-3/4" />
+      </div>
+      <div className="mt-2.5 flex items-center justify-between">
+        <Skeleton className="h-3 w-24" />
+        <Skeleton className="h-3 w-16" />
       </div>
     </div>
   );
@@ -66,33 +67,30 @@ export function FeedPage() {
       />
 
       <div className="flex-1 overflow-y-auto">
-        {isLoading && (
-          <div>
-            {Array.from({ length: 8 }).map((_, i) => (
-              <TweetSkeleton key={i} />
-            ))}
-          </div>
-        )}
+        <div className="mx-auto max-w-2xl">
+          {isLoading && (
+            <div>
+              {Array.from({ length: 8 }).map((_, i) => (
+                <TweetSkeleton key={i} />
+              ))}
+            </div>
+          )}
 
-        {isError && (
-          <div className="flex items-center justify-center py-16 text-sm text-red-400">
-            Failed to load tweets. Is the API running?
-          </div>
-        )}
+          {isError && (
+            <div className="flex items-center justify-center py-16 text-sm text-red-400">
+              Failed to load tweets. Is the API running?
+            </div>
+          )}
 
-        {!isLoading && tweets.length === 0 && (
-          <div className="flex items-center justify-center py-16 text-sm text-zinc-500">
-            No tweets match your filters
-          </div>
-        )}
+          {!isLoading && tweets.length === 0 && (
+            <div className="flex items-center justify-center py-16 text-sm text-zinc-500">
+              No tweets match your filters
+            </div>
+          )}
 
-        {/* 2-column on wide screens */}
-        <div className="mx-auto max-w-[1400px]">
-          <div className="grid grid-cols-1 xl:grid-cols-2 xl:divide-x xl:divide-zinc-800/50">
-            {tweets.map((tweet) => (
-              <TweetCard key={tweet.id} tweet={tweet} />
-            ))}
-          </div>
+          {tweets.map((tweet) => (
+            <TweetCard key={tweet.id} tweet={tweet} />
+          ))}
         </div>
 
         {/* Sentinel for infinite scroll */}

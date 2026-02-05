@@ -55,7 +55,7 @@ export function TweetActions({ tweetId, authorHandle, onAnalyze }: TweetActionsP
   };
 
   return (
-    <div className="flex items-center gap-0.5">
+    <div className="tweet-actions flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
       <Tooltip>
         <TooltipTrigger asChild>
           <Button

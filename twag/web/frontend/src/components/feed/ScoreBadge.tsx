@@ -20,32 +20,32 @@ export function ScoreBadge({ score, tier }: ScoreBadgeProps) {
   const label = tierLabel(tier);
 
   return (
-    <div
-      className={cn(
-        "flex items-center gap-1.5 rounded px-2 py-0.5 font-mono tabular-nums",
-        s >= 9 && "bg-green-500/15 text-green-400",
-        s >= 7 && s < 9 && "bg-green-500/10 text-green-500",
-        s >= 5 && s < 7 && "bg-yellow-500/10 text-yellow-500",
-        s >= 3 && s < 5 && "bg-zinc-700/50 text-zinc-400",
-        s < 3 && "bg-zinc-800/30 text-zinc-600",
-      )}
-    >
-      <span className="text-sm font-semibold leading-none">
+    <span className="inline-flex items-baseline gap-1">
+      <span
+        className={cn(
+          "font-mono text-sm font-semibold tabular-nums",
+          s >= 9 && "text-green-400",
+          s >= 7 && s < 9 && "text-green-500",
+          s >= 5 && s < 7 && "text-yellow-500",
+          s >= 3 && s < 5 && "text-zinc-400",
+          s < 3 && "text-zinc-600",
+        )}
+      >
         {score !== null ? score.toFixed(1) : "—"}
       </span>
       {label && (
         <span
           className={cn(
-            "text-[10px] font-medium leading-none uppercase tracking-wider",
-            tier === "high_signal" && "text-green-400/70",
-            tier === "market_relevant" && "text-cyan-400/70",
-            tier === "news" && "text-violet-400/70",
-            tier === "noise" && "text-zinc-500/70",
+            "text-[10px] font-medium uppercase tracking-wider",
+            tier === "high_signal" && "text-green-400/60",
+            tier === "market_relevant" && "text-cyan-400/60",
+            tier === "news" && "text-violet-400/60",
+            tier === "noise" && "text-zinc-500/60",
           )}
         >
           {label}
         </span>
       )}
-    </div>
+    </span>
   );
 }
