@@ -21,6 +21,7 @@ from .db import (
     apply_account_decay,
     archive_stale_narratives,
     boost_account,
+    dump_sql,
     get_accounts,
     get_active_narratives,
     get_connection,
@@ -34,6 +35,7 @@ from .db import (
     prune_old_tweets,
     query_suggests_equity_context,
     rebuild_fts,
+    restore_sql,
     search_tweets,
     upsert_account,
 )
@@ -910,7 +912,7 @@ def db_rebuild_fts():
 @click.argument("output", type=click.Path(), default=None, required=False)
 @click.option("--stdout", is_flag=True, help="Output to stdout instead of file")
 def db_dump(output: str | None, stdout: bool):
-    """Dump database to SQL file.
+    """Dump database to SQL file (FTS5-safe).
 
     \b
     Examples:
@@ -925,28 +927,18 @@ def db_dump(output: str | None, stdout: bool):
         sys.exit(1)
 
     if stdout:
-        # Stream directly to stdout
-        import sqlite3
-        conn = sqlite3.connect(db_file)
-        for line in conn.iterdump():
-            click.echo(line)
-        conn.close()
+        for stmt in dump_sql(db_file):
+            click.echo(stmt)
     else:
-        # Write to file
         if output is None:
             timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
             output = f"twag-{timestamp}.sql"
 
         output_path = Path(output)
 
-        import sqlite3
-        conn = sqlite3.connect(db_file)
-
         with open(output_path, "w") as f:
-            for line in conn.iterdump():
-                f.write(f"{line}\n")
-
-        conn.close()
+            for stmt in dump_sql(db_file):
+                f.write(f"{stmt}\n")
 
         # Get file size
         size_bytes = output_path.stat().st_size
@@ -964,25 +956,25 @@ def db_dump(output: str | None, stdout: bool):
 @click.argument("input_file", type=click.Path(exists=True))
 @click.option("--force", is_flag=True, help="Overwrite existing database without prompting")
 def db_restore(input_file: str, force: bool):
-    """Restore database from SQL dump.
+    """Restore database from SQL dump (handles .gz files).
 
     \b
     WARNING: This will replace the existing database!
+    FTS5 index is rebuilt automatically after restore.
 
     \b
     Examples:
       twag db restore backup.sql
+      twag db restore backup.sql.gz --force
       twag db restore twag-20240115-120000.sql --force
-      zcat backup.sql.gz | twag db restore /dev/stdin --force
     """
-    import sqlite3
+    import gzip
 
     db_file = get_database_path()
     input_path = Path(input_file)
 
     # Warn about overwriting
     if db_file.exists() and not force:
-        # Get current DB stats
         try:
             with get_connection() as conn:
                 cursor = conn.execute("SELECT COUNT(*) FROM tweets")
@@ -995,48 +987,25 @@ def db_restore(input_file: str, force: bool):
             click.echo("Aborted.")
             return
 
-    # Backup existing database
-    if db_file.exists():
-        backup_path = db_file.with_suffix(".db.bak")
-        import shutil
-        shutil.copy2(db_file, backup_path)
-        click.echo(f"Backed up existing database to: {backup_path}")
-
-    # Read the SQL dump
     click.echo(f"Restoring from: {input_path}")
 
-    with open(input_path, "r") as f:
-        sql_script = f.read()
+    # Read the SQL dump, handling .gz transparently
+    if input_path.suffix == ".gz" or input_path.name.endswith(".sql.gz"):
+        with gzip.open(input_path, "rt", encoding="utf-8") as f:
+            sql_script = f.read()
+    else:
+        with open(input_path, "r") as f:
+            sql_script = f.read()
 
-    # Remove existing database and create new one
-    if db_file.exists():
-        db_file.unlink()
-
-    # Execute the SQL script
-    conn = sqlite3.connect(db_file)
     try:
-        conn.executescript(sql_script)
-        conn.commit()
-
-        # Verify restoration
-        cursor = conn.execute("SELECT COUNT(*) FROM tweets")
-        tweet_count = cursor.fetchone()[0]
-
-        cursor = conn.execute("SELECT COUNT(*) FROM accounts")
-        account_count = cursor.fetchone()[0]
-
-        click.echo(f"Restored database: {tweet_count} tweets, {account_count} accounts")
+        counts = restore_sql(sql_script, db_file, backup=True)
+        click.echo(
+            f"Restored database: {counts['tweets']} tweets, "
+            f"{counts['accounts']} accounts, {counts['fts']} FTS entries"
+        )
     except Exception as e:
         click.echo(f"Error restoring database: {e}", err=True)
-        # Attempt to restore backup
-        backup_path = db_file.with_suffix(".db.bak")
-        if backup_path.exists():
-            import shutil
-            shutil.copy2(backup_path, db_file)
-            click.echo("Restored previous database from backup.")
         sys.exit(1)
-    finally:
-        conn.close()
 
 
 # ============================================================================
