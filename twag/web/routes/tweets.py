@@ -8,7 +8,7 @@ from fastapi import APIRouter, Query, Request
 
 from ...db import get_connection, get_feed_tweets, get_tweet_by_id, parse_time_range
 from ...media import parse_media_items
-from ..tweet_utils import extract_tweet_links, quote_embed_from_row, remove_tweet_links
+from ..tweet_utils import decode_html_entities, extract_tweet_links, quote_embed_from_row, remove_tweet_links
 
 router = APIRouter(tags=["tweets"])
 MAX_QUOTE_DEPTH = 3
@@ -20,6 +20,13 @@ def _inline_quote_id_from_links(tweet_id: str, links: dict[str, str]) -> str | N
         if linked_tweet_id and linked_tweet_id != tweet_id:
             return linked_tweet_id
     return None
+
+
+def _looks_truncated_text(text: str | None) -> bool:
+    if not text:
+        return False
+    stripped = text.rstrip()
+    return bool(stripped) and (stripped.endswith("\u2026") or stripped.endswith("..."))
 
 
 def _build_quote_embed(
@@ -119,8 +126,8 @@ async def list_tweets(
         # Enrich tweets with quote embeds and display content
         tweets_data = []
         for t in tweets:
-            content = t.content or ""
-            links = extract_tweet_links(content)
+            content_raw = t.content or ""
+            links = extract_tweet_links(content_raw)
             link_map: dict[str, str] = {}
             for tid, url in links:
                 if tid and tid not in link_map:
@@ -148,7 +155,7 @@ async def list_tweets(
             # Clean display content
             remove_ids = set(link_map.keys())
             remove_ids.add(t.id)
-            display_content = remove_tweet_links(content, links, remove_ids) if content else content
+            display_content = remove_tweet_links(content_raw, links, remove_ids) if content_raw else content_raw
 
             is_retweet = bool(t.is_retweet)
             retweeted_by_handle = t.retweeted_by_handle
@@ -160,19 +167,25 @@ async def list_tweets(
 
             # Legacy rows may store RT-form text without retweet metadata columns populated.
             if not is_retweet:
-                match = LEGACY_RETWEET_RE.match(content)
+                match = LEGACY_RETWEET_RE.match(content_raw)
                 if match:
                     is_retweet = True
                     retweeted_by_handle = t.author_handle
                     retweeted_by_name = t.author_name
                     original_author_handle = match.group(1)
-                    original_content = match.group(2).strip() or None
+                    fallback_original = match.group(2).strip() or None
+                    if fallback_original and not _looks_truncated_text(fallback_original):
+                        original_content = fallback_original
 
             display_author_handle = original_author_handle if is_retweet and original_author_handle else t.author_handle
             display_author_name = original_author_name if is_retweet and original_author_name else t.author_name
             display_tweet_id = original_tweet_id if is_retweet and original_tweet_id else t.id
             if is_retweet and original_content:
                 display_content = original_content
+
+            content = decode_html_entities(t.content)
+            original_content = decode_html_entities(original_content)
+            display_content = decode_html_entities(display_content)
 
             tweets_data.append(
                 {
@@ -182,7 +195,7 @@ async def list_tweets(
                     "display_author_handle": display_author_handle,
                     "display_author_name": display_author_name,
                     "display_tweet_id": display_tweet_id,
-                    "content": t.content,
+                    "content": content,
                     "content_summary": t.content_summary,
                     "summary": t.summary,
                     "created_at": t.created_at.isoformat() if t.created_at else None,
@@ -198,6 +211,15 @@ async def list_tweets(
                     "media_items": t.media_items,
                     "has_link": t.has_link,
                     "link_summary": t.link_summary,
+                    "is_x_article": t.is_x_article,
+                    "article_title": t.article_title,
+                    "article_preview": t.article_preview,
+                    "article_text": t.article_text,
+                    "article_summary_short": t.article_summary_short,
+                    "article_primary_points": t.article_primary_points,
+                    "article_action_items": t.article_action_items,
+                    "article_top_visual": t.article_top_visual,
+                    "article_processed_at": t.article_processed_at.isoformat() if t.article_processed_at else None,
                     "is_retweet": is_retweet,
                     "retweeted_by_handle": retweeted_by_handle,
                     "retweeted_by_name": retweeted_by_name,
@@ -251,11 +273,38 @@ async def get_tweet(request: Request, tweet_id: str) -> dict[str, Any]:
         except json.JSONDecodeError:
             tickers = [t.strip() for t in tweet["tickers"].split(",") if t.strip()]
 
+    article_primary_points = []
+    if tweet["article_primary_points_json"]:
+        try:
+            decoded = json.loads(tweet["article_primary_points_json"])
+            if isinstance(decoded, list):
+                article_primary_points = [item for item in decoded if isinstance(item, dict)]
+        except json.JSONDecodeError:
+            article_primary_points = []
+
+    article_action_items = []
+    if tweet["article_action_items_json"]:
+        try:
+            decoded = json.loads(tweet["article_action_items_json"])
+            if isinstance(decoded, list):
+                article_action_items = [item for item in decoded if isinstance(item, dict)]
+        except json.JSONDecodeError:
+            article_action_items = []
+
+    article_top_visual = None
+    if tweet["article_top_visual_json"]:
+        try:
+            decoded = json.loads(tweet["article_top_visual_json"])
+            if isinstance(decoded, dict):
+                article_top_visual = decoded
+        except json.JSONDecodeError:
+            article_top_visual = None
+
     return {
         "id": tweet["id"],
         "author_handle": tweet["author_handle"],
         "author_name": tweet["author_name"],
-        "content": tweet["content"],
+        "content": decode_html_entities(tweet["content"]),
         "content_summary": tweet["content_summary"],
         "summary": tweet["summary"],
         "created_at": tweet["created_at"],
@@ -271,13 +320,22 @@ async def get_tweet(request: Request, tweet_id: str) -> dict[str, Any]:
         "media_items": parse_media_items(tweet["media_items"]),
         "has_link": bool(tweet["has_link"]),
         "link_summary": tweet["link_summary"],
+        "is_x_article": bool(tweet["is_x_article"]),
+        "article_title": tweet["article_title"],
+        "article_preview": tweet["article_preview"],
+        "article_text": tweet["article_text"],
+        "article_summary_short": tweet["article_summary_short"],
+        "article_primary_points": article_primary_points,
+        "article_action_items": article_action_items,
+        "article_top_visual": article_top_visual,
+        "article_processed_at": tweet["article_processed_at"],
         "is_retweet": bool(tweet["is_retweet"]),
         "retweeted_by_handle": tweet["retweeted_by_handle"],
         "retweeted_by_name": tweet["retweeted_by_name"],
         "original_tweet_id": tweet["original_tweet_id"],
         "original_author_handle": tweet["original_author_handle"],
         "original_author_name": tweet["original_author_name"],
-        "original_content": tweet["original_content"],
+        "original_content": decode_html_entities(tweet["original_content"]),
     }
 
 

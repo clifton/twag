@@ -7,6 +7,7 @@ import { TweetMedia } from "./TweetMedia";
 import { TweetActions } from "./TweetActions";
 import { QuoteBlock } from "./QuoteBlock";
 import type { AnalyzeResult, Tweet } from "@/api/types";
+import { buildArticleVisuals } from "./articleVisuals";
 import { timeAgo } from "@/lib/utils";
 
 interface TweetCardProps {
@@ -23,6 +24,17 @@ export function TweetCard({ tweet }: TweetCardProps) {
   const linkAuthor = hasOriginalTweetTarget ? displayAuthor : tweet.author_handle;
   const linkTweetId = hasOriginalTweetTarget ? displayTweetId : tweet.id;
   const tweetUrl = `https://x.com/${linkAuthor}/status/${linkTweetId}`;
+  const hasArticleSummary =
+    tweet.is_x_article &&
+    (Boolean(tweet.article_summary_short) ||
+      tweet.article_primary_points.length > 0 ||
+      tweet.article_action_items.length > 0);
+  const articleVisuals = buildArticleVisuals(tweet.article_top_visual, tweet.media_items, 5);
+  const [topArticleVisual, ...additionalArticleVisuals] = articleVisuals;
+  const digestBody =
+    tweet.summary ??
+    (tweet.is_x_article ? tweet.article_summary_short : null) ??
+    tweet.content_summary;
 
   return (
     <article className="group border-b border-zinc-800/80 px-4 py-3 bg-zinc-950/40 hover:bg-zinc-900/20 transition-colors">
@@ -47,22 +59,13 @@ export function TweetCard({ tweet }: TweetCardProps) {
             <span className="font-mono">{timeAgo(tweet.created_at)}</span>
           </>
         )}
-        {tweet.tickers.length > 0 && (
-          <>
-            <span className="text-zinc-600">&middot;</span>
-            {tweet.tickers.map((t) => (
-              <span key={t} className="font-mono text-cyan-300/80">
-                ${t}
-              </span>
-            ))}
-          </>
-        )}
         <a
           href={tweetUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="ml-auto text-zinc-500 hover:text-zinc-200 transition-colors"
+          className="ml-auto inline-flex items-center gap-1 text-zinc-500 hover:text-zinc-200 transition-colors"
         >
+          {hasArticleSummary && <span className="text-[10px] uppercase tracking-wide">Article</span>}
           <ExternalLink className="h-3 w-3" />
         </a>
       </div>
@@ -70,14 +73,16 @@ export function TweetCard({ tweet }: TweetCardProps) {
       {/* Content */}
       <div className="mt-2">
         <TweetContent
-          summary={tweet.summary ?? tweet.content_summary}
+          summary={digestBody}
           content={tweet.content}
           displayContent={tweet.display_content}
+          showOriginalToggle={!hasArticleSummary}
+          emphasizeSummary={hasArticleSummary}
         />
       </div>
 
       {/* Media */}
-      {tweet.has_media && (
+      {tweet.has_media && !hasArticleSummary && (
         <div className="mt-3">
           <TweetMedia
             items={tweet.media_items}
@@ -94,10 +99,120 @@ export function TweetCard({ tweet }: TweetCardProps) {
       )}
 
       {/* Link summary */}
-      {tweet.has_link && tweet.link_summary && (
+      {!hasArticleSummary && tweet.has_link && tweet.link_summary && (
         <p className="mt-2 text-xs text-zinc-300 leading-snug">
           {tweet.link_summary}
         </p>
+      )}
+
+      {/* X article summary */}
+      {hasArticleSummary && (
+        <section className="mt-3 space-y-3">
+          <div
+            className={`grid gap-3 ${
+              tweet.article_primary_points.length > 0 && tweet.article_action_items.length > 0
+                ? "lg:grid-cols-2 lg:gap-5"
+                : "grid-cols-1"
+            }`}
+          >
+            {tweet.article_primary_points.length > 0 && (
+              <div className="space-y-1.5">
+                <div className="text-[10px] uppercase tracking-wide text-zinc-400">Primary Points</div>
+                <ul className="space-y-2">
+                  {tweet.article_primary_points.slice(0, 4).map((point, idx) => (
+                    <li key={`${tweet.id}-pp-${idx}`} className="flex gap-2.5">
+                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-300/80" />
+                      <div className="min-w-0">
+                        <div className="text-[14px] text-zinc-100 leading-snug font-medium">{point.point}</div>
+                        {point.reasoning ? (
+                          <div className="mt-0.5 text-[13px] text-zinc-300 leading-snug">{point.reasoning}</div>
+                        ) : null}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {tweet.article_action_items.length > 0 && (
+              <div className="space-y-1.5">
+                <div className="text-[10px] uppercase tracking-wide text-zinc-400">Actionable Items</div>
+                <ul className="space-y-2">
+                  {tweet.article_action_items.slice(0, 3).map((item, idx) => (
+                    <li key={`${tweet.id}-ai-${idx}`} className="flex gap-2.5">
+                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-300/80" />
+                      <div className="min-w-0">
+                        <div className="text-[14px] text-zinc-100 leading-snug font-medium">{item.action}</div>
+                        {item.trigger ? (
+                          <div className="mt-0.5 text-[13px] text-zinc-300 leading-snug">
+                            <span className="text-[10px] uppercase tracking-wide text-zinc-500">Trigger</span>{" "}
+                            {item.trigger}
+                          </div>
+                        ) : null}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+
+          {articleVisuals.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-[10px] uppercase tracking-wide text-zinc-400">Visuals</div>
+
+              {topArticleVisual && (
+                <a
+                  key={`${tweet.id}-visual-top-${topArticleVisual.url}`}
+                  href={topArticleVisual.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block"
+                >
+                  <img
+                    src={topArticleVisual.url}
+                    alt={topArticleVisual.keyTakeaway || `${topArticleVisual.kind} visual`}
+                    className="block h-auto w-full rounded bg-zinc-950/60"
+                    loading="lazy"
+                  />
+                  <div className="mt-1 text-[10px] text-zinc-500 uppercase tracking-wide">
+                    {topArticleVisual.kind} (top)
+                  </div>
+                  {topArticleVisual.keyTakeaway && (
+                    <div className="mt-0.5 text-[12px] text-zinc-300 leading-snug">
+                      {topArticleVisual.keyTakeaway}
+                    </div>
+                  )}
+                </a>
+              )}
+
+              {additionalArticleVisuals.length > 0 && (
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                  {additionalArticleVisuals.map((visual, idx) => (
+                    <a
+                      key={`${tweet.id}-visual-${idx + 1}-${visual.url}`}
+                      href={visual.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block"
+                    >
+                      <img
+                        src={visual.url}
+                        alt={visual.keyTakeaway || `${visual.kind} visual`}
+                        className="block h-auto w-full rounded bg-zinc-950/60"
+                        loading="lazy"
+                      />
+                      <div className="mt-1 text-[10px] text-zinc-500 uppercase tracking-wide">{visual.kind}</div>
+                      {visual.keyTakeaway && (
+                        <div className="mt-0.5 text-[12px] text-zinc-300 leading-snug">{visual.keyTakeaway}</div>
+                      )}
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </section>
       )}
 
       {/* Reference links */}
@@ -117,11 +232,11 @@ export function TweetCard({ tweet }: TweetCardProps) {
         </div>
       )}
 
-      {/* Bottom row: categories left, score + actions right */}
-      <div className="mt-2.5 flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      {/* Bottom row: categories + tickers left, score + actions right */}
+      <div className="mt-2.5 flex items-center justify-between gap-3">
+        <div className="min-w-0 flex items-center gap-3">
           {tweet.categories.length > 0 && (
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 whitespace-nowrap">
               {tweet.categories.map((c) => (
                 <span
                   key={c}
@@ -130,6 +245,13 @@ export function TweetCard({ tweet }: TweetCardProps) {
                   {c.replace(/_/g, " ")}
                 </span>
               ))}
+            </div>
+          )}
+          {tweet.tickers.length > 0 && (
+            <div className="min-w-0 flex-1">
+              <div className="truncate whitespace-nowrap text-[10px] font-mono tracking-wide text-zinc-500/70 [mask-image:linear-gradient(to_right,black_75%,transparent)] [-webkit-mask-image:linear-gradient(to_right,black_75%,transparent)]">
+                {tweet.tickers.map((t) => `$${t}`).join(" ")}
+              </div>
             </div>
           )}
         </div>

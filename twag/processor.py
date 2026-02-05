@@ -24,6 +24,7 @@ from .db import (
     promote_account,
     update_account_stats,
     update_tweet_analysis,
+    update_tweet_article,
     update_tweet_enrichment,
     update_tweet_processing,
     upsert_account,
@@ -44,8 +45,55 @@ from .scorer import (
     enrich_tweet,
     summarize_document_text,
     summarize_tweet,
+    summarize_x_article,
     triage_tweets_batch,
 )
+
+_SIGNAL_TIER_RANK = {
+    "noise": 0,
+    "news": 1,
+    "market_relevant": 2,
+    "high_signal": 3,
+}
+
+
+def _prefer_stronger_signal_tier(existing: str | None, candidate: str | None) -> str | None:
+    """Return the stronger signal tier, defaulting to existing when equal/unknown."""
+    if not existing and not candidate:
+        return None
+    if not existing:
+        return candidate
+    if not candidate:
+        return existing
+
+    existing_rank = _SIGNAL_TIER_RANK.get(str(existing), -1)
+    candidate_rank = _SIGNAL_TIER_RANK.get(str(candidate), -1)
+    return candidate if candidate_rank > existing_rank else existing
+
+
+def _build_triage_text(tweet_row: sqlite3.Row) -> str:
+    """Build triage text, favoring article body for X-native articles."""
+    content = (tweet_row["content"] or "").strip()
+    if not tweet_row["is_x_article"]:
+        return content
+
+    article_text = (tweet_row["article_text"] or "").strip()
+    if not article_text:
+        return content
+
+    title = (tweet_row["article_title"] or "").strip()
+    preview = (tweet_row["article_preview"] or "").strip()
+    parts = [part for part in [title, preview, article_text] if part]
+    combined = "\n\n".join(parts)
+
+    # Keep triage payload bounded while preserving rich article context.
+    if len(combined) > 6000:
+        combined = combined[:6000]
+
+    # Prefer article-aware text when materially richer than tweet content.
+    if not content or len(combined) >= len(content) + 120:
+        return combined
+    return content
 
 
 def _fetch_quote_chain(
@@ -127,6 +175,10 @@ def _fetch_quote_by_id(
         has_media=quoted.has_media,
         media_items=quoted.media_items,
         has_link=quoted.has_link,
+        is_x_article=quoted.is_x_article,
+        article_title=quoted.article_title,
+        article_preview=quoted.article_preview,
+        article_text=quoted.article_text,
         is_retweet=quoted.is_retweet,
         retweeted_by_handle=quoted.retweeted_by_handle,
         retweeted_by_name=quoted.retweeted_by_name,
@@ -187,6 +239,10 @@ def _ensure_quote_row(
         has_media=quoted.has_media,
         media_items=quoted.media_items,
         has_link=quoted.has_link,
+        is_x_article=quoted.is_x_article,
+        article_title=quoted.article_title,
+        article_preview=quoted.article_preview,
+        article_text=quoted.article_text,
         is_retweet=quoted.is_retweet,
         retweeted_by_handle=quoted.retweeted_by_handle,
         retweeted_by_name=quoted.retweeted_by_name,
@@ -291,6 +347,10 @@ def store_fetched_tweets(
                 has_media=tweet.has_media,
                 media_items=tweet.media_items,
                 has_link=tweet.has_link,
+                is_x_article=tweet.is_x_article,
+                article_title=tweet.article_title,
+                article_preview=tweet.article_preview,
+                article_text=tweet.article_text,
                 is_retweet=tweet.is_retweet,
                 retweeted_by_handle=tweet.retweeted_by_handle,
                 retweeted_by_name=tweet.retweeted_by_name,
@@ -369,6 +429,10 @@ def store_bookmarked_tweets(
                 has_media=tweet.has_media,
                 media_items=tweet.media_items,
                 has_link=tweet.has_link,
+                is_x_article=tweet.is_x_article,
+                article_title=tweet.article_title,
+                article_preview=tweet.article_preview,
+                article_text=tweet.article_text,
                 is_retweet=tweet.is_retweet,
                 retweeted_by_handle=tweet.retweeted_by_handle,
                 retweeted_by_name=tweet.retweeted_by_name,
@@ -533,6 +597,102 @@ def _needs_media_analysis(media_items: list[dict[str, Any]]) -> bool:
     return False
 
 
+def _tokenize_for_overlap(text: str) -> set[str]:
+    return {tok for tok in re.findall(r"[a-zA-Z]{3,}", text.lower()) if tok}
+
+
+def _select_article_top_visual(
+    media_items: list[dict[str, Any]],
+    *,
+    article_title: str = "",
+    article_summary: str = "",
+    primary_points: list[dict[str, Any]] | None = None,
+) -> dict[str, Any] | None:
+    """Select top visual only if it is chart/table or highly relevant evidence."""
+    context_parts = [article_title, article_summary]
+    for point in primary_points or []:
+        if not isinstance(point, dict):
+            continue
+        context_parts.append(str(point.get("point", "")))
+        context_parts.append(str(point.get("reasoning", "")))
+        context_parts.append(str(point.get("evidence", "")))
+    context_text = " ".join(part for part in context_parts if part)
+    context_tokens = _tokenize_for_overlap(context_text)
+
+    best: tuple[float, dict[str, Any]] | None = None
+    for item in media_items:
+        url = item.get("url")
+        if not url:
+            continue
+
+        kind = (item.get("kind") or "").strip().lower()
+        chart = item.get("chart") if isinstance(item.get("chart"), dict) else {}
+        table = item.get("table") if isinstance(item.get("table"), dict) else {}
+
+        chart_text = " ".join(
+            [
+                str(chart.get("description", "")),
+                str(chart.get("insight", "")),
+                str(chart.get("implication", "")),
+            ]
+        ).strip()
+        table_text = " ".join(
+            [
+                str(table.get("title", "")),
+                str(table.get("description", "")),
+                str(table.get("summary", "")),
+            ]
+        ).strip()
+        prose_text = " ".join(
+            [
+                str(item.get("prose_summary", "")),
+                str(item.get("short_description", "")),
+                str(item.get("prose_text", "")),
+            ]
+        ).strip()
+        candidate_text = " ".join(part for part in [chart_text, table_text, prose_text] if part).strip()
+        if not candidate_text:
+            continue
+
+        if kind in {"meme", "photo", "other", ""}:
+            continue
+
+        has_numbers = bool(re.search(r"\d", candidate_text))
+        overlap = len(_tokenize_for_overlap(candidate_text) & context_tokens) if context_tokens else 0
+
+        # Gate non-chart visuals heavily to avoid irrelevant picks.
+        if kind in {"document", "screenshot"} and (overlap < 2 or not has_numbers):
+            continue
+        if kind not in {"chart", "table", "document", "screenshot"}:
+            continue
+        if kind in {"chart", "table"} and overlap == 0 and not has_numbers:
+            continue
+
+        base = 100.0 if kind in {"chart", "table"} else 70.0
+        score = base + (10.0 if has_numbers else 0.0) + float(overlap * 5)
+
+        takeaway = ""
+        if kind == "chart":
+            takeaway = str(chart.get("insight") or chart.get("description") or "").strip()
+        elif kind == "table":
+            takeaway = str(table.get("summary") or table.get("description") or "").strip()
+        if not takeaway:
+            takeaway = str(item.get("prose_summary") or item.get("short_description") or "").strip()
+        if not takeaway:
+            continue
+
+        visual = {
+            "url": url,
+            "kind": kind,
+            "why_important": "Most relevant quantitative visual supporting the article thesis.",
+            "key_takeaway": takeaway,
+        }
+        if best is None or score > best[0]:
+            best = (score, visual)
+
+    return best[1] if best else None
+
+
 def fetch_and_store(
     source: str = "home",
     handle: str | None = None,
@@ -566,6 +726,7 @@ def process_unprocessed(
     progress_cb: Callable[[int], None] | None = None,
     status_cb: Callable[[str], None] | None = None,
     total_cb: Callable[[int], None] | None = None,
+    force_refresh: bool = False,
 ) -> list[TriageResult]:
     """Process tweets that haven't been scored yet."""
     config = load_config()
@@ -645,6 +806,7 @@ def process_unprocessed(
             media_min_score=media_min_score,
             progress_cb=progress_cb,
             status_cb=status_cb,
+            force_refresh=force_refresh,
         )
 
         conn.commit()
@@ -666,6 +828,7 @@ def _triage_rows(
     media_min_score: float | None = None,
     progress_cb: Callable[[int], None] | None = None,
     status_cb: Callable[[str], None] | None = None,
+    force_refresh: bool = False,
 ) -> list[TriageResult]:
     """Run triage on provided rows and persist results."""
     config = load_config()
@@ -674,6 +837,7 @@ def _triage_rows(
     vision_model = config["llm"].get("vision_model")
     vision_provider = config["llm"].get("vision_provider")
     analysis_min_score = config.get("scoring", {}).get("min_score_for_analysis", 3)
+    article_min_score = config.get("scoring", {}).get("min_score_for_article_processing", 5)
     tweets_for_triage = []
     tweet_map: dict[str, sqlite3.Row] = {}
 
@@ -682,7 +846,7 @@ def _triage_rows(
         tweets_for_triage.append(
             {
                 "id": tweet_id,
-                "text": row["content"],
+                "text": _build_triage_text(row),
                 "handle": row["author_handle"],
             }
         )
@@ -696,7 +860,9 @@ def _triage_rows(
     pending_tasks: dict[str, int] = {}
     summary_futures = {}
     media_futures = {}
+    article_futures = {}
     enrich_futures = {}
+    article_candidates: set[str] = set()
     enrich_candidates: set[str] = set()
 
     text_pool = ThreadPoolExecutor(max_workers=max_text_workers) if max_text_workers and max_text_workers > 1 else None
@@ -824,10 +990,21 @@ def _triage_rows(
                 analysis_min_score is not None
                 and result.score >= analysis_min_score
                 and tweet_row is not None
-                and not tweet_row["analysis_json"]
+                and (force_refresh or not tweet_row["analysis_json"])
             )
             if needs_analysis:
                 enrich_candidates.add(result.tweet_id)
+                task_count += 1
+
+            needs_article = (
+                tweet_row is not None
+                and bool(tweet_row["is_x_article"])
+                and (force_refresh or not tweet_row["article_processed_at"])
+                and result.score >= article_min_score
+                and bool(tweet_row["article_text"] or tweet_row["article_preview"] or tweet_row["article_title"])
+            )
+            if needs_article:
+                article_candidates.add(result.tweet_id)
                 task_count += 1
 
             if task_count:
@@ -901,10 +1078,94 @@ def _triage_rows(
                 pass
             _complete_task(tweet_id)
 
+        if article_candidates:
+            for tweet_id in list(article_candidates):
+                row = get_tweet_by_id(conn, tweet_id)
+                if not row or (row["article_processed_at"] and not force_refresh):
+                    _complete_task(tweet_id)
+                    continue
+
+                article_text = (row["article_text"] or row["content"] or "").strip()
+                if not article_text and not row["article_preview"] and not row["article_title"]:
+                    _complete_task(tweet_id)
+                    continue
+
+                media_items = ensure_media_analysis(
+                    conn,
+                    row,
+                    vision_model=vision_model,
+                    vision_provider=vision_provider,
+                )
+
+                if status_cb:
+                    status_cb(f"Summarizing article @{row['author_handle']}")
+
+                if text_pool:
+                    future = text_pool.submit(
+                        summarize_x_article,
+                        article_text,
+                        article_title=row["article_title"] or "",
+                        article_preview=row["article_preview"] or "",
+                        model=enrich_model,
+                        provider=None,
+                    )
+                    article_futures[future] = (tweet_id, row, media_items)
+                else:
+                    try:
+                        article_result = summarize_x_article(
+                            article_text,
+                            article_title=row["article_title"] or "",
+                            article_preview=row["article_preview"] or "",
+                            model=enrich_model,
+                        )
+                        top_visual = _select_article_top_visual(
+                            media_items,
+                            article_title=row["article_title"] or "",
+                            article_summary=article_result.short_summary,
+                            primary_points=article_result.primary_points,
+                        )
+                        update_tweet_article(
+                            conn,
+                            tweet_id,
+                            article_summary_short=article_result.short_summary,
+                            primary_points=article_result.primary_points,
+                            actionable_items=article_result.actionable_items,
+                            top_visual=top_visual,
+                            set_top_visual=True,
+                            processed_at=datetime.now(timezone.utc).isoformat(),
+                        )
+                    except Exception:
+                        pass
+                    _complete_task(tweet_id)
+
+            for future in as_completed(list(article_futures.keys())):
+                tweet_id, row, media_items = article_futures.pop(future)
+                try:
+                    article_result = future.result()
+                    top_visual = _select_article_top_visual(
+                        media_items,
+                        article_title=row["article_title"] or "",
+                        article_summary=article_result.short_summary,
+                        primary_points=article_result.primary_points,
+                    )
+                    update_tweet_article(
+                        conn,
+                        tweet_id,
+                        article_summary_short=article_result.short_summary,
+                        primary_points=article_result.primary_points,
+                        actionable_items=article_result.actionable_items,
+                        top_visual=top_visual,
+                        set_top_visual=True,
+                        processed_at=datetime.now(timezone.utc).isoformat(),
+                    )
+                except Exception:
+                    pass
+                _complete_task(tweet_id)
+
         if enrich_candidates:
             for tweet_id in list(enrich_candidates):
                 row = get_tweet_by_id(conn, tweet_id)
-                if not row or row["analysis_json"]:
+                if not row or (row["analysis_json"] and not force_refresh):
                     _complete_task(tweet_id)
                     continue
 
@@ -934,7 +1195,7 @@ def _triage_rows(
                         handle=row["author_handle"],
                         author_category=author_category or "unknown",
                         quoted_tweet=quoted_text,
-                        article_summary=row["link_summary"] or "",
+                        article_summary=row["article_summary_short"] or row["link_summary"] or "",
                         image_description=media_context,
                         model=enrich_model,
                     )
@@ -946,7 +1207,7 @@ def _triage_rows(
                             handle=row["author_handle"],
                             author_category=author_category or "unknown",
                             quoted_tweet=quoted_text,
-                            article_summary=row["link_summary"] or "",
+                            article_summary=row["article_summary_short"] or row["link_summary"] or "",
                             image_description=media_context,
                             model=enrich_model,
                         )
@@ -971,7 +1232,7 @@ def _triage_rows(
                             conn,
                             tweet_id=tweet_id,
                             analysis=analysis_payload,
-                            signal_tier=result.signal_tier or row["signal_tier"],
+                            signal_tier=_prefer_stronger_signal_tier(row["signal_tier"], result.signal_tier),
                             tickers=merged_tickers,
                         )
                     except Exception:
@@ -1003,7 +1264,7 @@ def _triage_rows(
                         conn,
                         tweet_id=tweet_id,
                         analysis=analysis_payload,
-                        signal_tier=result.signal_tier or row["signal_tier"],
+                        signal_tier=_prefer_stronger_signal_tier(row["signal_tier"], result.signal_tier),
                         tickers=merged_tickers,
                     )
                 except Exception:
@@ -1158,7 +1419,7 @@ def enrich_high_signal(
                         handle=tweet["author_handle"],
                         author_category=author_category or "unknown",
                         quoted_tweet=quoted_text,
-                        article_summary=tweet["link_summary"] or "",
+                        article_summary=tweet["article_summary_short"] or tweet["link_summary"] or "",
                         image_description=media_context,
                         model=enrich_model,
                     )
@@ -1169,7 +1430,7 @@ def enrich_high_signal(
                         handle=tweet["author_handle"],
                         author_category=author_category or "unknown",
                         quoted_tweet=quoted_text,
-                        article_summary=tweet["link_summary"] or "",
+                        article_summary=tweet["article_summary_short"] or tweet["link_summary"] or "",
                         image_description=media_context,
                         model=enrich_model,
                     )

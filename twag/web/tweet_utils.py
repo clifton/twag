@@ -1,5 +1,6 @@
 """Shared tweet content utilities."""
 
+import html
 import re
 from datetime import datetime
 from typing import Any
@@ -35,12 +36,18 @@ def remove_tweet_links(text: str, links: list[tuple[str, str]], remove_ids: set[
     return cleaned
 
 
+def decode_html_entities(text: str | None) -> str | None:
+    if text is None:
+        return None
+    return html.unescape(text)
+
+
 def quote_embed_from_row(row) -> dict[str, Any]:
     created_at = parse_created_at(row["created_at"])
     return {
         "id": row["id"],
         "author_handle": row["author_handle"],
         "author_name": row["author_name"],
-        "content": row["content"],
+        "content": decode_html_entities(row["content"]),
         "created_at": created_at.isoformat() if created_at else None,
     }

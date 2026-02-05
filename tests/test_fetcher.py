@@ -220,6 +220,22 @@ class TestTweetFromBirdJson:
 
         assert tweet.has_link is True
 
+    def test_parse_x_article_uses_content_when_plain_text_missing(self):
+        """X article should fall back to long tweet content when plain_text is absent."""
+        article_text = "Intro.\n\n" + ("Detailed section. " * 40)
+        data = {
+            "id": "123",
+            "author": {"username": "writer"},
+            "text": article_text,
+            "article": {"title": "Deep Dive", "previewText": "Short preview"},
+        }
+
+        tweet = Tweet.from_bird_json(data)
+
+        assert tweet.is_x_article is True
+        assert tweet.article_title == "Deep Dive"
+        assert tweet.article_text == article_text.strip()
+
     def test_parse_with_url_in_text(self):
         """Parse tweet with URL detected in text."""
         data = {
@@ -314,6 +330,91 @@ class TestTweetFromBirdJson:
         assert tweet.original_content == "edge case fallback"
         assert tweet.original_tweet_id is None
 
+    def test_parse_content_unescapes_html_entities(self):
+        """Decode HTML entities from tweet content variants."""
+        data = {
+            "id": "302",
+            "author": {"username": "entity_user"},
+            "text": "Spotify is down -33% and A &gt;$100B move with P&amp;L implications",
+        }
+        tweet = Tweet.from_bird_json(data)
+
+        assert tweet.content == "Spotify is down -33% and A >$100B move with P&L implications"
+
+    def test_parse_retweet_from_nested_raw_retweeted_status_result(self):
+        """Parse retweet metadata from Bird --json-full nested _raw legacy payload."""
+        data = {
+            "id": "2019489337843306678",
+            "author": {"username": "tylercowen", "name": "tylercowen"},
+            "text": "RT @DKThomp: for me the odds that AI is a bubble declined significantly ... under-bu…",
+            "_raw": {
+                "legacy": {
+                    "retweeted_status_result": {
+                        "result": {
+                            "rest_id": "2019484169915572452",
+                            "note_tweet": {
+                                "note_tweet_results": {
+                                    "result": {
+                                        "text": (
+                                            "for me the odds that AI is a bubble declined significantly in the last 3 weeks "
+                                            "and the odds that we're actually quite under-built for the necessary levels "
+                                            "of inference/usage went significantly up in that period \n\nbasically I think "
+                                            "AI is going to become the home screen of a ludicrously high percentage of "
+                                            "white collar workers in the next two years and parallel agents will be deployed "
+                                            "in the battlefield of knowledge work at downright Soviet levels"
+                                        )
+                                    }
+                                }
+                            },
+                            "core": {
+                                "user_results": {
+                                    "result": {
+                                        "core": {
+                                            "screen_name": "DKThomp",
+                                            "name": "Derek Thompson",
+                                        }
+                                    }
+                                }
+                            },
+                            "legacy": {
+                                "full_text": (
+                                    "for me the odds that AI is a bubble declined significantly in the last 3 weeks "
+                                    "and the odds that we're actually quite under-built for the necessary levels "
+                                    "of inference/usage went significantly up in that period \n\nbasically I think "
+                                    "AI is going to become the home screen of a"
+                                )
+                            },
+                        }
+                    }
+                }
+            },
+        }
+
+        tweet = Tweet.from_bird_json(data)
+
+        assert tweet.is_retweet is True
+        assert tweet.retweeted_by_handle == "tylercowen"
+        assert tweet.original_tweet_id == "2019484169915572452"
+        assert tweet.original_author_handle == "DKThomp"
+        assert tweet.original_author_name == "Derek Thompson"
+        assert tweet.original_content is not None
+        assert "under-built" in tweet.original_content
+        assert "Soviet levels" in tweet.original_content
+        assert len(tweet.original_content) > 400
+
+    def test_parse_retweet_from_text_fallback_does_not_treat_truncated_text_as_original(self):
+        """Fallback RT parsing should not persist truncated original text."""
+        data = {
+            "id": "301",
+            "author": {"username": "retweeter3"},
+            "text": "RT @orig3: this was truncated by upstream and ends with ellipsis…",
+        }
+        tweet = Tweet.from_bird_json(data)
+
+        assert tweet.is_retweet is True
+        assert tweet.original_author_handle == "orig3"
+        assert tweet.original_content is None
+
 
 # ============================================================================
 # Tests: _parse_bird_output
@@ -377,6 +478,13 @@ class TestParseBirdOutput:
     def test_parse_invalid_json_lines_skipped(self):
         """Invalid JSON lines should be skipped, not raise."""
         output = '{"id": "1", "author": {"username": "u1"}, "text": "T1"}\nnot json\n{"id": "2", "author": {"username": "u2"}, "text": "T2"}'
+        tweets = _parse_bird_output(output)
+
+        assert len(tweets) == 2
+
+    def test_parse_ndjson_with_non_object_values_skipped(self):
+        """Valid JSON scalar lines should be ignored instead of crashing."""
+        output = '{"id": "1", "author": {"username": "u1"}, "text": "T1"}\n"string"\n42\n{"id": "2", "author": {"username": "u2"}, "text": "T2"}'
         tweets = _parse_bird_output(output)
 
         assert len(tweets) == 2
@@ -500,6 +608,50 @@ class TestFetchFunctions:
         with pytest.raises(RuntimeError, match="bird home failed"):
             fetch_home_timeline()
 
+    def test_fetch_home_timeline_hydrates_truncated_retweet(self, mock_run_bird):
+        """Home fetch should enrich truncated RT text with read_tweet metadata when available."""
+        truncated_rt = {
+            "id": "rt-1",
+            "author": {"username": "retweeter", "name": "Retweeter"},
+            "text": "RT @orig: clipped payload from timeline…",
+        }
+        mock_run_bird.return_value = (json.dumps([truncated_rt]), "", 0)
+
+        hydrated = Tweet(
+            id="rt-1",
+            author_handle="retweeter",
+            author_name="Retweeter",
+            content="RT @orig: clipped payload from timeline…",
+            created_at=None,
+            has_quote=False,
+            quote_tweet_id=None,
+            has_media=False,
+            media_items=[],
+            has_link=False,
+            is_x_article=False,
+            article_title=None,
+            article_preview=None,
+            article_text=None,
+            is_retweet=True,
+            retweeted_by_handle="retweeter",
+            retweeted_by_name="Retweeter",
+            original_tweet_id="orig-1",
+            original_author_handle="orig",
+            original_author_name="Original Author",
+            original_content="Full original text from read endpoint.",
+            raw={},
+        )
+
+        with patch("twag.fetcher.read_tweet", return_value=hydrated) as mock_read_tweet:
+            tweets = fetch_home_timeline(count=1)
+
+        assert len(tweets) == 1
+        assert tweets[0].is_retweet is True
+        assert tweets[0].original_tweet_id == "orig-1"
+        assert tweets[0].original_author_handle == "orig"
+        assert tweets[0].original_content == "Full original text from read endpoint."
+        mock_read_tweet.assert_called_once_with("rt-1")
+
     def test_fetch_user_tweets_normalizes_handle(self, mock_run_bird, single_tweet_json):
         """User tweets fetch normalizes handle to include @."""
         mock_run_bird.return_value = (json.dumps([single_tweet_json]), "", 0)
@@ -601,6 +753,30 @@ class TestReadTweet:
         args = mock_run_bird.call_args[0][0]
         assert "read" in args
         assert "https://x.com/user/status/12345" in args
+
+    def test_read_tweet_falls_back_from_truncated_json_full(self, mock_run_bird):
+        """Fallback to --json when --json-full cannot be parsed, preserving recovered media."""
+        truncated_full = (
+            '{"id":"123","author":{"username":"single"},"text":"Single tweet","_raw":{"article":{"article_results":'
+            '{"result":{"media_entities":[{"media_info":{"original_img_url":"https:\\/\\/pbs.twimg.com\\/media\\/'
+            'HAXmiH6acAEiywu.jpg"}}]}}}}'
+        )
+        fallback_json = {
+            "id": "123",
+            "author": {"username": "single"},
+            "text": "Single tweet",
+            "article": {"title": "Deep Dive", "previewText": "Preview"},
+        }
+        mock_run_bird.side_effect = [
+            (truncated_full, "", 0),
+            (json.dumps(fallback_json), "", 0),
+        ]
+
+        tweet = read_tweet("123")
+
+        assert tweet is not None
+        assert tweet.is_x_article is True
+        assert any(item["url"] == "https://pbs.twimg.com/media/HAXmiH6acAEiywu.jpg" for item in tweet.media_items)
 
 
 # ============================================================================

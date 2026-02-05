@@ -5,9 +5,19 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 
+from .article_visuals import build_article_visuals
 from .config import get_digests_dir, load_config
 from .db import get_connection, get_tweets_for_digest, mark_tweet_in_digest
 from .fetcher import get_tweet_url
+
+
+def _value(tweet: sqlite3.Row | dict, key: str, default=None):
+    if isinstance(tweet, sqlite3.Row):
+        try:
+            return tweet[key]
+        except (IndexError, KeyError):
+            return default
+    return tweet.get(key, default)
 
 
 def render_digest(
@@ -127,11 +137,11 @@ def _render_tweet(tweet: sqlite3.Row, compact: bool = False) -> list[str]:
     url = get_tweet_url(tweet["id"], handle)
 
     # Bookmark flag
-    is_bookmarked = tweet.get("bookmarked", False)
+    is_bookmarked = _value(tweet, "bookmarked", False)
     bookmark_badge = " ⭐" if is_bookmarked else ""
 
     # Check if tweet has a content summary (long non-tier-1 tweets)
-    content_summary = tweet.get("content_summary")
+    content_summary = _value(tweet, "content_summary")
     is_summarized = bool(content_summary)
 
     if compact:
@@ -192,14 +202,98 @@ def _render_tweet(tweet: sqlite3.Row, compact: bool = False) -> list[str]:
                 lines.append(f"🏷️ **Categories:** {cat_display}")
                 lines.append("")
 
-        # Media analysis
-        if tweet["media_analysis"]:
+        # Link summary
+        has_article_sections = bool(_value(tweet, "is_x_article") and _value(tweet, "article_summary_short"))
+        if tweet["media_analysis"] and not has_article_sections:
             lines.append("📊 **Chart Analysis:**")
             lines.append(f"> {tweet['media_analysis']}")
             lines.append("")
 
-        # Link summary
-        if tweet["link_summary"]:
+        if has_article_sections:
+            lines.append("🧾 **Article Summary:**")
+            lines.append(f"> {tweet['article_summary_short']}")
+            lines.append("")
+
+            article_top_visual = None
+            if _value(tweet, "article_top_visual_json"):
+                try:
+                    decoded = json.loads(_value(tweet, "article_top_visual_json"))
+                    if isinstance(decoded, dict) and decoded.get("url"):
+                        article_top_visual = decoded
+                except json.JSONDecodeError:
+                    article_top_visual = None
+
+            article_points = []
+            if _value(tweet, "article_primary_points_json"):
+                try:
+                    decoded = json.loads(_value(tweet, "article_primary_points_json"))
+                    if isinstance(decoded, list):
+                        article_points = [item for item in decoded if isinstance(item, dict)]
+                except json.JSONDecodeError:
+                    article_points = []
+            if article_points:
+                lines.append("📌 **Primary Points:**")
+                for item in article_points[:4]:
+                    point = (item.get("point") or "").strip()
+                    reasoning = (item.get("reasoning") or "").strip()
+                    if not point:
+                        continue
+                    if reasoning:
+                        lines.append(f"- {point} — {reasoning}")
+                    else:
+                        lines.append(f"- {point}")
+                lines.append("")
+
+            article_actions = []
+            if _value(tweet, "article_action_items_json"):
+                try:
+                    decoded = json.loads(_value(tweet, "article_action_items_json"))
+                    if isinstance(decoded, list):
+                        article_actions = [item for item in decoded if isinstance(item, dict)]
+                except json.JSONDecodeError:
+                    article_actions = []
+            if article_actions:
+                lines.append("✅ **Actionable Items:**")
+                for item in article_actions[:3]:
+                    action = (item.get("action") or "").strip()
+                    trigger = (item.get("trigger") or "").strip()
+                    if not action:
+                        continue
+                    if trigger:
+                        lines.append(f"- {action} (trigger: {trigger})")
+                    else:
+                        lines.append(f"- {action}")
+                lines.append("")
+
+            article_media_items: list[dict] = []
+            media_raw = _value(tweet, "media_items")
+            if media_raw:
+                try:
+                    decoded = json.loads(media_raw)
+                    if isinstance(decoded, list):
+                        article_media_items = [item for item in decoded if isinstance(item, dict)]
+                except json.JSONDecodeError:
+                    article_media_items = []
+            visuals = build_article_visuals(
+                top_visual=article_top_visual,
+                media_items=article_media_items,
+                max_items=5,
+            )
+            if visuals:
+                lines.append("🖼️ **Visuals:**")
+                for idx, visual in enumerate(visuals, start=1):
+                    kind = str(visual.get("kind") or "visual")
+                    top_suffix = " (top)" if visual.get("is_top") else ""
+                    takeaway = str(visual.get("key_takeaway") or "").strip()
+                    url_text = str(visual.get("url") or "").strip()
+                    if takeaway:
+                        lines.append(f"- {idx}. {kind}{top_suffix}: {takeaway}")
+                    else:
+                        lines.append(f"- {idx}. {kind}{top_suffix}")
+                    if url_text:
+                        lines.append(f"  - {url_text}")
+                lines.append("")
+        elif tweet["link_summary"]:
             lines.append("🔗 **Linked Article:**")
             lines.append(f"> {tweet['link_summary']}")
             lines.append("")

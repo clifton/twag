@@ -1,6 +1,7 @@
 """CLI entry point for twag."""
 
 import json
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -8,6 +9,7 @@ from pathlib import Path
 import click
 
 from . import __version__
+from .article_visuals import build_article_visuals
 from .config import (
     get_config_path,
     get_data_dir,
@@ -26,6 +28,7 @@ from .db import (
     get_active_narratives,
     get_connection,
     get_processed_counts,
+    get_tweet_by_id,
     get_tweet_stats,
     get_unprocessed_tweets,
     init_db,
@@ -79,6 +82,130 @@ def _make_progress_callbacks(bar: click.progressbar, total: int, base_label: str
         _sync_label()
 
     return status_cb, progress_cb, total_cb
+
+
+def _normalize_status_id_or_url(status_id_or_url: str) -> str:
+    """Normalize a status argument to a tweet ID when possible."""
+    value = status_id_or_url.strip()
+    if value.isdigit():
+        return value
+
+    match = re.search(r"/status/(\d+)", value)
+    if match:
+        return match.group(1)
+
+    return value
+
+
+def _json_list(value: str | None) -> list:
+    if not value:
+        return []
+    try:
+        decoded = json.loads(value)
+    except json.JSONDecodeError:
+        return []
+    return decoded if isinstance(decoded, list) else []
+
+
+def _json_object(value: str | None) -> dict:
+    if not value:
+        return {}
+    try:
+        decoded = json.loads(value)
+    except json.JSONDecodeError:
+        return {}
+    return decoded if isinstance(decoded, dict) else {}
+
+
+def _print_status_analysis(row) -> None:
+    score = row["relevance_score"] if row["relevance_score"] is not None else 0.0
+    categories = _json_list(row["category"])
+    tickers = _json_list(row["tickers"])
+
+    click.echo("")
+    click.echo(f"@{row['author_handle']} · {row['id']}")
+    click.echo(f"Score: {score:.1f} · Tier: {row['signal_tier'] or '-'}")
+    if categories:
+        click.echo(f"Categories: {', '.join(str(c) for c in categories)}")
+    if tickers:
+        click.echo(f"Tickers: {', '.join(str(t) for t in tickers)}")
+
+    summary = row["summary"] or row["content_summary"] or ""
+    if summary:
+        click.echo("")
+        click.echo("Summary:")
+        click.echo(summary)
+
+    article_summary = row["article_summary_short"] or ""
+    primary_points = _json_list(row["article_primary_points_json"])
+    actionable_items = _json_list(row["article_action_items_json"])
+    top_visual = _json_object(row["article_top_visual_json"])
+    media_items = [item for item in _json_list(row["media_items"]) if isinstance(item, dict)]
+
+    if article_summary:
+        click.echo("")
+        click.echo("Article Summary:")
+        click.echo(f"- {article_summary}")
+
+    if primary_points:
+        click.echo("")
+        click.echo("Primary Points:")
+        for idx, point in enumerate(primary_points, start=1):
+            if not isinstance(point, dict):
+                continue
+            main = str(point.get("point") or "").strip()
+            reasoning = str(point.get("reasoning") or "").strip()
+            evidence = str(point.get("evidence") or "").strip()
+            line = f"{idx}. {main}" if main else f"{idx}."
+            extras = [part for part in [reasoning, evidence] if part]
+            if extras:
+                line = f"{line} | {' | '.join(extras)}"
+            click.echo(line)
+
+    if actionable_items:
+        click.echo("")
+        click.echo("Actionable Items:")
+        for idx, item in enumerate(actionable_items, start=1):
+            if not isinstance(item, dict):
+                continue
+            action = str(item.get("action") or "").strip()
+            trigger = str(item.get("trigger") or "").strip()
+            horizon = str(item.get("horizon") or "").strip()
+            confidence = str(item.get("confidence") or "").strip()
+            item_tickers = item.get("tickers")
+            if isinstance(item_tickers, list):
+                ticker_text = ",".join(str(t) for t in item_tickers if str(t).strip())
+            else:
+                ticker_text = ""
+            line = f"{idx}. {action}" if action else f"{idx}."
+            extras = [part for part in [trigger, horizon, confidence, ticker_text] if part]
+            if extras:
+                line = f"{line} | {' | '.join(extras)}"
+            click.echo(line)
+
+    visuals = build_article_visuals(top_visual=top_visual or None, media_items=media_items, max_items=5)
+    if visuals:
+        click.echo("")
+        click.echo("Visuals:")
+        for idx, visual in enumerate(visuals, start=1):
+            url = str(visual.get("url") or "").strip()
+            kind = str(visual.get("kind") or "visual").strip()
+            why_important = str(visual.get("why_important") or "").strip()
+            key_takeaway = str(visual.get("key_takeaway") or "").strip()
+            top_prefix = " (top)" if visual.get("is_top") else ""
+            line = f"{idx}. {kind}{top_prefix}"
+            if key_takeaway:
+                line += f" | {key_takeaway}"
+            click.echo(line)
+            if why_important:
+                click.echo(f"   Why: {why_important}")
+            if url:
+                click.echo(f"   URL: {url}")
+
+    if not article_summary and row["link_summary"]:
+        click.echo("")
+        click.echo("Linked Summary:")
+        click.echo(f"- {row['link_summary']}")
 
 
 @click.group()
@@ -287,6 +414,7 @@ def doctor():
 
 
 @cli.command()
+@click.argument("status_id_or_url", required=False)
 @click.option("--source", type=click.Choice(["home", "user", "search"]), default="home")
 @click.option("--handle", "-u", help="User handle for user source")
 @click.option("--query", "-q", help="Search query for search source")
@@ -298,6 +426,7 @@ def doctor():
     "--stagger", type=int, default=None, help="Only fetch N tier-1 accounts (rotates by least-recently-fetched)"
 )
 def fetch(
+    status_id_or_url: str | None,
     source: str,
     handle: str | None,
     query: str | None,
@@ -308,8 +437,28 @@ def fetch(
     stagger: int | None,
 ):
     """Fetch tweets from Twitter/X."""
-    from .fetcher import fetch_bookmarks, fetch_home_timeline, fetch_search, fetch_user_tweets
+    from .fetcher import fetch_bookmarks, fetch_home_timeline, fetch_search, fetch_user_tweets, read_tweet
     from .processor import auto_promote_bookmarked_authors, store_bookmarked_tweets, store_fetched_tweets
+
+    init_db()
+
+    if status_id_or_url:
+        click.echo(f"Fetching status {status_id_or_url}...")
+        tweet = read_tweet(status_id_or_url)
+        if not tweet:
+            raise click.ClickException(f"Status not found or unreadable: {status_id_or_url}")
+
+        with click.progressbar(length=1, label="Storing status") as bar:
+            status_cb, progress_cb, _ = _make_progress_callbacks(bar, 1, "Storing status")
+            fetched, new = store_fetched_tweets(
+                [tweet],
+                source="status",
+                query_params={"status_id_or_url": status_id_or_url},
+                status_cb=status_cb,
+                progress_cb=progress_cb,
+            )
+        click.echo(f"Fetched {fetched} tweets, {new} new")
+        return
 
     click.echo(f"Fetching from {source}...")
 
@@ -444,6 +593,7 @@ def fetch(
 
 
 @cli.command()
+@click.argument("status_id_or_url", required=False)
 @click.option("--limit", "-n", default=250, help="Max tweets to process")
 @click.option("--dry-run", is_flag=True, help="Show what would be processed")
 @click.option("--model", "-m", help="Override triage model")
@@ -451,6 +601,7 @@ def fetch(
 @click.option("--reprocess-quotes/--no-reprocess-quotes", default=True, help="Reprocess today's quoted tweets")
 @click.option("--reprocess-min-score", type=float, default=None, help="Min score for reprocessing quoted tweets")
 def process(
+    status_id_or_url: str | None,
     limit: int,
     dry_run: bool,
     model: str | None,
@@ -462,13 +613,27 @@ def process(
     from .notifier import notify_high_signal_tweet
     from .processor import process_unprocessed, reprocess_today_quoted
 
-    click.echo(f"Processing up to {limit} tweets...")
+    init_db()
+
+    target_tweet_id = _normalize_status_id_or_url(status_id_or_url) if status_id_or_url else None
+    if target_tweet_id:
+        click.echo(f"Processing status {target_tweet_id}...")
+    else:
+        click.echo(f"Processing up to {limit} tweets...")
 
     if dry_run:
         click.echo("(dry run - no changes will be made)")
 
     with get_connection() as conn:
-        unprocessed_rows = get_unprocessed_tweets(conn, limit=limit)
+        if target_tweet_id:
+            target_row = get_tweet_by_id(conn, target_tweet_id)
+            if not target_row:
+                raise click.ClickException(
+                    f"Status not found in database: {target_tweet_id}. Fetch it first with `twag fetch {target_tweet_id}`."
+                )
+            unprocessed_rows = [target_row]
+        else:
+            unprocessed_rows = get_unprocessed_tweets(conn, limit=limit)
 
     if unprocessed_rows:
         with click.progressbar(length=len(unprocessed_rows), label="Processing tweets") as bar:
@@ -523,6 +688,10 @@ def process(
                                 tickers=r.tickers,
                             )
 
+    if target_tweet_id and reprocess_quotes:
+        click.echo("Skipping quote reprocessing for single-status mode.")
+        reprocess_quotes = False
+
     if reprocess_quotes:
         cfg = load_config()
         min_score = (
@@ -571,6 +740,70 @@ def process(
 
 
 # ============================================================================
+# Analyze commands
+# ============================================================================
+
+
+@cli.command()
+@click.argument("status_id_or_url")
+@click.option("--model", "-m", help="Override triage model")
+@click.option("--reprocess/--no-reprocess", default=False, help="Reprocess even if already processed")
+def analyze(status_id_or_url: str, model: str | None, reprocess: bool):
+    """Fetch, process, and print structured analysis for one status."""
+    from .fetcher import read_tweet
+    from .processor import process_unprocessed, store_fetched_tweets
+
+    init_db()
+    normalized_id = _normalize_status_id_or_url(status_id_or_url)
+    click.echo(f"Analyzing status {normalized_id}...")
+
+    tweet = read_tweet(status_id_or_url)
+    if not tweet:
+        raise click.ClickException(f"Status not found or unreadable: {status_id_or_url}")
+
+    with click.progressbar(length=1, label="Storing status") as bar:
+        status_cb, progress_cb, _ = _make_progress_callbacks(bar, 1, "Storing status")
+        fetched, new = store_fetched_tweets(
+            [tweet],
+            source="status",
+            query_params={"status_id_or_url": status_id_or_url},
+            status_cb=status_cb,
+            progress_cb=progress_cb,
+        )
+    click.echo(f"Fetched {fetched} tweets, {new} new")
+
+    with get_connection() as conn:
+        row = get_tweet_by_id(conn, tweet.id) or get_tweet_by_id(conn, normalized_id)
+
+    if not row:
+        raise click.ClickException(f"Status not found in database after fetch: {normalized_id}")
+
+    if row["processed_at"] and not reprocess:
+        click.echo("Status already processed; using existing analysis (pass --reprocess to refresh).")
+    else:
+        with click.progressbar(length=1, label="Processing status") as bar:
+            status_cb, progress_cb, total_cb = _make_progress_callbacks(bar, 1, "Processing status")
+            process_unprocessed(
+                limit=1,
+                dry_run=False,
+                triage_model=model,
+                rows=[row],
+                progress_cb=progress_cb,
+                status_cb=status_cb,
+                total_cb=total_cb,
+                force_refresh=reprocess,
+            )
+
+    with get_connection() as conn:
+        final_row = get_tweet_by_id(conn, tweet.id) or get_tweet_by_id(conn, normalized_id)
+
+    if not final_row:
+        raise click.ClickException(f"Unable to load processed status: {normalized_id}")
+
+    _print_status_analysis(final_row)
+
+
+# ============================================================================
 # Digest commands
 # ============================================================================
 
@@ -583,6 +816,7 @@ def digest(date: str | None, stdout: bool, min_score: float | None):
     """Generate daily digest markdown."""
     from .renderer import get_digest_path, render_digest
 
+    init_db()
     if date is None:
         date = datetime.now().strftime("%Y-%m-%d")
 
