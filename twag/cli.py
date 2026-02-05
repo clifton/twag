@@ -311,6 +311,7 @@ def fetch(
     from .fetcher import fetch_bookmarks, fetch_home_timeline, fetch_search, fetch_user_tweets
     from .processor import auto_promote_bookmarked_authors, store_bookmarked_tweets, store_fetched_tweets
 
+    init_db()
     click.echo(f"Fetching from {source}...")
 
     if source == "user" and not handle:
@@ -462,6 +463,7 @@ def process(
     from .notifier import notify_high_signal_tweet
     from .processor import process_unprocessed, reprocess_today_quoted
 
+    init_db()
     click.echo(f"Processing up to {limit} tweets...")
 
     if dry_run:
@@ -583,6 +585,7 @@ def digest(date: str | None, stdout: bool, min_score: float | None):
     """Generate daily digest markdown."""
     from .renderer import get_digest_path, render_digest
 
+    init_db()
     if date is None:
         date = datetime.now().strftime("%Y-%m-%d")
 
