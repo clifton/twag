@@ -2,19 +2,15 @@
 
 import gzip
 import sqlite3
-from pathlib import Path
 
 import pytest
 
 from twag.db import (
-    SCHEMA,
-    FTS_SCHEMA,
     _is_fts_statement,
     dump_sql,
     get_connection,
     init_db,
     insert_tweet,
-    rebuild_fts,
     restore_sql,
     search_tweets,
     upsert_account,

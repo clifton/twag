@@ -3,7 +3,6 @@
 import json
 import os
 import tempfile
-from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -20,7 +19,6 @@ from twag.fetcher import (
     read_tweet,
     run_bird,
 )
-
 
 # ============================================================================
 # Fixtures

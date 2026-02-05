@@ -2,7 +2,6 @@
 
 import asyncio
 import re
-import subprocess
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -25,6 +24,7 @@ router = APIRouter(tags=["context"])
 
 class ContextCommandCreate(BaseModel):
     """Request body for creating/updating a context command."""
+
     name: str
     command_template: str
     description: str | None = None
@@ -33,6 +33,7 @@ class ContextCommandCreate(BaseModel):
 
 class TestCommandRequest(BaseModel):
     """Request body for testing a context command."""
+
     tweet_id: str
 
 
@@ -385,6 +386,7 @@ Return your analysis in a structured format."""
 
     try:
         from ...config import load_config
+
         config = load_config()
         model = config["llm"]["enrichment_model"]
         provider = config["llm"].get("enrichment_provider", "anthropic")
@@ -403,4 +405,4 @@ Return your analysis in a structured format."""
         }
 
     except Exception as e:
-        return {"error": f"Analysis failed: {str(e)}"}
+        return {"error": f"Analysis failed: {e!s}"}

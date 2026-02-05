@@ -4,11 +4,12 @@ import json
 import re
 import shutil
 import sqlite3
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 from .config import get_database_path
 
@@ -70,10 +71,7 @@ def get_market_day_cutoff() -> datetime:
         cutoff_date = today_et
 
     # Build the cutoff datetime (4pm ET on cutoff_date)
-    cutoff_et = datetime(
-        cutoff_date.year, cutoff_date.month, cutoff_date.day,
-        market_close_hour, 0, 0
-    )
+    cutoff_et = datetime(cutoff_date.year, cutoff_date.month, cutoff_date.day, market_close_hour, 0, 0)
 
     # Convert back to UTC
     cutoff_utc = cutoff_et - et_offset
@@ -99,18 +97,18 @@ def parse_time_range(spec: str) -> tuple[datetime | None, datetime | None]:
         return (get_market_day_cutoff(), None)
 
     # Relative duration: 7d, 24h, 1w
-    duration_match = re.match(r'^(\d+)([hdwm])$', spec)
+    duration_match = re.match(r"^(\d+)([hdwm])$", spec)
     if duration_match:
         amount = int(duration_match.group(1))
         unit = duration_match.group(2)
 
-        if unit == 'h':
+        if unit == "h":
             delta = timedelta(hours=amount)
-        elif unit == 'd':
+        elif unit == "d":
             delta = timedelta(days=amount)
-        elif unit == 'w':
+        elif unit == "w":
             delta = timedelta(weeks=amount)
-        elif unit == 'm':
+        elif unit == "m":
             delta = timedelta(days=amount * 30)  # Approximate
         else:
             delta = timedelta(days=amount)
@@ -118,12 +116,12 @@ def parse_time_range(spec: str) -> tuple[datetime | None, datetime | None]:
         return (now - delta, None)
 
     # Date range: YYYY-MM-DD..YYYY-MM-DD
-    if '..' in spec:
-        parts = spec.split('..')
+    if ".." in spec:
+        parts = spec.split("..")
         if len(parts) == 2:
             try:
-                since = datetime.strptime(parts[0], '%Y-%m-%d').replace(tzinfo=timezone.utc)
-                until = datetime.strptime(parts[1], '%Y-%m-%d').replace(tzinfo=timezone.utc)
+                since = datetime.strptime(parts[0], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                until = datetime.strptime(parts[1], "%Y-%m-%d").replace(tzinfo=timezone.utc)
                 # End of day for until
                 until = until + timedelta(days=1)
                 return (since, until)
@@ -132,7 +130,7 @@ def parse_time_range(spec: str) -> tuple[datetime | None, datetime | None]:
 
     # Single date: YYYY-MM-DD
     try:
-        date = datetime.strptime(spec, '%Y-%m-%d').replace(tzinfo=timezone.utc)
+        date = datetime.strptime(spec, "%Y-%m-%d").replace(tzinfo=timezone.utc)
         return (date, date + timedelta(days=1))
     except ValueError:
         pass
@@ -143,6 +141,7 @@ def parse_time_range(spec: str) -> tuple[datetime | None, datetime | None]:
 @dataclass
 class SearchResult:
     """A tweet search result with relevance ranking."""
+
     id: str
     author_handle: str
     author_name: str | None
@@ -155,6 +154,7 @@ class SearchResult:
     tickers: list[str]
     bookmarked: bool
     rank: float  # BM25 rank score (lower is more relevant)
+
 
 SCHEMA = """
 -- Tweets: Core storage with deduplication
@@ -378,9 +378,7 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
     _init_fts(conn)
 
     # Seed prompts if table exists but is empty
-    cursor = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='prompts'"
-    )
+    cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='prompts'")
     if cursor.fetchone():
         seeded = seed_prompts(conn)
         if seeded > 0:
@@ -390,9 +388,7 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
 def _init_fts(conn: sqlite3.Connection) -> None:
     """Initialize FTS5 virtual table and triggers."""
     # Check if FTS table exists
-    cursor = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='tweets_fts'"
-    )
+    cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='tweets_fts'")
     if cursor.fetchone() is not None:
         return  # Already initialized
 
@@ -484,9 +480,7 @@ def insert_tweet(
         return False
 
 
-def get_unprocessed_tweets(
-    conn: sqlite3.Connection, limit: int = 50
-) -> list[sqlite3.Row]:
+def get_unprocessed_tweets(conn: sqlite3.Connection, limit: int = 50) -> list[sqlite3.Row]:
     """Get tweets that haven't been processed yet."""
     cursor = conn.execute(
         """
@@ -632,9 +626,7 @@ def is_tweet_seen(conn: sqlite3.Connection, tweet_id: str) -> bool:
     return cursor.fetchone() is not None
 
 
-def get_tweet_stats(
-    conn: sqlite3.Connection, date: str | None = None
-) -> dict[str, Any]:
+def get_tweet_stats(conn: sqlite3.Connection, date: str | None = None) -> dict[str, Any]:
     """Get tweet processing statistics."""
     if date:
         where_clause = "WHERE date(created_at) = ?"
@@ -882,9 +874,7 @@ def get_active_narratives(conn: sqlite3.Connection) -> list[sqlite3.Row]:
     return cursor.fetchall()
 
 
-def link_tweet_narrative(
-    conn: sqlite3.Connection, tweet_id: str, narrative_id: int
-) -> None:
+def link_tweet_narrative(conn: sqlite3.Connection, tweet_id: str, narrative_id: int) -> None:
     """Link a tweet to a narrative."""
     try:
         conn.execute(
@@ -1106,7 +1096,7 @@ def search_tweets(
         # Search in JSON array or comma-separated string
         conditions.append("(t.tickers LIKE ? OR t.tickers LIKE ?)")
         params.append(f'%"{ticker.upper()}"%')
-        params.append(f'%{ticker.upper()}%')
+        params.append(f"%{ticker.upper()}%")
 
     if bookmarked_only:
         conditions.append("t.bookmarked = 1")
@@ -1186,29 +1176,47 @@ def search_tweets(
         else:
             categories = []
 
-        results.append(SearchResult(
-            id=row["id"],
-            author_handle=row["author_handle"],
-            author_name=row["author_name"],
-            content=row["content"],
-            summary=row["summary"],
-            created_at=created_at,
-            relevance_score=row["relevance_score"],
-            categories=categories,
-            signal_tier=row["signal_tier"],
-            tickers=tickers,
-            bookmarked=bool(row["bookmarked"]),
-            rank=row["rank"],
-        ))
+        results.append(
+            SearchResult(
+                id=row["id"],
+                author_handle=row["author_handle"],
+                author_name=row["author_name"],
+                content=row["content"],
+                summary=row["summary"],
+                created_at=created_at,
+                relevance_score=row["relevance_score"],
+                categories=categories,
+                signal_tier=row["signal_tier"],
+                tickers=tickers,
+                bookmarked=bool(row["bookmarked"]),
+                rank=row["rank"],
+            )
+        )
 
     return results
 
 
 # Keywords that suggest equity-relevant context (for auto-today default)
 EQUITY_KEYWORDS = {
-    "earnings", "eps", "revenue", "guidance", "beat", "miss",
-    "upgrade", "downgrade", "buy", "sell", "target", "pt",
-    "q1", "q2", "q3", "q4", "quarterly", "results", "report",
+    "earnings",
+    "eps",
+    "revenue",
+    "guidance",
+    "beat",
+    "miss",
+    "upgrade",
+    "downgrade",
+    "buy",
+    "sell",
+    "target",
+    "pt",
+    "q1",
+    "q2",
+    "q3",
+    "q4",
+    "quarterly",
+    "results",
+    "report",
 }
 
 
@@ -1222,9 +1230,11 @@ def query_suggests_equity_context(query: str) -> bool:
 # Reaction operations (for feedback loop)
 # ============================================================================
 
+
 @dataclass
 class Reaction:
     """A user reaction to a tweet."""
+
     id: int
     tweet_id: str
     reaction_type: str
@@ -1270,14 +1280,16 @@ def get_reactions_for_tweet(conn: sqlite3.Connection, tweet_id: str) -> list[Rea
                 created_at = datetime.fromisoformat(row["created_at"])
             except ValueError:
                 pass
-        results.append(Reaction(
-            id=row["id"],
-            tweet_id=row["tweet_id"],
-            reaction_type=row["reaction_type"],
-            reason=row["reason"],
-            target=row["target"],
-            created_at=created_at,
-        ))
+        results.append(
+            Reaction(
+                id=row["id"],
+                tweet_id=row["tweet_id"],
+                reaction_type=row["reaction_type"],
+                reason=row["reason"],
+                target=row["target"],
+                created_at=created_at,
+            )
+        )
     return results
 
 
@@ -1354,9 +1366,11 @@ def delete_reaction(conn: sqlite3.Connection, reaction_id: int) -> bool:
 # Prompt operations (for editable LLM prompts)
 # ============================================================================
 
+
 @dataclass
 class Prompt:
     """An editable LLM prompt template."""
+
     id: int
     name: str
     template: str
@@ -1403,14 +1417,16 @@ def get_all_prompts(conn: sqlite3.Connection) -> list[Prompt]:
                 updated_at = datetime.fromisoformat(row["updated_at"])
             except ValueError:
                 pass
-        results.append(Prompt(
-            id=row["id"],
-            name=row["name"],
-            template=row["template"],
-            version=row["version"],
-            updated_at=updated_at,
-            updated_by=row["updated_by"],
-        ))
+        results.append(
+            Prompt(
+                id=row["id"],
+                name=row["name"],
+                template=row["template"],
+                version=row["version"],
+                updated_at=updated_at,
+                updated_by=row["updated_by"],
+            )
+        )
     return results
 
 
@@ -1504,7 +1520,6 @@ Author: @{handle}
 
 Return JSON only:
 {{"score": 7, "categories": ["fed_policy", "rates_fx"], "summary": "One-liner summary", "tickers": ["TLT", "GLD"]}}""",
-
     "batch_triage": """You are a financial markets triage agent. Score these tweets 0-10 for relevance to macro/investing.
 
 Categories (assign 1-3 that apply): fed_policy, inflation, job_market, macro_data, earnings, equities, rates_fx, credit, banks, consumer_spending, capex, commodities, energy, metals_mining, geopolitical, sanctions, tech_business, ai_advancement, crypto, noise
@@ -1514,7 +1529,6 @@ Tweets:
 
 Return a JSON array with one object per tweet, in order:
 [{{"id": "tweet_id", "score": 7, "categories": ["fed_policy", "rates_fx"], "summary": "One-liner", "tickers": ["TLT"]}}]""",
-
     "enrichment": """You are a financial analyst. Analyze this tweet for actionable insights.
 
 Tweet: {tweet_text}
@@ -1531,14 +1545,12 @@ Provide:
 
 Return JSON:
 {{"signal_tier": "high_signal", "insight": "...", "implications": "...", "narratives": ["Fed pivot"], "tickers": ["TLT"]}}""",
-
     "summarize": """Summarize this tweet concisely while preserving all key market-relevant information, data points, and actionable insights. Keep ticker symbols and specific numbers.
 
 Tweet by @{handle}:
 {tweet_text}
 
 Provide a summary in 2-4 sentences (under 400 characters). Return only the summary text, no JSON.""",
-
     "vision": """Analyze this image from a financial Twitter post.
 
 Determine if it is a chart, a document/screen with coherent prose, or a meme/photo/other.
@@ -1588,9 +1600,11 @@ def seed_prompts(conn: sqlite3.Connection) -> int:
 # Context command operations (for CLI-based context enrichment)
 # ============================================================================
 
+
 @dataclass
 class ContextCommand:
     """A CLI command for fetching context during analysis."""
+
     id: int
     name: str
     command_template: str
@@ -1641,14 +1655,16 @@ def get_all_context_commands(conn: sqlite3.Connection, enabled_only: bool = Fals
                 created_at = datetime.fromisoformat(row["created_at"])
             except ValueError:
                 pass
-        results.append(ContextCommand(
-            id=row["id"],
-            name=row["name"],
-            command_template=row["command_template"],
-            description=row["description"],
-            enabled=bool(row["enabled"]),
-            created_at=created_at,
-        ))
+        results.append(
+            ContextCommand(
+                id=row["id"],
+                name=row["name"],
+                command_template=row["command_template"],
+                description=row["description"],
+                enabled=bool(row["enabled"]),
+                created_at=created_at,
+            )
+        )
     return results
 
 
@@ -1695,9 +1711,11 @@ def toggle_context_command(conn: sqlite3.Connection, name: str, enabled: bool) -
 # Web feed operations
 # ============================================================================
 
+
 @dataclass
 class FeedTweet:
     """A tweet for the web feed with all display fields."""
+
     id: str
     author_handle: str
     author_name: str | None
@@ -1747,7 +1765,7 @@ def get_feed_tweets(
     if ticker:
         conditions.append("(t.tickers LIKE ? OR t.tickers LIKE ?)")
         params.append(f'%"{ticker.upper()}"%')
-        params.append(f'%{ticker.upper()}%')
+        params.append(f"%{ticker.upper()}%")
 
     if min_score is not None:
         conditions.append("t.relevance_score >= ?")
@@ -1840,28 +1858,30 @@ def get_feed_tweets(
             except json.JSONDecodeError:
                 media_items = []
 
-        results.append(FeedTweet(
-            id=row["id"],
-            author_handle=row["author_handle"],
-            author_name=row["author_name"],
-            content=row["content"],
-            content_summary=row["content_summary"],
-            summary=row["summary"],
-            created_at=created_at,
-            relevance_score=row["relevance_score"],
-            categories=categories,
-            signal_tier=row["signal_tier"],
-            tickers=tickers,
-            bookmarked=bool(row["bookmarked"]),
-            has_quote=bool(row["has_quote"]),
-            quote_tweet_id=row["quote_tweet_id"],
-            has_media=bool(row["has_media"]),
-            media_analysis=row["media_analysis"],
-            media_items=media_items,
-            has_link=bool(row["has_link"]),
-            link_summary=row["link_summary"],
-            reactions=reactions,
-        ))
+        results.append(
+            FeedTweet(
+                id=row["id"],
+                author_handle=row["author_handle"],
+                author_name=row["author_name"],
+                content=row["content"],
+                content_summary=row["content_summary"],
+                summary=row["summary"],
+                created_at=created_at,
+                relevance_score=row["relevance_score"],
+                categories=categories,
+                signal_tier=row["signal_tier"],
+                tickers=tickers,
+                bookmarked=bool(row["bookmarked"]),
+                has_quote=bool(row["has_quote"]),
+                quote_tweet_id=row["quote_tweet_id"],
+                has_media=bool(row["has_media"]),
+                media_analysis=row["media_analysis"],
+                media_items=media_items,
+                has_link=bool(row["has_link"]),
+                link_summary=row["link_summary"],
+                reactions=reactions,
+            )
+        )
 
     return results
 
@@ -1891,10 +1911,7 @@ def _is_fts_statement(stmt: str) -> bool:
         if f"{_FTS_TABLE}{suffix}" in stmt:
             return True
     # FTS sync triggers
-    for trigger in _FTS_TRIGGERS:
-        if trigger in stmt:
-            return True
-    return False
+    return any(trigger in stmt for trigger in _FTS_TRIGGERS)
 
 
 def _filter_fts_from_sql(sql: str) -> str:

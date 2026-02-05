@@ -1,8 +1,7 @@
 """Telegram notifications for high-signal tweets."""
 
-import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime
 
 import httpx
 
@@ -82,7 +81,7 @@ def format_alert(
     # Build message
     lines = [
         f"🚨 HIGH SIGNAL [{cat_display}]",
-        f"@{author_handle}: \"{preview}\"",
+        f'@{author_handle}: "{preview}"',
         "",
     ]
 

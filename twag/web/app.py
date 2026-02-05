@@ -2,14 +2,13 @@
 
 import html
 import re
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-
-from datetime import datetime
 
 from ..config import get_database_path
 from ..db import init_db
@@ -164,7 +163,7 @@ def create_app() -> FastAPI:
 
                 inline_quote_id = None
                 if not tweet.has_quote:
-                    for tweet_id in link_map.keys():
+                    for tweet_id in link_map:
                         if tweet_id and tweet_id != tweet.id:
                             inline_quote_id = tweet_id
                             break
