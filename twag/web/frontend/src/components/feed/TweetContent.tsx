@@ -1,7 +1,5 @@
 import { useState } from "react";
 
-const SUMMARY_MIN_LENGTH = 500;
-
 interface TweetContentProps {
   summary: string | null;
   content: string | null;
@@ -11,7 +9,7 @@ interface TweetContentProps {
 export function shouldShowSummary(summary: string | null, renderedText: string | null): boolean {
   if (!summary) return false;
   if (!renderedText) return true;
-  return renderedText.length >= SUMMARY_MIN_LENGTH;
+  return summary.trim().length > 0;
 }
 
 export function TweetContent({ summary, content, displayContent }: TweetContentProps) {
@@ -23,7 +21,7 @@ export function TweetContent({ summary, content, displayContent }: TweetContentP
   return (
     <div className="space-y-1">
       {summaryVisible && summary && (
-        <p className="text-sm text-zinc-100 leading-relaxed">{summary}</p>
+        <p className="text-sm text-zinc-100 leading-relaxed whitespace-pre-wrap">{summary}</p>
       )}
       {!summaryVisible && text && !expanded && (
         <p className="text-sm text-zinc-200 leading-relaxed line-clamp-4">{text}</p>

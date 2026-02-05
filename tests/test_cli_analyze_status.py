@@ -81,6 +81,20 @@ def _sample_row(processed_at: str | None = None) -> dict:
                 "key_takeaway": "2026 capex bar is the largest in the series.",
             }
         ),
+        "media_items": json.dumps(
+            [
+                {
+                    "url": "https://pbs.twimg.com/media/HAXmiH6acAEiywu.jpg",
+                    "kind": "chart",
+                    "chart": {"insight": "Capex spikes in 2026"},
+                },
+                {
+                    "url": "https://pbs.twimg.com/media/other_photo.jpg",
+                    "kind": "photo",
+                    "short_description": "office selfie",
+                },
+            ]
+        ),
         "processed_at": processed_at,
     }
 
@@ -122,7 +136,7 @@ def test_analyze_status_success(monkeypatch):
     assert "Article Summary:" in result.output
     assert "Primary Points:" in result.output
     assert "Actionable Items:" in result.output
-    assert "Top Visual:" in result.output
+    assert "Visuals:" in result.output
     assert process_calls["count"] == 1
     assert process_calls["force_refresh"] is False
 

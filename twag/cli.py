@@ -9,6 +9,7 @@ from pathlib import Path
 import click
 
 from . import __version__
+from .article_visuals import build_article_visuals
 from .config import (
     get_config_path,
     get_data_dir,
@@ -139,6 +140,7 @@ def _print_status_analysis(row) -> None:
     primary_points = _json_list(row["article_primary_points_json"])
     actionable_items = _json_list(row["article_action_items_json"])
     top_visual = _json_object(row["article_top_visual_json"])
+    media_items = [item for item in _json_list(row["media_items"]) if isinstance(item, dict)]
 
     if article_summary:
         click.echo("")
@@ -181,21 +183,24 @@ def _print_status_analysis(row) -> None:
                 line = f"{line} | {' | '.join(extras)}"
             click.echo(line)
 
-    if top_visual:
-        url = str(top_visual.get("url") or "").strip()
-        kind = str(top_visual.get("kind") or "").strip()
-        why_important = str(top_visual.get("why_important") or "").strip()
-        key_takeaway = str(top_visual.get("key_takeaway") or "").strip()
+    visuals = build_article_visuals(top_visual=top_visual or None, media_items=media_items, max_items=5)
+    if visuals:
         click.echo("")
-        click.echo("Top Visual:")
-        if url:
-            click.echo(f"- URL: {url}")
-        if kind:
-            click.echo(f"- Kind: {kind}")
-        if why_important:
-            click.echo(f"- Why: {why_important}")
-        if key_takeaway:
-            click.echo(f"- Takeaway: {key_takeaway}")
+        click.echo("Visuals:")
+        for idx, visual in enumerate(visuals, start=1):
+            url = str(visual.get("url") or "").strip()
+            kind = str(visual.get("kind") or "visual").strip()
+            why_important = str(visual.get("why_important") or "").strip()
+            key_takeaway = str(visual.get("key_takeaway") or "").strip()
+            top_prefix = " (top)" if visual.get("is_top") else ""
+            line = f"{idx}. {kind}{top_prefix}"
+            if key_takeaway:
+                line += f" | {key_takeaway}"
+            click.echo(line)
+            if why_important:
+                click.echo(f"   Why: {why_important}")
+            if url:
+                click.echo(f"   URL: {url}")
 
     if not article_summary and row["link_summary"]:
         click.echo("")
