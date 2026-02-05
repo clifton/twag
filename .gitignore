@@ -46,6 +46,7 @@ config.local.json
 # Frontend
 twag/web/frontend/node_modules/
 twag/web/frontend/dist/
+twag/web/frontend/.vite/
 
 # OS
 .DS_Store
