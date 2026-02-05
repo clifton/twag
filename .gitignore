@@ -43,6 +43,10 @@ htmlcov/
 # Local config (keep default config.json in repo)
 config.local.json
 
+# Frontend
+twag/web/frontend/node_modules/
+twag/web/frontend/dist/
+
 # OS
 .DS_Store
 Thumbs.db

@@ -1,5 +1,6 @@
 """Tweet feed API routes."""
 
+import re
 from datetime import datetime
 from typing import Any
 
@@ -7,8 +8,53 @@ from fastapi import APIRouter, Query, Request
 
 from ...db import get_connection, get_feed_tweets, get_tweet_by_id, parse_time_range
 from ...media import parse_media_items
+from ..tweet_utils import extract_tweet_links, quote_embed_from_row, remove_tweet_links
 
 router = APIRouter(tags=["tweets"])
+MAX_QUOTE_DEPTH = 3
+LEGACY_RETWEET_RE = re.compile(r"^\s*RT\s+@([A-Za-z0-9_]{1,15}):\s*(.+)$")
+
+
+def _inline_quote_id_from_links(tweet_id: str, links: dict[str, str]) -> str | None:
+    for linked_tweet_id in links:
+        if linked_tweet_id and linked_tweet_id != tweet_id:
+            return linked_tweet_id
+    return None
+
+
+def _build_quote_embed(
+    conn, quote_id: str | None, *, depth: int = 0, seen: set[str] | None = None
+) -> dict[str, Any] | None:
+    if not quote_id:
+        return None
+    if depth >= MAX_QUOTE_DEPTH:
+        return None
+
+    visited = seen or set()
+    if quote_id in visited:
+        return None
+    visited.add(quote_id)
+
+    row = get_tweet_by_id(conn, quote_id)
+    if not row:
+        return None
+
+    embed = quote_embed_from_row(row)
+
+    content = row["content"] or ""
+    links = extract_tweet_links(content)
+    link_map: dict[str, str] = {}
+    for linked_tweet_id, linked_url in links:
+        if linked_tweet_id and linked_tweet_id not in link_map:
+            link_map[linked_tweet_id] = linked_url
+
+    nested_quote_id = row["quote_tweet_id"] or _inline_quote_id_from_links(row["id"], link_map)
+    if nested_quote_id and nested_quote_id != row["id"]:
+        nested_embed = _build_quote_embed(conn, nested_quote_id, depth=depth + 1, seen=visited)
+        if nested_embed:
+            embed["quote_embed"] = nested_embed
+
+    return embed
 
 
 @router.get("/tweets")
@@ -70,33 +116,101 @@ async def list_tweets(
             offset=offset,
         )
 
-    # Convert to JSON-serializable format
-    tweets_data = []
-    for t in tweets:
-        tweets_data.append(
-            {
-                "id": t.id,
-                "author_handle": t.author_handle,
-                "author_name": t.author_name,
-                "content": t.content,
-                "content_summary": t.content_summary,
-                "summary": t.summary,
-                "created_at": t.created_at.isoformat() if t.created_at else None,
-                "relevance_score": t.relevance_score,
-                "categories": t.categories,
-                "signal_tier": t.signal_tier,
-                "tickers": t.tickers,
-                "bookmarked": t.bookmarked,
-                "has_quote": t.has_quote,
-                "quote_tweet_id": t.quote_tweet_id,
-                "has_media": t.has_media,
-                "media_analysis": t.media_analysis,
-                "media_items": t.media_items,
-                "has_link": t.has_link,
-                "link_summary": t.link_summary,
-                "reactions": t.reactions,
-            }
-        )
+        # Enrich tweets with quote embeds and display content
+        tweets_data = []
+        for t in tweets:
+            content = t.content or ""
+            links = extract_tweet_links(content)
+            link_map: dict[str, str] = {}
+            for tid, url in links:
+                if tid and tid not in link_map:
+                    link_map[tid] = url
+
+            # Determine quote tweet
+            inline_quote_id = None
+            if not t.has_quote:
+                inline_quote_id = _inline_quote_id_from_links(t.id, link_map)
+
+            quote_id = t.quote_tweet_id or inline_quote_id
+            if quote_id == t.id:
+                quote_id = None
+            quote_embed = _build_quote_embed(conn, quote_id)
+
+            # Reference links (other tweet URLs that aren't the quote)
+            reference_links: list[dict[str, str]] = []
+            for tid, url in link_map.items():
+                if tid == t.id:
+                    continue
+                if quote_id and tid == quote_id:
+                    continue
+                reference_links.append({"id": tid, "url": url})
+
+            # Clean display content
+            remove_ids = set(link_map.keys())
+            remove_ids.add(t.id)
+            display_content = remove_tweet_links(content, links, remove_ids) if content else content
+
+            is_retweet = bool(t.is_retweet)
+            retweeted_by_handle = t.retweeted_by_handle
+            retweeted_by_name = t.retweeted_by_name
+            original_tweet_id = t.original_tweet_id
+            original_author_handle = t.original_author_handle
+            original_author_name = t.original_author_name
+            original_content = t.original_content
+
+            # Legacy rows may store RT-form text without retweet metadata columns populated.
+            if not is_retweet:
+                match = LEGACY_RETWEET_RE.match(content)
+                if match:
+                    is_retweet = True
+                    retweeted_by_handle = t.author_handle
+                    retweeted_by_name = t.author_name
+                    original_author_handle = match.group(1)
+                    original_content = match.group(2).strip() or None
+
+            display_author_handle = original_author_handle if is_retweet and original_author_handle else t.author_handle
+            display_author_name = original_author_name if is_retweet and original_author_name else t.author_name
+            display_tweet_id = original_tweet_id if is_retweet and original_tweet_id else t.id
+            if is_retweet and original_content:
+                display_content = original_content
+
+            tweets_data.append(
+                {
+                    "id": t.id,
+                    "author_handle": t.author_handle,
+                    "author_name": t.author_name,
+                    "display_author_handle": display_author_handle,
+                    "display_author_name": display_author_name,
+                    "display_tweet_id": display_tweet_id,
+                    "content": t.content,
+                    "content_summary": t.content_summary,
+                    "summary": t.summary,
+                    "created_at": t.created_at.isoformat() if t.created_at else None,
+                    "relevance_score": t.relevance_score,
+                    "categories": t.categories,
+                    "signal_tier": t.signal_tier,
+                    "tickers": t.tickers,
+                    "bookmarked": t.bookmarked,
+                    "has_quote": t.has_quote,
+                    "quote_tweet_id": t.quote_tweet_id,
+                    "has_media": t.has_media,
+                    "media_analysis": t.media_analysis,
+                    "media_items": t.media_items,
+                    "has_link": t.has_link,
+                    "link_summary": t.link_summary,
+                    "is_retweet": is_retweet,
+                    "retweeted_by_handle": retweeted_by_handle,
+                    "retweeted_by_name": retweeted_by_name,
+                    "original_tweet_id": original_tweet_id,
+                    "original_author_handle": original_author_handle,
+                    "original_author_name": original_author_name,
+                    "original_content": original_content,
+                    "reactions": t.reactions,
+                    "quote_embed": quote_embed,
+                    "reference_links": reference_links,
+                    "display_content": display_content,
+                }
+            )
 
     return {
         "tweets": tweets_data,
@@ -157,6 +271,13 @@ async def get_tweet(request: Request, tweet_id: str) -> dict[str, Any]:
         "media_items": parse_media_items(tweet["media_items"]),
         "has_link": bool(tweet["has_link"]),
         "link_summary": tweet["link_summary"],
+        "is_retweet": bool(tweet["is_retweet"]),
+        "retweeted_by_handle": tweet["retweeted_by_handle"],
+        "retweeted_by_name": tweet["retweeted_by_name"],
+        "original_tweet_id": tweet["original_tweet_id"],
+        "original_author_handle": tweet["original_author_handle"],
+        "original_author_name": tweet["original_author_name"],
+        "original_content": tweet["original_content"],
     }
 
 

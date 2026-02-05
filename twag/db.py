@@ -185,6 +185,13 @@ CREATE TABLE IF NOT EXISTS tweets (
     media_items TEXT,
     has_link INTEGER DEFAULT 0,
     link_summary TEXT,
+    is_retweet INTEGER DEFAULT 0,
+    retweeted_by_handle TEXT,
+    retweeted_by_name TEXT,
+    original_tweet_id TEXT,
+    original_author_handle TEXT,
+    original_author_name TEXT,
+    original_content TEXT,
 
     -- Output tracking
     included_in_digest TEXT,
@@ -367,6 +374,27 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
     if "analysis_json" not in tweet_columns:
         conn.execute("ALTER TABLE tweets ADD COLUMN analysis_json TEXT")
 
+    if "is_retweet" not in tweet_columns:
+        conn.execute("ALTER TABLE tweets ADD COLUMN is_retweet INTEGER DEFAULT 0")
+
+    if "retweeted_by_handle" not in tweet_columns:
+        conn.execute("ALTER TABLE tweets ADD COLUMN retweeted_by_handle TEXT")
+
+    if "retweeted_by_name" not in tweet_columns:
+        conn.execute("ALTER TABLE tweets ADD COLUMN retweeted_by_name TEXT")
+
+    if "original_tweet_id" not in tweet_columns:
+        conn.execute("ALTER TABLE tweets ADD COLUMN original_tweet_id TEXT")
+
+    if "original_author_handle" not in tweet_columns:
+        conn.execute("ALTER TABLE tweets ADD COLUMN original_author_handle TEXT")
+
+    if "original_author_name" not in tweet_columns:
+        conn.execute("ALTER TABLE tweets ADD COLUMN original_author_name TEXT")
+
+    if "original_content" not in tweet_columns:
+        conn.execute("ALTER TABLE tweets ADD COLUMN original_content TEXT")
+
     # Check accounts table columns
     cursor = conn.execute("PRAGMA table_info(accounts)")
     account_columns = {row[1] for row in cursor.fetchall()}
@@ -451,6 +479,13 @@ def insert_tweet(
     has_media: bool = False,
     media_items: list[dict[str, Any]] | None = None,
     has_link: bool = False,
+    is_retweet: bool = False,
+    retweeted_by_handle: str | None = None,
+    retweeted_by_name: str | None = None,
+    original_tweet_id: str | None = None,
+    original_author_handle: str | None = None,
+    original_author_name: str | None = None,
+    original_content: str | None = None,
 ) -> bool:
     """Insert a tweet, returning True if new, False if duplicate."""
     try:
@@ -458,8 +493,10 @@ def insert_tweet(
             """
             INSERT INTO tweets (
                 id, author_handle, author_name, content, created_at, source,
-                has_quote, quote_tweet_id, has_media, media_items, has_link
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                has_quote, quote_tweet_id, has_media, media_items, has_link,
+                is_retweet, retweeted_by_handle, retweeted_by_name, original_tweet_id,
+                original_author_handle, original_author_name, original_content
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 tweet_id,
@@ -473,6 +510,13 @@ def insert_tweet(
                 int(has_media),
                 json.dumps(media_items) if media_items else None,
                 int(has_link),
+                int(is_retweet),
+                retweeted_by_handle,
+                retweeted_by_name,
+                original_tweet_id,
+                original_author_handle,
+                original_author_name,
+                original_content,
             ),
         )
         return True
@@ -1735,6 +1779,13 @@ class FeedTweet:
     media_items: list[dict[str, Any]]
     has_link: bool
     link_summary: str | None
+    is_retweet: bool
+    retweeted_by_handle: str | None
+    retweeted_by_name: str | None
+    original_tweet_id: str | None
+    original_author_handle: str | None
+    original_author_name: str | None
+    original_content: str | None
     reactions: list[str]  # Reaction types for this tweet
 
 
@@ -1879,6 +1930,13 @@ def get_feed_tweets(
                 media_items=media_items,
                 has_link=bool(row["has_link"]),
                 link_summary=row["link_summary"],
+                is_retweet=bool(row["is_retweet"]),
+                retweeted_by_handle=row["retweeted_by_handle"],
+                retweeted_by_name=row["retweeted_by_name"],
+                original_tweet_id=row["original_tweet_id"],
+                original_author_handle=row["original_author_handle"],
+                original_author_name=row["original_author_name"],
+                original_content=row["original_content"],
                 reactions=reactions,
             )
         )

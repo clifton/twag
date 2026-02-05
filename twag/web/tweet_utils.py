@@ -1,0 +1,46 @@
+"""Shared tweet content utilities."""
+
+import re
+from datetime import datetime
+from typing import Any
+
+_TWEET_URL_RE = re.compile(
+    r"https?://(?:www\.)?(?:mobile\.)?(?:x|twitter)\.com/(?:i/(?:web/)?|[^/]+/)?status/(\d+)(?:\?[^\s]+)?",
+    re.IGNORECASE,
+)
+
+
+def parse_created_at(value: str | datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def extract_tweet_links(text: str) -> list[tuple[str, str]]:
+    return [(match.group(1), match.group(0)) for match in _TWEET_URL_RE.finditer(text)]
+
+
+def remove_tweet_links(text: str, links: list[tuple[str, str]], remove_ids: set[str]) -> str:
+    cleaned = text
+    for tweet_id, url in links:
+        if tweet_id not in remove_ids:
+            continue
+        cleaned = re.sub(rf"\s*{re.escape(url)}", "", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned
+
+
+def quote_embed_from_row(row) -> dict[str, Any]:
+    created_at = parse_created_at(row["created_at"])
+    return {
+        "id": row["id"],
+        "author_handle": row["author_handle"],
+        "author_name": row["author_name"],
+        "content": row["content"],
+        "created_at": created_at.isoformat() if created_at else None,
+    }
