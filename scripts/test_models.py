@@ -26,7 +26,7 @@ def test_api_keys():
             val = _get_api_key(key)
             masked = val[:8] + "..." + val[-4:] if len(val) > 12 else "***"
             print(f"  ✓ {key}: {masked}")
-        except RuntimeError as e:
+        except RuntimeError:
             print(f"  ✗ {key}: MISSING")
             all_ok = False
 
@@ -38,8 +38,8 @@ def test_anthropic_client():
     print("\nTesting Anthropic client...")
 
     try:
-        client = get_anthropic_client()
-        print(f"  ✓ Client created")
+        get_anthropic_client()
+        print("  ✓ Client created")
     except Exception as e:
         pytest.fail(f"Anthropic client failed: {e}")
 
@@ -49,8 +49,8 @@ def test_gemini_client():
     print("\nTesting Gemini client...")
 
     try:
-        client = get_gemini_client()
-        print(f"  ✓ Client created")
+        get_gemini_client()
+        print("  ✓ Client created")
     except Exception as e:
         pytest.fail(f"Gemini client failed: {e}")
 
@@ -111,7 +111,9 @@ def main():
     config = load_config()
     print("\nConfigured models:")
     print(f"  Triage:     {config['llm']['triage_model']} ({config['llm'].get('triage_provider', 'anthropic')})")
-    print(f"  Enrichment: {config['llm']['enrichment_model']} ({config['llm'].get('enrichment_provider', 'anthropic')})")
+    print(
+        f"  Enrichment: {config['llm']['enrichment_model']} ({config['llm'].get('enrichment_provider', 'anthropic')})"
+    )
     print(f"  Vision:     {config['llm']['vision_model']} ({config['llm'].get('vision_provider', 'anthropic')})")
 
     results = []

@@ -1246,10 +1246,19 @@ def web(host: str, port: int, reload: bool, dev: bool):
         env = {**os.environ, "TWAG_DEV": "1"}
 
         uvicorn_cmd = [
-            "uv", "run", "--project", str(project_dir),
-            "--with", "uvicorn[standard]", "uvicorn",
+            "uv",
+            "run",
+            "--project",
+            str(project_dir),
+            "--with",
+            "uvicorn[standard]",
+            "uvicorn",
             "twag.web:create_app",
-            "--host", host, "--port", str(port), "--factory",
+            "--host",
+            host,
+            "--port",
+            str(port),
+            "--factory",
         ]
         if reload:
             uvicorn_cmd.append("--reload")
@@ -1279,10 +1288,19 @@ def web(host: str, port: int, reload: bool, dev: bool):
         click.echo("Press Ctrl+C to stop")
 
         cmd = [
-            "uv", "run", "--project", str(project_dir),
-            "--with", "uvicorn[standard]", "uvicorn",
+            "uv",
+            "run",
+            "--project",
+            str(project_dir),
+            "--with",
+            "uvicorn[standard]",
+            "uvicorn",
             "twag.web:create_app",
-            "--host", host, "--port", str(port), "--factory",
+            "--host",
+            host,
+            "--port",
+            str(port),
+            "--factory",
         ]
         if reload:
             cmd.append("--reload")
