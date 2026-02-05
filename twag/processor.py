@@ -127,6 +127,13 @@ def _fetch_quote_by_id(
         has_media=quoted.has_media,
         media_items=quoted.media_items,
         has_link=quoted.has_link,
+        is_retweet=quoted.is_retweet,
+        retweeted_by_handle=quoted.retweeted_by_handle,
+        retweeted_by_name=quoted.retweeted_by_name,
+        original_tweet_id=quoted.original_tweet_id,
+        original_author_handle=quoted.original_author_handle,
+        original_author_name=quoted.original_author_name,
+        original_content=quoted.original_content,
     )
     if inserted:
         upsert_account(conn, quoted.author_handle, quoted.author_name)
@@ -180,6 +187,13 @@ def _ensure_quote_row(
         has_media=quoted.has_media,
         media_items=quoted.media_items,
         has_link=quoted.has_link,
+        is_retweet=quoted.is_retweet,
+        retweeted_by_handle=quoted.retweeted_by_handle,
+        retweeted_by_name=quoted.retweeted_by_name,
+        original_tweet_id=quoted.original_tweet_id,
+        original_author_handle=quoted.original_author_handle,
+        original_author_name=quoted.original_author_name,
+        original_content=quoted.original_content,
     )
     if inserted:
         upsert_account(conn, quoted.author_handle, quoted.author_name)
@@ -277,6 +291,13 @@ def store_fetched_tweets(
                 has_media=tweet.has_media,
                 media_items=tweet.media_items,
                 has_link=tweet.has_link,
+                is_retweet=tweet.is_retweet,
+                retweeted_by_handle=tweet.retweeted_by_handle,
+                retweeted_by_name=tweet.retweeted_by_name,
+                original_tweet_id=tweet.original_tweet_id,
+                original_author_handle=tweet.original_author_handle,
+                original_author_name=tweet.original_author_name,
+                original_content=tweet.original_content,
             )
 
             if inserted:
@@ -348,6 +369,13 @@ def store_bookmarked_tweets(
                 has_media=tweet.has_media,
                 media_items=tweet.media_items,
                 has_link=tweet.has_link,
+                is_retweet=tweet.is_retweet,
+                retweeted_by_handle=tweet.retweeted_by_handle,
+                retweeted_by_name=tweet.retweeted_by_name,
+                original_tweet_id=tweet.original_tweet_id,
+                original_author_handle=tweet.original_author_handle,
+                original_author_name=tweet.original_author_name,
+                original_content=tweet.original_content,
             )
 
             if inserted:

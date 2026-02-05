@@ -2,6 +2,7 @@
 
 import re
 from datetime import datetime
+from typing import Any
 
 _TWEET_URL_RE = re.compile(
     r"https?://(?:www\.)?(?:mobile\.)?(?:x|twitter)\.com/(?:i/(?:web/)?|[^/]+/)?status/(\d+)(?:\?[^\s]+)?",
@@ -34,7 +35,7 @@ def remove_tweet_links(text: str, links: list[tuple[str, str]], remove_ids: set[
     return cleaned
 
 
-def quote_embed_from_row(row) -> dict[str, str | None]:
+def quote_embed_from_row(row) -> dict[str, Any]:
     created_at = parse_created_at(row["created_at"])
     return {
         "id": row["id"],

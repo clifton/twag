@@ -45,26 +45,28 @@ class Tweet:
     has_media: bool
     media_items: list[dict[str, Any]]
     has_link: bool
+    is_retweet: bool
+    retweeted_by_handle: str | None
+    retweeted_by_name: str | None
+    original_tweet_id: str | None
+    original_author_handle: str | None
+    original_author_name: str | None
+    original_content: str | None
     raw: dict[str, Any]
 
     @classmethod
     def from_bird_json(cls, data: dict[str, Any]) -> "Tweet":
         """Parse a tweet from bird CLI JSON output."""
         # Handle different field names bird might use
-        tweet_id = str(data.get("id") or data.get("tweetId") or data.get("rest_id", ""))
+        tweet_id = _extract_tweet_id(data)
 
         # Author info
-        author = data.get("author", {}) or data.get("user", {})
-        author_handle = (
-            author.get("username")
-            or author.get("screen_name")
-            or author.get("handle")
-            or data.get("authorHandle", "unknown")
-        )
-        author_name = author.get("name") or data.get("authorName")
+        author_handle, author_name = _extract_author(data)
+        if not author_handle:
+            author_handle = "unknown"
 
         # Content
-        content = data.get("text") or data.get("full_text") or data.get("content", "")
+        content = _extract_content(data)
 
         # Created at
         created_at = None
@@ -103,6 +105,41 @@ class Tweet:
         if not has_link:
             has_link = bool(re.search(r"https?://\S+", content))
 
+        # Retweets
+        is_retweet = False
+        retweeted_by_handle = None
+        retweeted_by_name = None
+        original_tweet_id = None
+        original_author_handle = None
+        original_author_name = None
+        original_content = None
+
+        retweeted = _extract_retweeted_tweet(data)
+        if retweeted:
+            retweeted_handle, retweeted_name = _extract_author(retweeted)
+            retweeted_content = _extract_content(retweeted)
+            retweeted_id = _extract_tweet_id(retweeted)
+
+            # Keep source author/content as-is for storage; expose original metadata separately.
+            if retweeted_handle or retweeted_content or retweeted_id:
+                is_retweet = True
+                retweeted_by_handle = author_handle
+                retweeted_by_name = author_name
+                original_tweet_id = retweeted_id or None
+                original_author_handle = retweeted_handle
+                original_author_name = retweeted_name
+                original_content = retweeted_content or None
+        else:
+            # Fallback for plain RT text when payload does not include retweeted metadata.
+            # Example: "RT @original: text..."
+            rt_match = re.match(r"^\s*RT\s+@([A-Za-z0-9_]{1,15}):\s*(.+)$", content or "")
+            if rt_match:
+                is_retweet = True
+                retweeted_by_handle = author_handle
+                retweeted_by_name = author_name
+                original_author_handle = rt_match.group(1)
+                original_content = rt_match.group(2).strip() or None
+
         return cls(
             id=tweet_id,
             author_handle=author_handle,
@@ -114,8 +151,87 @@ class Tweet:
             has_media=has_media,
             media_items=media_items,
             has_link=has_link,
+            is_retweet=is_retweet,
+            retweeted_by_handle=retweeted_by_handle,
+            retweeted_by_name=retweeted_by_name,
+            original_tweet_id=original_tweet_id,
+            original_author_handle=original_author_handle,
+            original_author_name=original_author_name,
+            original_content=original_content,
             raw=data,
         )
+
+
+def _extract_tweet_id(data: dict[str, Any]) -> str:
+    """Extract tweet ID from known bird/X payload variants."""
+    return str(data.get("id") or data.get("id_str") or data.get("tweetId") or data.get("rest_id", ""))
+
+
+def _extract_author(data: dict[str, Any]) -> tuple[str | None, str | None]:
+    """Extract author handle/name from known payload variants."""
+    author = data.get("author", {}) or data.get("user", {})
+    legacy = data.get("legacy", {}) if isinstance(data.get("legacy"), dict) else {}
+
+    # GraphQL-style payloads sometimes nest under core.user_results.result
+    core_result = (
+        data.get("core", {}).get("user_results", {}).get("result", {}) if isinstance(data.get("core"), dict) else {}
+    )
+    core_legacy = core_result.get("legacy", {}) if isinstance(core_result, dict) else {}
+
+    handle = (
+        author.get("username")
+        or author.get("screen_name")
+        or author.get("handle")
+        or legacy.get("screen_name")
+        or core_legacy.get("screen_name")
+        or data.get("authorHandle")
+    )
+
+    name = (
+        author.get("name")
+        or author.get("display_name")
+        or legacy.get("name")
+        or core_legacy.get("name")
+        or data.get("authorName")
+    )
+
+    return handle, name
+
+
+def _extract_content(data: dict[str, Any]) -> str:
+    """Extract tweet text from known payload variants."""
+    legacy = data.get("legacy", {}) if isinstance(data.get("legacy"), dict) else {}
+    note_tweet = legacy.get("note_tweet", {}) if isinstance(legacy.get("note_tweet"), dict) else {}
+    note_results = (
+        note_tweet.get("note_tweet_results", {}).get("result", {})
+        if isinstance(note_tweet.get("note_tweet_results"), dict)
+        else {}
+    )
+
+    return (
+        data.get("text")
+        or data.get("full_text")
+        or data.get("content")
+        or legacy.get("full_text")
+        or legacy.get("text")
+        or note_results.get("text")
+        or ""
+    )
+
+
+def _extract_retweeted_tweet(data: dict[str, Any]) -> dict[str, Any] | None:
+    """Extract retweeted tweet payload from known variants."""
+    retweeted = data.get("retweetedTweet") or data.get("retweeted_status") or data.get("retweetedStatus")
+    if isinstance(retweeted, dict):
+        return retweeted
+
+    retweeted_result = data.get("retweeted_status_result")
+    if isinstance(retweeted_result, dict):
+        result = retweeted_result.get("result")
+        if isinstance(result, dict):
+            return result
+
+    return None
 
 
 def _extract_media_items(data: dict[str, Any]) -> list[dict[str, Any]]:

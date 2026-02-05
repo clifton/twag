@@ -137,6 +137,10 @@ class TestTweetFromBirdJson:
         assert tweet.quote_tweet_id is None
         assert tweet.has_media is False
         assert tweet.has_link is False
+        assert tweet.is_retweet is False
+        assert tweet.retweeted_by_handle is None
+        assert tweet.original_author_handle is None
+        assert tweet.original_content is None
 
     def test_parse_alternative_field_names(self, alt_format_tweet_data):
         """Parse tweet using alternative field names."""
@@ -269,6 +273,46 @@ class TestTweetFromBirdJson:
 
         assert tweet.raw == basic_tweet_data
         assert tweet.raw["custom_field"] == "custom_value"
+
+    def test_parse_with_retweeted_tweet_payload(self):
+        """Parse retweet metadata from retweetedTweet payload."""
+        data = {
+            "id": "100",
+            "author": {"username": "retweeter", "name": "Retweeter"},
+            "text": "RT @original: important thread",
+            "retweetedTweet": {
+                "id": "200",
+                "author": {"username": "original", "name": "Original Poster"},
+                "text": "important thread",
+            },
+        }
+        tweet = Tweet.from_bird_json(data)
+
+        assert tweet.is_retweet is True
+        assert tweet.retweeted_by_handle == "retweeter"
+        assert tweet.retweeted_by_name == "Retweeter"
+        assert tweet.original_tweet_id == "200"
+        assert tweet.original_author_handle == "original"
+        assert tweet.original_author_name == "Original Poster"
+        assert tweet.original_content == "important thread"
+        # Source identity/content remain the fetched tweet payload.
+        assert tweet.author_handle == "retweeter"
+        assert tweet.content == "RT @original: important thread"
+
+    def test_parse_retweet_from_text_fallback(self):
+        """Parse RT metadata from text when payload lacks retweetedTweet object."""
+        data = {
+            "id": "300",
+            "author": {"username": "retweeter2"},
+            "text": "RT @orig2: edge case fallback",
+        }
+        tweet = Tweet.from_bird_json(data)
+
+        assert tweet.is_retweet is True
+        assert tweet.retweeted_by_handle == "retweeter2"
+        assert tweet.original_author_handle == "orig2"
+        assert tweet.original_content == "edge case fallback"
+        assert tweet.original_tweet_id is None
 
 
 # ============================================================================
