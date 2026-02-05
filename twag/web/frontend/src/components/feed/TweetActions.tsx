@@ -61,7 +61,7 @@ export function TweetActions({ tweetId, authorHandle, onAnalyze }: TweetActionsP
           <Button
             variant="ghost"
             size="icon"
-            className="h-6 w-6 text-zinc-600 hover:text-green-400"
+            className="h-6 w-6 text-zinc-400 hover:text-green-300"
             onClick={() => setShowModal(">>")}
           >
             <ChevronsUp className="h-3.5 w-3.5" />
@@ -75,7 +75,7 @@ export function TweetActions({ tweetId, authorHandle, onAnalyze }: TweetActionsP
           <Button
             variant="ghost"
             size="icon"
-            className="h-6 w-6 text-zinc-600 hover:text-cyan-400"
+            className="h-6 w-6 text-zinc-400 hover:text-cyan-300"
             onClick={() => setShowModal(">")}
           >
             <ChevronUp className="h-3.5 w-3.5" />
@@ -89,7 +89,7 @@ export function TweetActions({ tweetId, authorHandle, onAnalyze }: TweetActionsP
           <Button
             variant="ghost"
             size="icon"
-            className="h-6 w-6 text-zinc-600 hover:text-yellow-500"
+            className="h-6 w-6 text-zinc-400 hover:text-yellow-400"
             onClick={() => setShowModal("<")}
           >
             <ChevronDown className="h-3.5 w-3.5" />
@@ -103,7 +103,7 @@ export function TweetActions({ tweetId, authorHandle, onAnalyze }: TweetActionsP
           <Button
             variant="ghost"
             size="icon"
-            className="h-6 w-6 text-zinc-600 hover:text-red-400"
+            className="h-6 w-6 text-zinc-400 hover:text-red-300"
             onClick={() => react("x_author", undefined, authorHandle)}
             disabled={createReaction.isPending}
           >
@@ -118,7 +118,7 @@ export function TweetActions({ tweetId, authorHandle, onAnalyze }: TweetActionsP
           <Button
             variant="ghost"
             size="icon"
-            className="h-6 w-6 text-zinc-600 hover:text-cyan-400"
+            className="h-6 w-6 text-zinc-400 hover:text-cyan-300"
             onClick={handleAnalyze}
             disabled={analyzeMutation.isPending}
           >

@@ -83,7 +83,7 @@ export function FeedPage() {
           )}
 
           {!isLoading && tweets.length === 0 && (
-            <div className="flex items-center justify-center py-16 text-sm text-zinc-500">
+            <div className="flex items-center justify-center py-16 text-sm text-zinc-300">
               No tweets match your filters
             </div>
           )}
@@ -98,12 +98,12 @@ export function FeedPage() {
 
         {isFetchingNextPage && (
           <div className="flex items-center justify-center py-4">
-            <Loader2 className="h-4 w-4 animate-spin text-zinc-600" />
+            <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
           </div>
         )}
 
         {!hasNextPage && tweets.length > 0 && (
-          <div className="py-4 text-center text-xs text-zinc-600">
+          <div className="py-4 text-center text-xs text-zinc-400">
             End of feed
           </div>
         )}

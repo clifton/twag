@@ -25,13 +25,13 @@ function ChartMedia({ item }: { item: MediaItem }) {
         </a>
       )}
       {item.chart?.description && (
-        <p className="mt-1.5 text-xs text-zinc-400">{item.chart.description}</p>
+        <p className="mt-1.5 text-xs text-zinc-300">{item.chart.description}</p>
       )}
       {item.chart?.insight && (
-        <p className="mt-1 text-xs text-zinc-500 italic">{item.chart.insight}</p>
+        <p className="mt-1 text-xs text-zinc-300 italic">{item.chart.insight}</p>
       )}
       {item.chart?.implication && (
-        <p className="mt-1 text-xs text-amber-600/80">{item.chart.implication}</p>
+        <p className="mt-1 text-xs text-amber-300/80">{item.chart.implication}</p>
       )}
     </div>
   );
@@ -41,8 +41,8 @@ function ProseMedia({ item }: { item: MediaItem }) {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="rounded border border-zinc-800/50 bg-zinc-900/40 p-3">
-      <p className="text-sm text-zinc-300 leading-relaxed">
+    <div className="rounded border border-zinc-700/70 bg-zinc-900/60 p-3">
+      <p className="text-sm text-zinc-200 leading-relaxed">
         {item.prose_summary}
       </p>
       {item.prose_text && (
@@ -50,10 +50,10 @@ function ProseMedia({ item }: { item: MediaItem }) {
           open={open}
           onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}
         >
-          <summary className="mt-2 cursor-pointer text-xs text-zinc-500 hover:text-zinc-400 select-none">
+          <summary className="mt-2 cursor-pointer text-xs text-zinc-300 hover:text-zinc-100 select-none">
             View extracted text
           </summary>
-          <pre className="mt-2 whitespace-pre-wrap text-xs text-zinc-500 font-mono leading-relaxed max-h-60 overflow-y-auto">
+          <pre className="mt-2 max-h-60 overflow-y-auto whitespace-pre-wrap text-xs font-mono leading-relaxed text-zinc-300">
             {item.prose_text}
           </pre>
         </details>
@@ -116,12 +116,10 @@ function TableMedia({ item }: { item: MediaItem }) {
           />
         </a>
       )}
-      {table.summary && (
-        <p className="mb-2 text-xs text-zinc-400">{table.summary}</p>
-      )}
+      {table.summary && <p className="mb-2 text-xs text-zinc-300">{table.summary}</p>}
       {isLarge ? (
         <details>
-          <summary className="cursor-pointer text-xs text-zinc-500 hover:text-zinc-400 select-none">
+          <summary className="cursor-pointer text-xs text-zinc-300 hover:text-zinc-100 select-none">
             Show table ({rowCount} rows)
           </summary>
           <div className="mt-2">{tableEl}</div>
@@ -154,7 +152,7 @@ function DefaultMedia({ item }: { item: MediaItem }) {
         </a>
       )}
       {caption && (
-        <p className="mt-1 text-xs text-zinc-500 italic">{caption}</p>
+        <p className="mt-1 text-xs text-zinc-300 italic">{caption}</p>
       )}
     </div>
   );
@@ -189,7 +187,7 @@ export function TweetMedia({ items, mediaAnalysis }: TweetMediaProps) {
 
       {/* Fallback: overall media analysis if no structured items */}
       {mediaAnalysis && !items?.length && (
-        <p className="text-xs text-zinc-500 leading-relaxed">{mediaAnalysis}</p>
+        <p className="text-xs text-zinc-300 leading-relaxed">{mediaAnalysis}</p>
       )}
     </div>
   );
