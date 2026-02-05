@@ -45,6 +45,10 @@ class Tweet:
     has_media: bool
     media_items: list[dict[str, Any]]
     has_link: bool
+    is_x_article: bool
+    article_title: str | None
+    article_preview: str | None
+    article_text: str | None
     is_retweet: bool
     retweeted_by_handle: str | None
     retweeted_by_name: str | None
@@ -92,6 +96,7 @@ class Tweet:
 
         # Media
         media_items = _extract_media_items(data)
+        is_x_article, article_title, article_preview, article_text = _extract_article(data)
         has_media = bool(
             media_items
             or data.get("media")
@@ -100,10 +105,13 @@ class Tweet:
         )
 
         # Links
-        has_link = bool(data.get("urls") or data.get("entities", {}).get("urls"))
+        raw_legacy_urls = data.get("_raw", {}).get("legacy", {}).get("entities", {}).get("urls")
+        has_link = bool(data.get("urls") or data.get("entities", {}).get("urls") or raw_legacy_urls)
         # Also check for links in text
         if not has_link:
             has_link = bool(re.search(r"https?://\S+", content))
+        if is_x_article:
+            has_link = True
 
         # Retweets
         is_retweet = False
@@ -151,6 +159,10 @@ class Tweet:
             has_media=has_media,
             media_items=media_items,
             has_link=has_link,
+            is_x_article=is_x_article,
+            article_title=article_title,
+            article_preview=article_preview,
+            article_text=article_text,
             is_retweet=is_retweet,
             retweeted_by_handle=retweeted_by_handle,
             retweeted_by_name=retweeted_by_name,
@@ -234,6 +246,57 @@ def _extract_retweeted_tweet(data: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
+def _extract_article(data: dict[str, Any]) -> tuple[bool, str | None, str | None, str | None]:
+    """Extract X native article payload fields from bird JSON."""
+    top_article = data.get("article") if isinstance(data.get("article"), dict) else {}
+    raw_article = (
+        data.get("_raw", {}).get("article", {}).get("article_results", {}).get("result", {})
+        if isinstance(data.get("_raw"), dict)
+        else {}
+    )
+
+    if not top_article and not raw_article:
+        return False, None, None, None
+
+    title = top_article.get("title") or raw_article.get("title") or None
+    preview = top_article.get("previewText") or raw_article.get("preview_text") or None
+    text = raw_article.get("plain_text")
+    if not text:
+        text = _extract_article_text_from_blocks(raw_article)
+    if not text:
+        # bird --json often returns the full article body in tweet text while omitting
+        # _raw.article.plain_text. Use it when it is clearly richer than preview.
+        content = _extract_content(data).strip()
+        preview = (top_article.get("previewText") or raw_article.get("preview_text") or "").strip()
+        if content and (len(content) >= 400 or (preview and len(content) >= len(preview) + 80)):
+            text = content
+
+    return True, title, preview, text
+
+
+def _extract_article_text_from_blocks(article_result: dict[str, Any]) -> str | None:
+    """Fallback article text extraction from content_state blocks."""
+    content_state = article_result.get("content_state") if isinstance(article_result, dict) else {}
+    blocks = content_state.get("blocks") if isinstance(content_state, dict) else None
+    if not isinstance(blocks, list):
+        return None
+
+    parts: list[str] = []
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        text = block.get("text")
+        if not isinstance(text, str):
+            continue
+        stripped = text.strip()
+        if stripped:
+            parts.append(stripped)
+
+    if not parts:
+        return None
+    return "\n".join(parts)
+
+
 def _extract_media_items(data: dict[str, Any]) -> list[dict[str, Any]]:
     candidates: list[dict[str, Any]] = []
 
@@ -252,6 +315,44 @@ def _extract_media_items(data: dict[str, Any]) -> list[dict[str, Any]]:
     if isinstance(media_dict, dict):
         _extend(media_dict.get("items"))
 
+    # X article media entities and cover image can hold chart/document visuals.
+    raw_article_result = (
+        data.get("_raw", {}).get("article", {}).get("article_results", {}).get("result", {})
+        if isinstance(data.get("_raw"), dict)
+        else {}
+    )
+    raw_media_entities = raw_article_result.get("media_entities")
+    if isinstance(raw_media_entities, list):
+        for media in raw_media_entities:
+            if not isinstance(media, dict):
+                continue
+            media_info = media.get("media_info") if isinstance(media.get("media_info"), dict) else {}
+            url = media_info.get("original_img_url")
+            if not url:
+                continue
+            candidates.append(
+                {
+                    "url": url,
+                    "type": "photo",
+                    "source": "article",
+                    "media_id": media.get("media_id"),
+                }
+            )
+
+    cover_media = raw_article_result.get("cover_media") if isinstance(raw_article_result, dict) else {}
+    if isinstance(cover_media, dict):
+        cover_info = cover_media.get("media_info") if isinstance(cover_media.get("media_info"), dict) else {}
+        cover_url = cover_info.get("original_img_url")
+        if cover_url:
+            candidates.append(
+                {
+                    "url": cover_url,
+                    "type": "photo",
+                    "source": "article_cover",
+                    "media_id": cover_media.get("media_id"),
+                }
+            )
+
     items: list[dict[str, Any]] = []
     seen: set[str] = set()
 
@@ -264,13 +365,43 @@ def _extract_media_items(data: dict[str, Any]) -> list[dict[str, Any]]:
         if not url or url in seen:
             continue
         seen.add(url)
-        items.append(
-            {
-                "url": url,
-                "type": item.get("type") or item.get("media_type") or "photo",
-            }
-        )
+        item_data: dict[str, Any] = {
+            "url": url,
+            "type": item.get("type") or item.get("media_type") or "photo",
+        }
+        if item.get("source"):
+            item_data["source"] = item["source"]
+        if item.get("media_id"):
+            item_data["media_id"] = item["media_id"]
+        items.append(item_data)
 
+    return items
+
+
+def _extract_media_items_from_json_blob(blob: str) -> list[dict[str, Any]]:
+    """Best-effort media extraction from potentially truncated bird --json-full output."""
+    if not blob:
+        return []
+
+    urls: list[str] = []
+    patterns = [
+        r'"original_img_url"\s*:\s*"([^"]+)"',
+        r'"media_url_https"\s*:\s*"([^"]+)"',
+        r'"media_url"\s*:\s*"([^"]+)"',
+    ]
+    for pattern in patterns:
+        urls.extend(re.findall(pattern, blob))
+
+    items: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for raw_url in urls:
+        url = raw_url.replace("\\/", "/")
+        if not url.startswith("http"):
+            continue
+        if url in seen:
+            continue
+        seen.add(url)
+        items.append({"url": url, "type": "photo", "source": "article_full_fallback"})
     return items
 
 
@@ -333,14 +464,19 @@ def _parse_bird_output(stdout: str) -> list[Tweet]:
     if not stdout.strip():
         return []
 
-    tweets = []
+    tweets: list[Tweet] = []
+
+    def _append_item(item: Any) -> None:
+        if isinstance(item, dict):
+            tweets.append(Tweet.from_bird_json(item))
+
     try:
         data = json.loads(stdout)
         if isinstance(data, list):
             for item in data:
-                tweets.append(Tweet.from_bird_json(item))
+                _append_item(item)
         else:
-            tweets.append(Tweet.from_bird_json(data))
+            _append_item(data)
     except json.JSONDecodeError:
         # Fallback: try line-by-line for NDJSON format
         for line in stdout.strip().split("\n"):
@@ -350,9 +486,9 @@ def _parse_bird_output(stdout: str) -> list[Tweet]:
                 item = json.loads(line)
                 if isinstance(item, list):
                     for i in item:
-                        tweets.append(Tweet.from_bird_json(i))
+                        _append_item(i)
                 else:
-                    tweets.append(Tweet.from_bird_json(item))
+                    _append_item(item)
             except json.JSONDecodeError:
                 continue
 
@@ -405,13 +541,34 @@ def fetch_bookmarks(count: int = 100) -> list[Tweet]:
 
 def read_tweet(tweet_url_or_id: str) -> Tweet | None:
     """Read a single tweet by URL or ID."""
+    # Prefer --json-full for richer article payloads (body/media). Some long payloads
+    # can be truncated by bird; in that case fall back to --json and merge media hints.
+    stdout, stderr, code = run_bird(["read", tweet_url_or_id, "--json-full"])
+    recovered_media: list[dict[str, Any]] = []
+    if code == 0:
+        tweets = _parse_bird_output(stdout)
+        if tweets:
+            return tweets[0]
+        recovered_media = _extract_media_items_from_json_blob(stdout)
+
     stdout, stderr, code = run_bird(["read", tweet_url_or_id, "--json"])
 
     if code != 0:
         return None
 
     tweets = _parse_bird_output(stdout)
-    return tweets[0] if tweets else None
+    if not tweets:
+        return None
+
+    tweet = tweets[0]
+    if recovered_media:
+        existing_urls = {item.get("url") for item in tweet.media_items}
+        for item in recovered_media:
+            if item["url"] not in existing_urls:
+                tweet.media_items.append(item)
+        tweet.has_media = bool(tweet.media_items)
+
+    return tweet
 
 
 def get_tweet_url(tweet_id: str, author_handle: str = "i") -> str:

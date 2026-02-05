@@ -32,6 +32,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "min_score_for_reprocess": 3,
         "min_score_for_media": 3,
         "min_score_for_analysis": 3,
+        "min_score_for_article_processing": 5,
     },
     "notifications": {
         "telegram_enabled": True,

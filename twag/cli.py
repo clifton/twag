@@ -287,6 +287,7 @@ def doctor():
 
 
 @cli.command()
+@click.argument("status_id_or_url", required=False)
 @click.option("--source", type=click.Choice(["home", "user", "search"]), default="home")
 @click.option("--handle", "-u", help="User handle for user source")
 @click.option("--query", "-q", help="Search query for search source")
@@ -298,6 +299,7 @@ def doctor():
     "--stagger", type=int, default=None, help="Only fetch N tier-1 accounts (rotates by least-recently-fetched)"
 )
 def fetch(
+    status_id_or_url: str | None,
     source: str,
     handle: str | None,
     query: str | None,
@@ -308,10 +310,29 @@ def fetch(
     stagger: int | None,
 ):
     """Fetch tweets from Twitter/X."""
-    from .fetcher import fetch_bookmarks, fetch_home_timeline, fetch_search, fetch_user_tweets
+    from .fetcher import fetch_bookmarks, fetch_home_timeline, fetch_search, fetch_user_tweets, read_tweet
     from .processor import auto_promote_bookmarked_authors, store_bookmarked_tweets, store_fetched_tweets
 
     init_db()
+
+    if status_id_or_url:
+        click.echo(f"Fetching status {status_id_or_url}...")
+        tweet = read_tweet(status_id_or_url)
+        if not tweet:
+            raise click.ClickException(f"Status not found or unreadable: {status_id_or_url}")
+
+        with click.progressbar(length=1, label="Storing status") as bar:
+            status_cb, progress_cb, _ = _make_progress_callbacks(bar, 1, "Storing status")
+            fetched, new = store_fetched_tweets(
+                [tweet],
+                source="status",
+                query_params={"status_id_or_url": status_id_or_url},
+                status_cb=status_cb,
+                progress_cb=progress_cb,
+            )
+        click.echo(f"Fetched {fetched} tweets, {new} new")
+        return
+
     click.echo(f"Fetching from {source}...")
 
     if source == "user" and not handle:

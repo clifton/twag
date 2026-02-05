@@ -23,6 +23,11 @@ export function TweetCard({ tweet }: TweetCardProps) {
   const linkAuthor = hasOriginalTweetTarget ? displayAuthor : tweet.author_handle;
   const linkTweetId = hasOriginalTweetTarget ? displayTweetId : tweet.id;
   const tweetUrl = `https://x.com/${linkAuthor}/status/${linkTweetId}`;
+  const hasArticleSummary =
+    tweet.is_x_article &&
+    (Boolean(tweet.article_summary_short) ||
+      tweet.article_primary_points.length > 0 ||
+      tweet.article_action_items.length > 0);
 
   return (
     <article className="group border-b border-zinc-800/80 px-4 py-3 bg-zinc-950/40 hover:bg-zinc-900/20 transition-colors">
@@ -94,10 +99,61 @@ export function TweetCard({ tweet }: TweetCardProps) {
       )}
 
       {/* Link summary */}
-      {tweet.has_link && tweet.link_summary && (
+      {!hasArticleSummary && tweet.has_link && tweet.link_summary && (
         <p className="mt-2 text-xs text-zinc-300 leading-snug">
           {tweet.link_summary}
         </p>
+      )}
+
+      {/* X article summary */}
+      {hasArticleSummary && (
+        <section className="mt-2 space-y-2 rounded border border-zinc-800/90 bg-zinc-900/25 p-2.5">
+          {tweet.article_summary_short && (
+            <p className="text-xs text-zinc-200 leading-relaxed">{tweet.article_summary_short}</p>
+          )}
+
+          {tweet.article_top_visual?.url && (
+            <div className="space-y-1">
+              <div className="text-[10px] uppercase tracking-wide text-zinc-400">Most Important Visual</div>
+              <a
+                href={tweet.article_top_visual.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[11px] text-cyan-300 hover:text-cyan-200"
+              >
+                {tweet.article_top_visual.kind}: {tweet.article_top_visual.key_takeaway}
+              </a>
+            </div>
+          )}
+
+          {tweet.article_primary_points.length > 0 && (
+            <div className="space-y-1">
+              <div className="text-[10px] uppercase tracking-wide text-zinc-400">Primary Points</div>
+              <ul className="space-y-1">
+                {tweet.article_primary_points.slice(0, 4).map((point, idx) => (
+                  <li key={`${tweet.id}-pp-${idx}`} className="text-[11px] text-zinc-200 leading-snug">
+                    <span className="font-medium">{point.point}</span>
+                    {point.reasoning ? <span className="text-zinc-300"> - {point.reasoning}</span> : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {tweet.article_action_items.length > 0 && (
+            <div className="space-y-1">
+              <div className="text-[10px] uppercase tracking-wide text-zinc-400">Actionable Items</div>
+              <ul className="space-y-1">
+                {tweet.article_action_items.slice(0, 3).map((item, idx) => (
+                  <li key={`${tweet.id}-ai-${idx}`} className="text-[11px] text-zinc-200 leading-snug">
+                    <span className="font-medium">{item.action}</span>
+                    {item.trigger ? <span className="text-zinc-300"> (trigger: {item.trigger})</span> : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </section>
       )}
 
       {/* Reference links */}

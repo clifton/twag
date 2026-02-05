@@ -198,6 +198,15 @@ async def list_tweets(
                     "media_items": t.media_items,
                     "has_link": t.has_link,
                     "link_summary": t.link_summary,
+                    "is_x_article": t.is_x_article,
+                    "article_title": t.article_title,
+                    "article_preview": t.article_preview,
+                    "article_text": t.article_text,
+                    "article_summary_short": t.article_summary_short,
+                    "article_primary_points": t.article_primary_points,
+                    "article_action_items": t.article_action_items,
+                    "article_top_visual": t.article_top_visual,
+                    "article_processed_at": t.article_processed_at.isoformat() if t.article_processed_at else None,
                     "is_retweet": is_retweet,
                     "retweeted_by_handle": retweeted_by_handle,
                     "retweeted_by_name": retweeted_by_name,
@@ -251,6 +260,33 @@ async def get_tweet(request: Request, tweet_id: str) -> dict[str, Any]:
         except json.JSONDecodeError:
             tickers = [t.strip() for t in tweet["tickers"].split(",") if t.strip()]
 
+    article_primary_points = []
+    if tweet["article_primary_points_json"]:
+        try:
+            decoded = json.loads(tweet["article_primary_points_json"])
+            if isinstance(decoded, list):
+                article_primary_points = [item for item in decoded if isinstance(item, dict)]
+        except json.JSONDecodeError:
+            article_primary_points = []
+
+    article_action_items = []
+    if tweet["article_action_items_json"]:
+        try:
+            decoded = json.loads(tweet["article_action_items_json"])
+            if isinstance(decoded, list):
+                article_action_items = [item for item in decoded if isinstance(item, dict)]
+        except json.JSONDecodeError:
+            article_action_items = []
+
+    article_top_visual = None
+    if tweet["article_top_visual_json"]:
+        try:
+            decoded = json.loads(tweet["article_top_visual_json"])
+            if isinstance(decoded, dict):
+                article_top_visual = decoded
+        except json.JSONDecodeError:
+            article_top_visual = None
+
     return {
         "id": tweet["id"],
         "author_handle": tweet["author_handle"],
@@ -271,6 +307,15 @@ async def get_tweet(request: Request, tweet_id: str) -> dict[str, Any]:
         "media_items": parse_media_items(tweet["media_items"]),
         "has_link": bool(tweet["has_link"]),
         "link_summary": tweet["link_summary"],
+        "is_x_article": bool(tweet["is_x_article"]),
+        "article_title": tweet["article_title"],
+        "article_preview": tweet["article_preview"],
+        "article_text": tweet["article_text"],
+        "article_summary_short": tweet["article_summary_short"],
+        "article_primary_points": article_primary_points,
+        "article_action_items": article_action_items,
+        "article_top_visual": article_top_visual,
+        "article_processed_at": tweet["article_processed_at"],
         "is_retweet": bool(tweet["is_retweet"]),
         "retweeted_by_handle": tweet["retweeted_by_handle"],
         "retweeted_by_name": tweet["retweeted_by_name"],

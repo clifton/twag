@@ -1,0 +1,1398 @@
+{
+  "id": "2019488673935552978",
+  "text": "Google's $180 Billion Bet: Is This the Top?\n\nGoogle just guided $180 billion in capex for 2026. Nearly double their 2025 spend. The largest single-year infrastructure commitment in corporate history.\n\nI'm certainly not the foremost analyst on hyperscaler capex, but wanted to explore how this may impact markets.\n\nThe normal reaction is to worry about overcapacity, ROI, and bubbles. Let's withhold judgement for a moment and look at the background.\n\n---\n\n## The Scale of What We're Talking About\n\nBig numbers get pretty abstract, so I wanted to find some context on what $180 billion means.\n\nThe ENTIRE dotcom telecom buildout - all that fiber that created the bandwidth glut and bankrupted half the industry - was roughly $500 billion over five years. Telecom companies raised $1.6 trillion on Wall Street and floated $600 billion in bonds to crisscross the country in digital infrastructure [2]. Peak annual spending in 2000 was approximately $120 billion, or about $213 billion in today's dollars [3].\n\nGoogle alone is approaching that... in a single year.\n\nFor comparison:\n\n> The Apollo Program cost $288 billion inflation-adjusted over 13 years [4]\n\n> The Manhattan Project cost roughly $30 billion in today's dollars [5]\n\n> The Interstate Highway System ran $500-618 billion inflation-adjusted over 35 years [6]\n\nGoogle's 2026 capex sits comfortably in that company. And they're not alone - the big five hyperscalers (Amazon, Microsoft, Alphabet, Meta, Oracle) are projected to spend over $600 billion combined in 2026, a 36% increase over 2025 [7]. Not to mention upward revisions yet to come after this Google print.\n\nThis is infrastructure spending at a scale we've rarely seen outside of wartime or generational public works projects. Except it's happening in the private sector, driven by demand rather than government mandates.\n\nHow risky is it?\n\n---\n\n## On Risk: The Cloud Acceleration Example\n\nIf this capex is going to blow up, there will be signs. This is not one of them.\n\nCloud revenue accelerated to 48% growth in Q4, hitting $17.7 billion [1]. Operating margins expanded from 17.5% to 30.1%. Operating profit hit $5.3 billion for the quarter, up 154% year-over-year.\n\nThat's reason enough to step on the gas.\n\nAnd the outstanding backlog is wild. Cloud backlog is now apparently $240 billion, more than double YoY [9].\n\nThis isn't speculative buildout hoping customers show up. The demand is BEGGING for more.\n\nCloud is now on an annual run rate exceeding $70 billion. If 48% growth holds for even a few more quarters, we're looking at a $100B+ cloud business within two years. At 30% operating margins, that's $30 billion in annual operating income from cloud alone.\n\nThe capex starts to look less like risk and more like informed self interest.\n\nWill it work?\n\n---\n\n# Meta's AI-ROI & Google Ads\n\nLet's put aside cloud and Google's other businesses for a moment, and just focus on the cash cow: ads.\n\nZuck faced the same capex skepticism last year. Meta guided $115-135 billion for 2026 after spending $72 billion in 2025 [16]. Street worried the spending was reckless.\n\nThe returns are now showing up in the numbers.\n\nMeta revealed that Advantage+ products generate $4.52 in revenue for every $1 advertisers spend - a 22% improvement over baseline campaigns and is tracking $60 billion in annualized revenue [17, 18]. Time spent on Facebook increased 5%, Instagram 6%. Video engagement grew over 20% year-over-year.\n\nThe mechanism is straightforward: more compute enables better recommendation models, which drive higher engagement, which improves ad targeting, which increases advertiser ROI, which commands higher ad prices. Meta doubled the GPUs training their ads ranking model and the results showed up directly for their customers.\n\nRevenue hit $51 billion in Q4, up 26% year-over-year. Ad impressions climbed 14%. Average price per ad increased 10%. EPS surged 20% despite record infrastructure spending [19].\n\nExtreme compute capex improved the ads business dramatically.\n\n---\n\n## Google's AI Surface Area\n\nGoogle has even more room to run the same playbook.\n\nYouTube crossed $60 billion in 2025 revenue. Q4 alone was $11.4 billion, up 9% year-over-year [20]. Shorts monetization now matches in-stream rates in the US - a meaningful milestone given how much watch time has shifted to short-form. Interactive direct response ads exceeded a $1 billion global revenue run rate.\n\nSearch grew 15% year-over-year in Q3 [21]. AI Max became their fastest-growing AI-powered search ads product, with hundreds of thousands of advertisers adopting it within months of global launch. Kayak reported 12% higher conversion value in early tests.\n\nThe combined advertising business exceeds $350 billion annually. If compute-driven improvements to recommendation and targeting can move the needle even a few percentage points - as they demonstrably have at Meta - the capex pays for itself quickly.\n\nAnd then there's cloud, which is its own growth engine entirely.\n\nAlphabet crossed $400 billion in annual revenue for the first time in 2025 [22]. Net income surged 30% to $34.5 billion in Q4. The capex isn't coming from a company stretching to keep up. It's coming from a company with the cash flow to build infrastructure at scale while growing profits.\n\n---\n\n## The Dotcom Comparison - And Why It's Different\n\nThe dotcom buildout created a bandwidth glut that took a decade to absorb.\n\nBy 2004, bandwidth costs had fallen 90% despite internet usage doubling every few years. As late as 2005, 85% of US broadband capacity sat unused [2]. Telecom stocks lost 80-90% of their value. The overcapacity was real and the destruction of capital was massive.\n\nBut the infrastructure enabled everything that followed. Streaming, cloud computing, mobile internet, the entire modern digital economy runs on fiber laid during the bubble. The investment wasn't wasted. It was early.\n\nThree differences stand out today.\n\nFirst, the buyers are the builders. In 2000, telecom companies laid fiber hoping enterprise customers would show up. Google isn't hoping. They have $240 billion in cloud backlog. Amazon, Microsoft, and Meta have similar demand visibility (though MSFT is a bit overexposed to OAI).\n\nSecond, the builders have balance sheets. The telecom buildout was heavily debt-financed. When demand didn't materialize on schedule, the companies collapsed. Today's hyperscalers are funding capex largely from operating cash flow. Alphabet generated $34.5 billion in net income last quarter.\n\nThird, the returns are visible quickly. Meta can point to specific ROI improvements from compute investment. Google Cloud margins are expanding as scale increases. The feedback loop between spending and returns is measurable quarter by quarter.\n\nThis doesn't mean overcapacity is impossible. If AI demand plateaus or the competitive dynamics shift, some of this infrastructure could sit underutilized. But the structural setup is different from 2000.\n\nI don't think this is peak AI mania. I think we have years of runway ahead.\n\n---\n\n## Some Open Questions\n\nHow long can cloud growth compound at this rate? The law of large numbers eventually kicks in. GCP is on a $70B+ run rate. Growing 48% from here means adding $33 billion in annual revenue. At some point the numbers become impossible.\n\nWhat happens to margins? Alphabet is spending roughly 23% of revenue on capex. That's historically high. If spend moderates while revenue keeps growing, margins could expand meaningfully. But if the competitive dynamics require sustained spend, the margin picture is different.\n\nHow much of the advertising improvement is ahead vs. behind? Meta has shown the playbook works. Google may be earlier in deploying this amount of compute against their ads business. The YouTube and Search improvements could have more room to run. Or the low-hanging fruit could already be picked. Certainly, they've been working on this problem for a long time.\n\n---\n\n## Bottom Line\n\n$180 billion exceeds the peak of the dotcom telecom buildout in real terms. It rivals the great infrastructure projects of the 20th century. It's a crazy number\n\nBut the context matters. This is demand-driven expansion from a company with a $240B cloud backlog, 48% cloud growth, and the cash flow to fund it.\n\nMeta has already demonstrated that compute investment translates to measurable advertising improvements. Google has even more surface area to run the same playbook.\n\nCould it be too much? Maybe. But the structural setup looks different from past infrastructure manias. The demand is immense. The balance sheets are strong. The returns are showing up in growth & earnings.\n\nI don't think this is the top. I'd put it mid-cycle.\n\n---\n\nSources:\n\n[1] https://www.benzinga.com/markets/earnings/26/02/50396139/alphabet-q4-highlights-google-cloud-revenue-up-48-youtube-tops-60-billion-for-2025\n\n[2] https://www.fabricatedknowledge.com/p/lessons-from-history-the-rise-and\n\n[3] https://techblog.comsoc.org/2025/09/27/big-tech-spending-on-ai-data-centers-and-infrastructure-vs-the-fiber-optic-buildout-during-the-dot-com-boom-bust/\n\n[4] https://apollo11space.com/the-true-cost-of-reaching-the-moon-a-comprehensive-analysis-of-apollo-program-funding/\n\n[5] https://sgp.fas.org/crs/misc/RL34645.pdf\n\n[6] https://x.com/trevornoren/status/1976656878085275958\n\n[7] https://techblog.comsoc.org/2025/12/22/hyperscaler-capex-600-bn-in-2026-a-36-increase-over-2025-while-global-spending-on-cloud-infrastructure-services-skyrockets/\n\n[8] https://www.goldmansachs.com/insights/articles/why-ai-companies-may-invest-more-than-500-billion-in-2026\n\n[9] https://www.fool.com/earnings/call-transcripts/2026/02/04/alphabet-googl-q4-2025-earnings-call-transcript/\n\n[10] https://www.computerweekly.com/news/366618892/Google-Cloud-revenue-soars-as-Alphabet-continues-to-ride-AI-wave\n\n[11] https://enkiai.com/nvidia/nvidia-power-strategy-2025-inside-the-ai-energy-pivot\n\n[12] https://www.deloitte.com/us/en/insights/industry/power-and-utilities/data-center-infrastructure-artificial-intelligence.html\n\n[13] https://www.spglobal.com/en/research-insights/special-reports/look-forward/data-center-frontiers/global-ai-power-demand-challenges-opportunities\n\n[14] https://iot-analytics.com/data-center-infrastructure-market/\n\n[15] https://www.bridgewater.com/research-and-insights/the-macro-implications-of-the-ai-capex-boom\n\n[16] https://finance.yahoo.com/news/meta-platforms-heavy-ai-capex-140401780.html\n\n[17] https://seekingalpha.com/article/4856286-meta-stock-ai-revenue-leader-nobody-is-talking-about\n\n[18] https://beth-kindig.medium.com/the-ai-revenue-leader-nobody-is-talking-about-second-only-to-nvidia-stock-8f0038689f0c\n\n[19] https://www.investing.com/analysis/meta-rebounds-toward-648-on-ai-capex-surge-and-ad-revival-200670990\n\n[20] https://thedesk.net/2026/02/alphabet-youtube-google-q4-2025-earnings-report/\n\n[21] https://www.marketingdive.com/news/googles-full-stack-ai-approach-drives-q3-search-youtube-ad-revenue-gains/804234/\n\n[22] https://www.thewrap.com/industry-news/business/alphabet-earnings-q4-2025/",
+  "createdAt": "Thu Feb 05 19:09:54 +0000 2026",
+  "replyCount": 1,
+  "retweetCount": 0,
+  "likeCount": 13,
+  "conversationId": "2019488673935552978",
+  "author": {
+    "username": "undrvalue",
+    "name": "market participant"
+  },
+  "authorId": "2007674507587399680",
+  "article": {
+    "title": "Google's $180 Billion Bet: Is This the Top?",
+    "previewText": "Google just guided $180 billion in capex for 2026. Nearly double their 2025 spend. The largest single-year infrastructure commitment in corporate history. \nI'm certainly not the foremost analyst on"
+  },
+  "_raw": {
+    "__typename": "Tweet",
+    "rest_id": "2019488673935552978",
+    "has_birdwatch_notes": false,
+    "core": {
+      "user_results": {
+        "result": {
+          "__typename": "User",
+          "id": "VXNlcjoyMDA3Njc0NTA3NTg3Mzk5Njgw",
+          "rest_id": "2007674507587399680",
+          "affiliates_highlighted_label": {},
+          "avatar": {
+            "image_url": "https://pbs.twimg.com/profile_images/2007696001998413825/yo6xkDTk_normal.jpg"
+          },
+          "core": {
+            "created_at": "Sun Jan 04 04:44:43 +0000 2026",
+            "name": "market participant",
+            "screen_name": "undrvalue"
+          },
+          "dm_permissions": {
+            "can_dm": false
+          },
+          "follow_request_sent": false,
+          "has_graduated_access": true,
+          "is_blue_verified": true,
+          "legacy": {
+            "default_profile": true,
+            "default_profile_image": false,
+            "description": "Semi-pro investor & analyst. Asymmetric stock picking. $10M+ AUM. Tech, consumer, value.",
+            "entities": {
+              "description": {
+                "urls": []
+              }
+            },
+            "fast_followers_count": 0,
+            "favourites_count": 501,
+            "followers_count": 1531,
+            "friends_count": 327,
+            "has_custom_timelines": false,
+            "is_translator": false,
+            "listed_count": 33,
+            "media_count": 30,
+            "normal_followers_count": 1531,
+            "pinned_tweet_ids_str": [
+              "2010878894271004909"
+            ],
+            "possibly_sensitive": false,
+            "profile_banner_url": "https://pbs.twimg.com/profile_banners/2007674507587399680/1767506863",
+            "profile_interstitial_type": "",
+            "statuses_count": 413,
+            "translator_type": "none",
+            "want_retweets": true,
+            "withheld_in_countries": []
+          },
+          "location": {
+            "location": "California"
+          },
+          "media_permissions": {
+            "can_media_tag": true
+          },
+          "parody_commentary_fan_label": "None",
+          "profile_image_shape": "Circle",
+          "profile_bio": {
+            "description": "Semi-pro investor & analyst. Asymmetric stock picking. $10M+ AUM. Tech, consumer, value."
+          },
+          "privacy": {
+            "protected": false
+          },
+          "relationship_perspectives": {
+            "following": true
+          },
+          "tipjar_settings": {},
+          "verification": {
+            "verified": false
+          }
+        }
+      }
+    },
+    "unmention_data": {},
+    "edit_control": {
+      "edit_tweet_ids": [
+        "2019488673935552978"
+      ],
+      "editable_until_msecs": "1770322194000",
+      "is_edit_eligible": false,
+      "edits_remaining": "5"
+    },
+    "is_translatable": false,
+    "views": {
+      "count": "1444",
+      "state": "EnabledWithCount"
+    },
+    "source": "<a href=\"https://mobile.twitter.com\" rel=\"nofollow\">Twitter Web App</a>",
+    "article": {
+      "article_results": {
+        "result": {
+          "rest_id": "2019247287562895360",
+          "id": "QXJ0aWNsZUVudGl0eToyMDE5MjQ3Mjg3NTYyODk1MzYw",
+          "title": "Google's $180 Billion Bet: Is This the Top?",
+          "preview_text": "Google just guided $180 billion in capex for 2026. Nearly double their 2025 spend. The largest single-year infrastructure commitment in corporate history. \nI'm certainly not the foremost analyst on",
+          "cover_media": {
+            "id": "QXBpTWVkaWE6DAAFCgABHAXmiH6acAEKAAIb3LFT2VqwAAAA",
+            "media_key": "3_2019273481859526657",
+            "media_id": "2019273481859526657",
+            "media_info": {
+              "__typename": "ApiImage",
+              "original_img_height": 480,
+              "original_img_width": 1200,
+              "original_img_url": "https://pbs.twimg.com/media/HAXmiH6acAEiywu.jpg",
+              "color_info": {
+                "palette": [
+                  {
+                    "percentage": 82.25,
+                    "rgb": {
+                      "blue": 0,
+                      "green": 0,
+                      "red": 0
+                    }
+                  },
+                  {
+                    "percentage": 8.92,
+                    "rgb": {
+                      "blue": 40,
+                      "green": 161,
+                      "red": 254
+                    }
+                  },
+                  {
+                    "percentage": 5.39,
+                    "rgb": {
+                      "blue": 255,
+                      "green": 255,
+                      "red": 255
+                    }
+                  },
+                  {
+                    "percentage": 2.1,
+                    "rgb": {
+                      "blue": 26,
+                      "green": 71,
+                      "red": 114
+                    }
+                  },
+                  {
+                    "percentage": 0.44,
+                    "rgb": {
+                      "blue": 12,
+                      "green": 41,
+                      "red": 69
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "content_state": {
+            "blocks": [
+              {
+                "key": "csjsb",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [
+                  {
+                    "length": 49,
+                    "offset": 0,
+                    "style": "Bold"
+                  }
+                ],
+                "text": "Google just guided $180 billion in capex for 2026. Nearly double their 2025 spend. The largest single-year infrastructure commitment in corporate history. ",
+                "type": "unstyled"
+              },
+              {
+                "key": "d52ib",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "I'm certainly not the foremost analyst on hyperscaler capex, but wanted to explore how this may impact markets.",
+                "type": "unstyled"
+              },
+              {
+                "key": "6fpjc",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "The normal reaction is to worry about overcapacity, ROI, and bubbles. Let's withhold judgement for a moment and look at the background.",
+                "type": "unstyled"
+              },
+              {
+                "key": "8torb",
+                "data": {},
+                "entityRanges": [
+                  {
+                    "key": 0,
+                    "length": 1,
+                    "offset": 0
+                  }
+                ],
+                "inlineStyleRanges": [],
+                "text": " ",
+                "type": "atomic"
+              },
+              {
+                "key": "88rhu",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "The Scale of What We're Talking About",
+                "type": "header-two"
+              },
+              {
+                "key": "8i863",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "Big numbers get pretty abstract, so I wanted to find some context on what $180 billion means.",
+                "type": "unstyled"
+              },
+              {
+                "key": "bfidb",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "The ENTIRE dotcom telecom buildout - all that fiber that created the bandwidth glut and bankrupted half the industry - was roughly $500 billion over five years. Telecom companies raised $1.6 trillion on Wall Street and floated $600 billion in bonds to crisscross the country in digital infrastructure [2]. Peak annual spending in 2000 was approximately $120 billion, or about $213 billion in today's dollars [3].",
+                "type": "unstyled"
+              },
+              {
+                "key": "1op2u",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "Google alone is approaching that... in a single year.",
+                "type": "unstyled"
+              },
+              {
+                "key": "ck9da",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "For comparison:",
+                "type": "unstyled"
+              },
+              {
+                "key": "f1sjc",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [
+                  {
+                    "length": 18,
+                    "offset": 2,
+                    "style": "Bold"
+                  }
+                ],
+                "text": "> The Apollo Program cost $288 billion inflation-adjusted over 13 years [4]",
+                "type": "unstyled"
+              },
+              {
+                "key": "dns8p",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [
+                  {
+                    "length": 21,
+                    "offset": 2,
+                    "style": "Bold"
+                  }
+                ],
+                "text": "> The Manhattan Project cost roughly $30 billion in today's dollars [5]",
+                "type": "unstyled"
+              },
+              {
+                "key": "4dcts",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [
+                  {
+                    "length": 29,
+                    "offset": 2,
+                    "style": "Bold"
+                  }
+                ],
+                "text": "> The Interstate Highway System ran $500-618 billion inflation-adjusted over 35 years [6]",
+                "type": "unstyled"
+              },
+              {
+                "key": "cdm78",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "Google's 2026 capex sits comfortably in that company. And they're not alone - the big five hyperscalers (Amazon, Microsoft, Alphabet, Meta, Oracle) are projected to spend over $600 billion combined in 2026, a 36% increase over 2025 [7]. Not to mention upward revisions yet to come after this Google print. ",
+                "type": "unstyled"
+              },
+              {
+                "key": "cjbs4",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "This is infrastructure spending at a scale we've rarely seen outside of wartime or generational public works projects. Except it's happening in the private sector, driven by demand rather than government mandates.",
+                "type": "unstyled"
+              },
+              {
+                "key": "dm85p",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "How risky is it?",
+                "type": "unstyled"
+              },
+              {
+                "key": "5o81c",
+                "data": {},
+                "entityRanges": [
+                  {
+                    "key": 1,
+                    "length": 1,
+                    "offset": 0
+                  }
+                ],
+                "inlineStyleRanges": [],
+                "text": " ",
+                "type": "atomic"
+              },
+              {
+                "key": "7g587",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "On Risk: The Cloud Acceleration Example",
+                "type": "header-two"
+              },
+              {
+                "key": "aintp",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "If this capex is going to blow up, there will be signs. This is not one of them.",
+                "type": "unstyled"
+              },
+              {
+                "key": "5pihi",
+                "data": {},
+                "entityRanges": [
+                  {
+                    "key": 2,
+                    "length": 1,
+                    "offset": 0
+                  }
+                ],
+                "inlineStyleRanges": [],
+                "text": " ",
+                "type": "atomic"
+              },
+              {
+                "key": "eqd3g",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "Cloud revenue accelerated to 48% growth in Q4, hitting $17.7 billion [1]. Operating margins expanded from 17.5% to 30.1%. Operating profit hit $5.3 billion for the quarter, up 154% year-over-year.",
+                "type": "unstyled"
+              },
+              {
+                "key": "ef8m3",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "That's reason enough to step on the gas.",
+                "type": "unstyled"
+              },
+              {
+                "key": "sh22",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "And the outstanding backlog is wild. Cloud backlog is now apparently $240 billion, more than double YoY [9].",
+                "type": "unstyled"
+              },
+              {
+                "key": "djkap",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "This isn't speculative buildout hoping customers show up. The demand is BEGGING for more.",
+                "type": "unstyled"
+              },
+              {
+                "key": "4dfaa",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "Cloud is now on an annual run rate exceeding $70 billion. If 48% growth holds for even a few more quarters, we're looking at a $100B+ cloud business within two years. At 30% operating margins, that's $30 billion in annual operating income from cloud alone.",
+                "type": "unstyled"
+              },
+              {
+                "key": "aaca8",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "The capex starts to look less like risk and more like informed self interest. ",
+                "type": "unstyled"
+              },
+              {
+                "key": "boftu",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "Will it work?",
+                "type": "unstyled"
+              },
+              {
+                "key": "f416n",
+                "data": {},
+                "entityRanges": [
+                  {
+                    "key": 3,
+                    "length": 1,
+                    "offset": 0
+                  }
+                ],
+                "inlineStyleRanges": [],
+                "text": " ",
+                "type": "atomic"
+              },
+              {
+                "key": "51int",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "Meta's AI-ROI & Google Ads",
+                "type": "header-one"
+              },
+              {
+                "key": "2sibt",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "Let's put aside cloud and Google's other businesses for a moment, and just focus on the cash cow: ads.",
+                "type": "unstyled"
+              },
+              {
+                "key": "74uop",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "Zuck faced the same capex skepticism last year. Meta guided $115-135 billion for 2026 after spending $72 billion in 2025 [16]. Street worried the spending was reckless.",
+                "type": "unstyled"
+              },
+              {
+                "key": "5ujs5",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "The returns are now showing up in the numbers.",
+                "type": "unstyled"
+              },
+              {
+                "key": "c9iae",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "Meta revealed that Advantage+ products generate $4.52 in revenue for every $1 advertisers spend - a 22% improvement over baseline campaigns and is tracking $60 billion in annualized revenue [17, 18]. Time spent on Facebook increased 5%, Instagram 6%. Video engagement grew over 20% year-over-year.",
+                "type": "unstyled"
+              },
+              {
+                "key": "5ifr2",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "The mechanism is straightforward: more compute enables better recommendation models, which drive higher engagement, which improves ad targeting, which increases advertiser ROI, which commands higher ad prices. Meta doubled the GPUs training their ads ranking model and the results showed up directly for their customers.",
+                "type": "unstyled"
+              },
+              {
+                "key": "2f4j3",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "Revenue hit $51 billion in Q4, up 26% year-over-year. Ad impressions climbed 14%. Average price per ad increased 10%. EPS surged 20% despite record infrastructure spending [19].",
+                "type": "unstyled"
+              },
+              {
+                "key": "bfc7n",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "Extreme compute capex improved the ads business dramatically.",
+                "type": "unstyled"
+              },
+              {
+                "key": "ffmqq",
+                "data": {},
+                "entityRanges": [
+                  {
+                    "key": 4,
+                    "length": 1,
+                    "offset": 0
+                  }
+                ],
+                "inlineStyleRanges": [],
+                "text": " ",
+                "type": "atomic"
+              },
+              {
+                "key": "16joi",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "Google's AI Surface Area",
+                "type": "header-two"
+              },
+              {
+                "key": "e6qii",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "Google has even more room to run the same playbook.",
+                "type": "unstyled"
+              },
+              {
+                "key": "70n95",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "YouTube crossed $60 billion in 2025 revenue. Q4 alone was $11.4 billion, up 9% year-over-year [20]. Shorts monetization now matches in-stream rates in the US - a meaningful milestone given how much watch time has shifted to short-form. Interactive direct response ads exceeded a $1 billion global revenue run rate.",
+                "type": "unstyled"
+              },
+              {
+                "key": "44ba7",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "Search grew 15% year-over-year in Q3 [21]. AI Max became their fastest-growing AI-powered search ads product, with hundreds of thousands of advertisers adopting it within months of global launch. Kayak reported 12% higher conversion value in early tests.",
+                "type": "unstyled"
+              },
+              {
+                "key": "eavel",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "The combined advertising business exceeds $350 billion annually. If compute-driven improvements to recommendation and targeting can move the needle even a few percentage points - as they demonstrably have at Meta - the capex pays for itself quickly.",
+                "type": "unstyled"
+              },
+              {
+                "key": "69kkb",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "And then there's cloud, which is its own growth engine entirely.",
+                "type": "unstyled"
+              },
+              {
+                "key": "a3c4i",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "Alphabet crossed $400 billion in annual revenue for the first time in 2025 [22]. Net income surged 30% to $34.5 billion in Q4. The capex isn't coming from a company stretching to keep up. It's coming from a company with the cash flow to build infrastructure at scale while growing profits.",
+                "type": "unstyled"
+              },
+              {
+                "key": "76aan",
+                "data": {},
+                "entityRanges": [
+                  {
+                    "key": 5,
+                    "length": 1,
+                    "offset": 0
+                  }
+                ],
+                "inlineStyleRanges": [],
+                "text": " ",
+                "type": "atomic"
+              },
+              {
+                "key": "ff0c8",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "The Dotcom Comparison - And Why It's Different",
+                "type": "header-two"
+              },
+              {
+                "key": "veim",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "The dotcom buildout created a bandwidth glut that took a decade to absorb. ",
+                "type": "unstyled"
+              },
+              {
+                "key": "efo6p",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "By 2004, bandwidth costs had fallen 90% despite internet usage doubling every few years. As late as 2005, 85% of US broadband capacity sat unused [2]. Telecom stocks lost 80-90% of their value. The overcapacity was real and the destruction of capital was massive.",
+                "type": "unstyled"
+              },
+              {
+                "key": "et9ge",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "But the infrastructure enabled everything that followed. Streaming, cloud computing, mobile internet, the entire modern digital economy runs on fiber laid during the bubble. The investment wasn't wasted. It was early.",
+                "type": "unstyled"
+              },
+              {
+                "key": "4s0tk",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "Three differences stand out today.",
+                "type": "unstyled"
+              },
+              {
+                "key": "8esvu",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [
+                  {
+                    "length": 35,
+                    "offset": 0,
+                    "style": "Bold"
+                  }
+                ],
+                "text": "First, the buyers are the builders. In 2000, telecom companies laid fiber hoping enterprise customers would show up. Google isn't hoping. They have $240 billion in cloud backlog. Amazon, Microsoft, and Meta have similar demand visibility (though MSFT is a bit overexposed to OAI).",
+                "type": "unstyled"
+              },
+              {
+                "key": "6n8f7",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [
+                  {
+                    "length": 41,
+                    "offset": 0,
+                    "style": "Bold"
+                  }
+                ],
+                "text": "Second, the builders have balance sheets. The telecom buildout was heavily debt-financed. When demand didn't materialize on schedule, the companies collapsed. Today's hyperscalers are funding capex largely from operating cash flow. Alphabet generated $34.5 billion in net income last quarter.",
+                "type": "unstyled"
+              },
+              {
+                "key": "9unog",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [
+                  {
+                    "length": 39,
+                    "offset": 0,
+                    "style": "Bold"
+                  }
+                ],
+                "text": "Third, the returns are visible quickly. Meta can point to specific ROI improvements from compute investment. Google Cloud margins are expanding as scale increases. The feedback loop between spending and returns is measurable quarter by quarter.",
+                "type": "unstyled"
+              },
+              {
+                "key": "4k497",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "This doesn't mean overcapacity is impossible. If AI demand plateaus or the competitive dynamics shift, some of this infrastructure could sit underutilized. But the structural setup is different from 2000.",
+                "type": "unstyled"
+              },
+              {
+                "key": "4cdn9",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "I don't think this is peak AI mania. I think we have years of runway ahead.",
+                "type": "unstyled"
+              },
+              {
+                "key": "265n2",
+                "data": {},
+                "entityRanges": [
+                  {
+                    "key": 6,
+                    "length": 1,
+                    "offset": 0
+                  }
+                ],
+                "inlineStyleRanges": [],
+                "text": " ",
+                "type": "atomic"
+              },
+              {
+                "key": "98bq1",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "Some Open Questions",
+                "type": "header-two"
+              },
+              {
+                "key": "2frmp",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [
+                  {
+                    "length": 49,
+                    "offset": 0,
+                    "style": "Bold"
+                  }
+                ],
+                "text": "How long can cloud growth compound at this rate? The law of large numbers eventually kicks in. GCP is on a $70B+ run rate. Growing 48% from here means adding $33 billion in annual revenue. At some point the numbers become impossible.",
+                "type": "unstyled"
+              },
+              {
+                "key": "3icl3",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [
+                  {
+                    "length": 24,
+                    "offset": 0,
+                    "style": "Bold"
+                  }
+                ],
+                "text": "What happens to margins? Alphabet is spending roughly 23% of revenue on capex. That's historically high. If spend moderates while revenue keeps growing, margins could expand meaningfully. But if the competitive dynamics require sustained spend, the margin picture is different.",
+                "type": "unstyled"
+              },
+              {
+                "key": "doolf",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [
+                  {
+                    "length": 60,
+                    "offset": 0,
+                    "style": "Bold"
+                  }
+                ],
+                "text": "How much of the advertising improvement is ahead vs. behind? Meta has shown the playbook works. Google may be earlier in deploying this amount of compute against their ads business. The YouTube and Search improvements could have more room to run. Or the low-hanging fruit could already be picked. Certainly, they've been working on this problem for a long time. ",
+                "type": "unstyled"
+              },
+              {
+                "key": "8sehe",
+                "data": {},
+                "entityRanges": [
+                  {
+                    "key": 7,
+                    "length": 1,
+                    "offset": 0
+                  }
+                ],
+                "inlineStyleRanges": [],
+                "text": " ",
+                "type": "atomic"
+              },
+              {
+                "key": "5sgbj",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "Bottom Line",
+                "type": "header-two"
+              },
+              {
+                "key": "8o6kn",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "$180 billion exceeds the peak of the dotcom telecom buildout in real terms. It rivals the great infrastructure projects of the 20th century. It's a crazy number",
+                "type": "unstyled"
+              },
+              {
+                "key": "7t35d",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "But the context matters. This is demand-driven expansion from a company with a $240B cloud backlog, 48% cloud growth, and the cash flow to fund it. ",
+                "type": "unstyled"
+              },
+              {
+                "key": "7res",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "Meta has already demonstrated that compute investment translates to measurable advertising improvements. Google has even more surface area to run the same playbook.",
+                "type": "unstyled"
+              },
+              {
+                "key": "d7r6d",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "Could it be too much? Maybe. But the structural setup looks different from past infrastructure manias. The demand is immense. The balance sheets are strong. The returns are showing up in growth & earnings.",
+                "type": "unstyled"
+              },
+              {
+                "key": "bdur",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "I don't think this is the top. I'd put it mid-cycle.",
+                "type": "unstyled"
+              },
+              {
+                "key": "20orh",
+                "data": {},
+                "entityRanges": [
+                  {
+                    "key": 8,
+                    "length": 1,
+                    "offset": 0
+                  }
+                ],
+                "inlineStyleRanges": [],
+                "text": " ",
+                "type": "atomic"
+              },
+              {
+                "key": "d53n2",
+                "data": {},
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "Sources:",
+                "type": "unstyled"
+              },
+              {
+                "key": "71od",
+                "data": {
+                  "urls": [
+                    {
+                      "fromIndex": 4,
+                      "toIndex": 143,
+                      "text": "https://www.benzinga.com/markets/earnings/26/02/50396139/alphabet-q4-highlights-google-cloud-revenue-up-48-youtube-tops-60-billion-for-2025"
+                    }
+                  ]
+                },
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "[1] https://www.benzinga.com/markets/earnings/26/02/50396139/alphabet-q4-highlights-google-cloud-revenue-up-48-youtube-tops-60-billion-for-2025",
+                "type": "unstyled"
+              },
+              {
+                "key": "b7koe",
+                "data": {
+                  "urls": [
+                    {
+                      "fromIndex": 4,
+                      "toIndex": 75,
+                      "text": "https://www.fabricatedknowledge.com/p/lessons-from-history-the-rise-and"
+                    }
+                  ]
+                },
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "[2] https://www.fabricatedknowledge.com/p/lessons-from-history-the-rise-and",
+                "type": "unstyled"
+              },
+              {
+                "key": "bcfao",
+                "data": {
+                  "urls": [
+                    {
+                      "fromIndex": 4,
+                      "toIndex": 156,
+                      "text": "https://techblog.comsoc.org/2025/09/27/big-tech-spending-on-ai-data-centers-and-infrastructure-vs-the-fiber-optic-buildout-during-the-dot-com-boom-bust/"
+                    }
+                  ]
+                },
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "[3] https://techblog.comsoc.org/2025/09/27/big-tech-spending-on-ai-data-centers-and-infrastructure-vs-the-fiber-optic-buildout-during-the-dot-com-boom-bust/",
+                "type": "unstyled"
+              },
+              {
+                "key": "5m6bi",
+                "data": {
+                  "urls": [
+                    {
+                      "fromIndex": 4,
+                      "toIndex": 116,
+                      "text": "https://apollo11space.com/the-true-cost-of-reaching-the-moon-a-comprehensive-analysis-of-apollo-program-funding/"
+                    }
+                  ]
+                },
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "[4] https://apollo11space.com/the-true-cost-of-reaching-the-moon-a-comprehensive-analysis-of-apollo-program-funding/",
+                "type": "unstyled"
+              },
+              {
+                "key": "85raq",
+                "data": {
+                  "urls": [
+                    {
+                      "fromIndex": 4,
+                      "toIndex": 44,
+                      "text": "https://sgp.fas.org/crs/misc/RL34645.pdf"
+                    }
+                  ]
+                },
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "[5] https://sgp.fas.org/crs/misc/RL34645.pdf",
+                "type": "unstyled"
+              },
+              {
+                "key": "3vld1",
+                "data": {
+                  "urls": [
+                    {
+                      "fromIndex": 4,
+                      "toIndex": 56,
+                      "text": "https://x.com/trevornoren/status/1976656878085275958"
+                    }
+                  ]
+                },
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "[6] https://x.com/trevornoren/status/1976656878085275958",
+                "type": "unstyled"
+              },
+              {
+                "key": "a0ugi",
+                "data": {
+                  "urls": [
+                    {
+                      "fromIndex": 4,
+                      "toIndex": 166,
+                      "text": "https://techblog.comsoc.org/2025/12/22/hyperscaler-capex-600-bn-in-2026-a-36-increase-over-2025-while-global-spending-on-cloud-infrastructure-services-skyrockets/"
+                    }
+                  ]
+                },
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "[7] https://techblog.comsoc.org/2025/12/22/hyperscaler-capex-600-bn-in-2026-a-36-increase-over-2025-while-global-spending-on-cloud-infrastructure-services-skyrockets/",
+                "type": "unstyled"
+              },
+              {
+                "key": "fmune",
+                "data": {
+                  "urls": [
+                    {
+                      "fromIndex": 4,
+                      "toIndex": 108,
+                      "text": "https://www.goldmansachs.com/insights/articles/why-ai-companies-may-invest-more-than-500-billion-in-2026"
+                    }
+                  ]
+                },
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "[8] https://www.goldmansachs.com/insights/articles/why-ai-companies-may-invest-more-than-500-billion-in-2026",
+                "type": "unstyled"
+              },
+              {
+                "key": "1ugtq",
+                "data": {
+                  "urls": [
+                    {
+                      "fromIndex": 4,
+                      "toIndex": 110,
+                      "text": "https://www.fool.com/earnings/call-transcripts/2026/02/04/alphabet-googl-q4-2025-earnings-call-transcript/"
+                    }
+                  ]
+                },
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "[9] https://www.fool.com/earnings/call-transcripts/2026/02/04/alphabet-googl-q4-2025-earnings-call-transcript/",
+                "type": "unstyled"
+              },
+              {
+                "key": "ata9u",
+                "data": {
+                  "urls": [
+                    {
+                      "fromIndex": 5,
+                      "toIndex": 115,
+                      "text": "https://www.computerweekly.com/news/366618892/Google-Cloud-revenue-soars-as-Alphabet-continues-to-ride-AI-wave"
+                    }
+                  ]
+                },
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "[10] https://www.computerweekly.com/news/366618892/Google-Cloud-revenue-soars-as-Alphabet-continues-to-ride-AI-wave",
+                "type": "unstyled"
+              },
+              {
+                "key": "d0u7o",
+                "data": {
+                  "urls": [
+                    {
+                      "fromIndex": 5,
+                      "toIndex": 84,
+                      "text": "https://enkiai.com/nvidia/nvidia-power-strategy-2025-inside-the-ai-energy-pivot"
+                    }
+                  ]
+                },
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "[11] https://enkiai.com/nvidia/nvidia-power-strategy-2025-inside-the-ai-energy-pivot",
+                "type": "unstyled"
+              },
+              {
+                "key": "4pj2o",
+                "data": {
+                  "urls": [
+                    {
+                      "fromIndex": 5,
+                      "toIndex": 129,
+                      "text": "https://www.deloitte.com/us/en/insights/industry/power-and-utilities/data-center-infrastructure-artificial-intelligence.html"
+                    }
+                  ]
+                },
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "[12] https://www.deloitte.com/us/en/insights/industry/power-and-utilities/data-center-infrastructure-artificial-intelligence.html",
+                "type": "unstyled"
+              },
+              {
+                "key": "13ugr",
+                "data": {
+                  "urls": [
+                    {
+                      "fromIndex": 5,
+                      "toIndex": 149,
+                      "text": "https://www.spglobal.com/en/research-insights/special-reports/look-forward/data-center-frontiers/global-ai-power-demand-challenges-opportunities"
+                    }
+                  ]
+                },
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "[13] https://www.spglobal.com/en/research-insights/special-reports/look-forward/data-center-frontiers/global-ai-power-demand-challenges-opportunities",
+                "type": "unstyled"
+              },
+              {
+                "key": "6pfk2",
+                "data": {
+                  "urls": [
+                    {
+                      "fromIndex": 5,
+                      "toIndex": 65,
+                      "text": "https://iot-analytics.com/data-center-infrastructure-market/"
+                    }
+                  ]
+                },
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "[14] https://iot-analytics.com/data-center-infrastructure-market/",
+                "type": "unstyled"
+              },
+              {
+                "key": "9s7ut",
+                "data": {
+                  "urls": [
+                    {
+                      "fromIndex": 5,
+                      "toIndex": 98,
+                      "text": "https://www.bridgewater.com/research-and-insights/the-macro-implications-of-the-ai-capex-boom"
+                    }
+                  ]
+                },
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "[15] https://www.bridgewater.com/research-and-insights/the-macro-implications-of-the-ai-capex-boom",
+                "type": "unstyled"
+              },
+              {
+                "key": "d7efs",
+                "data": {
+                  "urls": [
+                    {
+                      "fromIndex": 5,
+                      "toIndex": 80,
+                      "text": "https://finance.yahoo.com/news/meta-platforms-heavy-ai-capex-140401780.html"
+                    }
+                  ]
+                },
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "[16] https://finance.yahoo.com/news/meta-platforms-heavy-ai-capex-140401780.html",
+                "type": "unstyled"
+              },
+              {
+                "key": "1s0u0",
+                "data": {
+                  "urls": [
+                    {
+                      "fromIndex": 5,
+                      "toIndex": 98,
+                      "text": "https://seekingalpha.com/article/4856286-meta-stock-ai-revenue-leader-nobody-is-talking-about"
+                    }
+                  ]
+                },
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "[17] https://seekingalpha.com/article/4856286-meta-stock-ai-revenue-leader-nobody-is-talking-about",
+                "type": "unstyled"
+              },
+              {
+                "key": "8h3hg",
+                "data": {
+                  "urls": [
+                    {
+                      "fromIndex": 5,
+                      "toIndex": 122,
+                      "text": "https://beth-kindig.medium.com/the-ai-revenue-leader-nobody-is-talking-about-second-only-to-nvidia-stock-8f0038689f0c"
+                    }
+                  ]
+                },
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "[18] https://beth-kindig.medium.com/the-ai-revenue-leader-nobody-is-talking-about-second-only-to-nvidia-stock-8f0038689f0c",
+                "type": "unstyled"
+              },
+              {
+                "key": "bj962",
+                "data": {
+                  "urls": [
+                    {
+                      "fromIndex": 5,
+                      "toIndex": 107,
+                      "text": "https://www.investing.com/analysis/meta-rebounds-toward-648-on-ai-capex-surge-and-ad-revival-200670990"
+                    }
+                  ]
+                },
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "[19] https://www.investing.com/analysis/meta-rebounds-toward-648-on-ai-capex-surge-and-ad-revival-200670990",
+                "type": "unstyled"
+              },
+              {
+                "key": "1d05q",
+                "data": {
+                  "urls": [
+                    {
+                      "fromIndex": 5,
+                      "toIndex": 81,
+                      "text": "https://thedesk.net/2026/02/alphabet-youtube-google-q4-2025-earnings-report/"
+                    }
+                  ]
+                },
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "[20] https://thedesk.net/2026/02/alphabet-youtube-google-q4-2025-earnings-report/",
+                "type": "unstyled"
+              },
+              {
+                "key": "8ag7g",
+                "data": {
+                  "urls": [
+                    {
+                      "fromIndex": 5,
+                      "toIndex": 120,
+                      "text": "https://www.marketingdive.com/news/googles-full-stack-ai-approach-drives-q3-search-youtube-ad-revenue-gains/804234/"
+                    }
+                  ]
+                },
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "[21] https://www.marketingdive.com/news/googles-full-stack-ai-approach-drives-q3-search-youtube-ad-revenue-gains/804234/",
+                "type": "unstyled"
+              },
+              {
+                "key": "dmtj4",
+                "data": {
+                  "urls": [
+                    {
+                      "fromIndex": 5,
+                      "toIndex": 78,
+                      "text": "https://www.thewrap.com/industry-news/business/alphabet-earnings-q4-2025/"
+                    }
+                  ]
+                },
+                "entityRanges": [],
+                "inlineStyleRanges": [],
+                "text": "[22] https://www.thewrap.com/industry-news/business/alphabet-earnings-q4-2025/",
+                "type": "unstyled"
+              }
+            ],
+            "entityMap": [
+              {
+                "key": "8",
+                "value": {
+                  "type": "DIVIDER",
+                  "mutability": "Immutable",
+                  "data": {
+                    "entityKey": "e05830fa-002c-425a-8339-c7ecac741aa4"
+                  }
+                }
+              },
+              {
+                "key": "4",
+                "value": {
+                  "type": "DIVIDER",
+                  "mutability": "Immutable",
+                  "data": {
+                    "entityKey": "25340749-bb57-4e34-b3ae-f87a3b76287a"
+                  }
+                }
+              },
+              {
+                "key": "5",
+                "value": {
+                  "type": "DIVIDER",
+                  "mutability": "Immutable",
+                  "data": {
+                    "entityKey": "85510ded-6ba5-45f6-ac5c-be4cf8aa1da5"
+                  }
+                }
+              },
+              {
+                "key": "6",
+                "value": {
+                  "type": "DIVIDER",
+                  "mutability": "Immutable",
+                  "data": {
+                    "entityKey": "d6ea3adc-692b-4f52-a6e1-e41e7afac3f6"
+                  }
+                }
+              },
+              {
+                "key": "1",
+                "value": {
+                  "type": "DIVIDER",
+                  "mutability": "Immutable",
+                  "data": {
+                    "entityKey": "de37aa6b-2bd8-48da-99e3-3c434743705a"
+                  }
+                }
+              },
+              {
+                "key": "0",
+                "value": {
+                  "type": "DIVIDER",
+                  "mutability": "Immutable",
+                  "data": {
+                    "entityKey": "09d6bc96-5346-4a8a-af73-5fd352b1f6be"
+                  }
+                }
+              },
+              {
+                "key": "2",
+                "value": {
+                  "type": "MEDIA",
+                  "mutability": "Immutable",
+                  "data": {
+                    "entityKey": "e5cb31fc-2e60-426f-bac5-f7c8b11d661d",
+                    "mediaItems": [
+                      {
+                        "localMediaId": "3",
+                        "mediaCategory": "DraftTweetImage",
+                        "mediaId": "2019269966156165122"
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "key": "7",
+                "value": {
+                  "type": "DIVIDER",
+                  "mutability": "Immutable",
+                  "data": {
+                    "entityKey": "297d8e42-40f5-49ff-8e2a-a1e3cd8288aa"
+                  }
+                }
+              },
+              {
+                "key": "3",
+                "value": {
+                  "type": "DIVIDER",
+                  "mutability": "Immutable",
+                  "data": {
+                    "entityKey": "81e5c489-47d1-40d3-ad77-42cee3f8bcff"
+                  }
+                }
+              }
+            ]
+          },
+          "plain_text": "Google just guided $180 billion in capex for 2026. Nearly double their 2025 spend. The largest single-year infrastructure commitment in corporate history. \nI'm certainly not the foremost analyst on hyperscaler capex, but wanted to explore how this may impact markets.\nThe normal reaction is to worry about overcapacity, ROI, and bubbles. Let's withhold judgement for a moment and look at the background.\n \nThe Scale of What We're Talking About\nBig numbers get pretty abstract, so I wanted to find some context on what $180 billion means.\nThe ENTIRE dotcom telecom buildout - all that fiber that created the bandwidth glut and bankrupted half the industry - was roughly $500 billion over five years. Telecom companies raised $1.6 trillion on Wall Street and floated $600 billion in bonds to crisscross the country in digital infrastructure [2]. Peak annual spending in 2000 was approximately $120 billion, or about $213 billion in today's dollars [3].\nGoogle alone is approaching that... in a single year.\nFor comparison:\n> The Apollo Program cost $288 billion inflation-adjusted over 13 years [4]\n> The Manhattan Project cost roughly $30 billion in today's dollars [5]\n> The Interstate Highway System ran $500-618 billion inflation-adjusted over 35 years [6]\nGoogle's 2026 capex sits comfortably in that company. And they're not alone - the big five hyperscalers (Amazon, Microsoft, Alphabet, Meta, Oracle) are projected to spend over $600 billion combined in 2026, a 36% increase over 2025 [7]. Not to mention upward revisions yet to come after this Google print. \nThis is infrastructure spending at a scale we've rarely seen outside of wartime or generational public works projects. Except it's happening in the private sector, driven by demand rather than government mandates.\nHow risky is it?\n \nOn Risk: The Cloud Acceleration Example\nIf this capex is going to blow up, there will be signs. This is not one of them.\n \nCloud revenue accelerated to 48% growth in Q4, hitting $17.7 billion [1]. Operating margins expanded from 17.5% to 30.1%. Operating profit hit $5.3 billion for the quarter, up 154% year-over-year.\nThat's reason enough to step on the gas.\nAnd the outstanding backlog is wild. Cloud backlog is now apparently $240 billion, more than double YoY [9].\nThis isn't speculative buildout hoping customers show up. The demand is BEGGING for more.\nCloud is now on an annual run rate exceeding $70 billion. If 48% growth holds for even a few more quarters, we're looking at a $100B+ cloud business within two years. At 30% operating margins, that's $30 billion in annual operating income from cloud alone.\nThe capex starts to look less like risk and more like informed self interest. \nWill it work?\n \nMeta's AI-ROI & Google Ads\nLet's put aside cloud and Google's other businesses for a moment, and just focus on the cash cow: ads.\nZuck faced the same capex skepticism last year. Meta guided $115-135 billion for 2026 after spending $72 billion in 2025 [16]. Street worried the spending was reckless.\nThe returns are now showing up in the numbers.\nMeta revealed that Advantage+ products generate $4.52 in revenue for every $1 advertisers spend - a 22% improvement over baseline campaigns and is tracking $60 billion in annualized revenue [17, 18]. Time spent on Facebook increased 5%, Instagram 6%. Video engagement grew over 20% year-over-year.\nThe mechanism is straightforward: more compute enables better recommendation models, which drive higher engagement, which improves ad targeting, which increases advertiser ROI, which commands higher ad prices. Meta doubled the GPUs training their ads ranking model and the results showed up directly for their customers.\nRevenue hit $51 billion in Q4, up 26% year-over-year. Ad impressions climbed 14%. Average price per ad increased 10%. EPS surged 20% despite record infrastructure spending [19].\nExtreme compute capex improved the ads business dramatically.\n \nGoogle's AI Surface Area\nGoogle has even more room to run the same playbook.\nYouTube crossed $60 billion in 2025 revenue. Q4 alone was $11.4 billion, up 9% year-over-year [20]. Shorts monetization now matches in-stream rates in the US - a meaningful milestone given how much watch time has shifted to short-form. Interactive direct response ads exceeded a $1 billion global revenue run rate.\nSearch grew 15% year-over-year in Q3 [21]. AI Max became their fastest-growing AI-powered search ads product, with hundreds of thousands of advertisers adopting it within months of global launch. Kayak reported 12% higher conversion value in early tests.\nThe combined advertising business exceeds $350 billion annually. If compute-driven improvements to recommendation and targeting can move the needle even a few percentage points - as they demonstrably have at Meta - the capex pays for itself quickly.\nAnd then there's cloud, which is its own growth engine entirely.\nAlphabet crossed $400 billion in annual revenue for the first time in 2025 [22]. Net income surged 30% to $34.5 billion in Q4. The capex isn't coming from a company stretching to keep up. It's coming from a company with the cash flow to build infrastructure at scale while growing profits.\n \nThe Dotcom Comparison - And Why It's Different\nThe dotcom buildout created a bandwidth glut that took a decade to absorb. \nBy 2004, bandwidth costs had fallen 90% despite internet usage doubling every few years. As late as 2005, 85% of US broadband capacity sat unused [2]. Telecom stocks lost 80-90% of their value. The overcapacity was real and the destruction of capital was massive.\nBut the infrastructure enabled everything that followed. Streaming, cloud computing, mobile internet, the entire modern digital economy runs on fiber laid during the bubble. The investment wasn't wasted. It was early.\nThree differences stand out today.\nFirst, the buyers are the builders. In 2000, telecom companies laid fiber hoping enterprise customers would show up. Google isn't hoping. They have $240 billion in cloud backlog. Amazon, Microsoft, and Meta have similar demand visibility (though MSFT is a bit overexposed to OAI).\nSecond, the builders have balance sheets. The telecom buildout was heavily debt-financed. When demand didn't materialize on schedule, the companies collapsed. Today's hyperscalers are funding capex largely from operating cash flow. Alphabet generated $34.5 billion in net income last quarter.\nThird, the returns are visible quickly. Meta can point to specific ROI improvements from compute investment. Google Cloud margins are expanding as scale increases. The feedback loop between spending and returns is measurable quarter by quarter.\nThis doesn't mean overcapacity is impossible. If AI demand plateaus or the competitive dynamics shift, some of this infrastructure could sit underutilized. But the structural setup is different from 2000.\nI don't think this is peak AI mania. I think we have years of runway ahead.\n \nSome Open Questions\nHow long can cloud growth compound at this rate? The law of large numbers eventually kicks in. GCP is on a $70B+ run rate. Growing 48% from here means adding $33 billion in annual revenue. At some point the numbers become impossible.\nWhat happens to margins? Alphabet is spending roughly 23% of revenue on capex. That's historically high. If spend moderates while revenue keeps growing, margins could expand meaningfully. But if the competitive dynamics require sustained spend, the margin picture is different.\nHow much of the advertising improvement is ahead vs. behind? Meta has shown the playbook works. Google may be earlier in deploying this amount of compute against their ads business. The YouTube and Search improvements could have more room to run. Or the low-hanging fruit could already be picked. Certainly, they've been working on this problem for a long time. \n \nBottom Line\n$180 billion exceeds the peak of the dotcom telecom buildout in real terms. It rivals the great infrastructure projects of the 20th century. It's a crazy number\nBut the context matters. This is demand-driven expansion from a company with a $240B cloud backlog, 48% cloud growth, and the cash flow to fund it. \nMeta has already demonstrated that compute investment translates to measurable advertising improvements. Google has even more surface area to run the same playbook.\nCould it be too much? Maybe. But the structural setup looks different from past infrastructure manias. The demand is immense. The balance sheets are strong. The returns are showing up in growth & earnings.\nI don't think this is the top. I'd put it mid-cycle.\n \nSources:\n[1] https://www.benzinga.com/markets/earnings/26/02/50396139/alphabet-q4-highlights-google-cloud-revenue-up-48-youtube-tops-60-billion-for-2025\n[2] https://www.fabricatedknowledge.com/p/lessons-from-history-the-rise-and\n[3] https://techblog.comsoc.org/2025/09/27/big-tech-spending-on-ai-data-centers-and-infrastructure-vs-the-fiber-optic-buildout-during-the-dot-com-boom-bust/\n[4] https://apollo11space.com/the-true-cost-of-reaching-the-moon-a-comprehensive-analysis-of-apollo-program-funding/\n[5] https://sgp.fas.org/crs/misc/RL34645.pdf\n[6] https://x.com/trevornoren/status/1976656878085275958\n[7] https://techblog.comsoc.org/2025/12/22/hyperscaler-capex-600-bn-in-2026-a-36-increase-over-2025-while-global-spending-on-cloud-infrastructure-services-skyrockets/\n[8] https://www.goldmansachs.com/insights/articles/why-ai-companies-may-invest-more-than-500-billion-in-2026\n[9] https://www.fool.com/earnings/call-transcripts/2026/02/04/alphabet-googl-q4-2025-earnings-call-transcript/\n[10] https://www.computerweekly.com/news/366618892/Google-Cloud-revenue-soars-as-Alphabet-continues-to-ride-AI-wave\n[11] https://enkiai.com/nvidia/nvidia-power-strategy-2025-inside-the-ai-energy-pivot\n[12] https://www.deloitte.com/us/en/insights/industry/power-and-utilities/data-center-infrastructure-artificial-intelligence.html\n[13] https://www.spglobal.com/en/research-insights/special-reports/look-forward/data-center-frontiers/global-ai-power-demand-challenges-opportunities\n[14] https://iot-analytics.com/data-center-infrastructure-market/\n[15] https://www.bridgewater.com/research-and-insights/the-macro-implications-of-the-ai-capex-boom\n[16] https://finance.yahoo.com/news/meta-platforms-heavy-ai-capex-140401780.html\n[17] https://seekingalpha.com/article/4856286-meta-stock-ai-revenue-leader-nobody-is-talking-about\n[18] https://beth-kindig.medium.com/the-ai-revenue-leader-nobody-is-talking-about-second-only-to-nvidia-stock-8f0038689f0c\n[19] https://www.investing.com/analysis/meta-rebounds-toward-648-on-ai-capex-surge-and-ad-revival-200670990\n[20] https://thedesk.net/2026/02/alphabet-youtube-google-q4-2025-earnings-report/\n[21] https://www.marketingdive.com/news/googles-full-stack-ai-approach-drives-q3-search-youtube-ad-revenue-gains/804234/\n[22] https://www.thewrap.com/industry-news/business/alphabet-earnings-q4-2025/",
+          "media_entities": [
+            {
+              "id": "QXBpTWVkaWE6DAAFCgABHAXjVe5acAIKAAIb3LFT2VqwAAAA",
+              "media_key": "3_2019269966156165122",
+              "media_id": "2019269966156165122",
+              "media_info": {
+                "__typename": "ApiImage",
+                "original_img_height": 1133,
+                "original_img_width": 1600,
+                "original_img_url": "https://pbs.twimg.com/media/HAXjVe5acAIkin9.jpg",
+                "color_info": {
+                  "palette": [
+                    {
+                      "percentage": 98.06,
+                      "rgb": {
+                        "blue": 52,
+                        "green": 44,
+                        "red": 44
+                      }
+                    },
+                    {
+                      "percentage": 1.17,
+                      "rgb": {
+                        "blue": 51,
+                        "green": 53,
+                        "red": 90
+                      }
+                    },
+                    {
+                      "percentage": 0.46,
+                      "rgb": {
+                        "blue": 132,
+                        "green": 128,
+                        "red": 129
+                      }
+                    },
+                    {
+                      "percentage": 0.21,
+                      "rgb": {
+                        "blue": 103,
+                        "green": 69,
+                        "red": 40
+                      }
+                    },
+                    {
+                      "percentage": 0.1,
+                      "rgb": {
+                        "blue": 49,
+                        "green": 64,
+                        "red": 144
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "lifecycle_state": {
+            "modified_at_secs": 1770318594
+          },
+          "metadata": {
+            "first_published_at_secs": 1770318594
+          }
+        }
+      }
+    },
+    "grok_analysis_button": true,
+    "legacy": {
+      "bookmark_count": 11,
+      "bookmarked": false,
+      "created_at": "Thu Feb 05 19:09:54 +0000 2026",
+      "conversation_id_str": "2019488673935552978",
+      "display_text_range": [
+        0,
+        23
+      ],
+      "entities": {
+        "hashtags": [],
+        "symbols": [],
+        "timestamps": [],
+        "urls": [
+          {
+            "display_url": "x.com/i/article/2019…",
+            "expanded_url": "http://x.com/i/article/2019247287562895360",
+            "url": "https://t.co/XSV2g4VfMe",
+            "indices": [
+              0,
+              23
+            ]
+          }
+        ],
+        "user_mentions": []
+      },
+      "favorite_count": 13,
+      "favorited": false,
+      "full_text": "https://t.co/XSV2g4VfMe",
+      "is_quote_status": false,
+      "lang": "zxx",
+      "possibly_sensitive": false,
+      "possibly_sensitive_editable": true,
+      "quote_count": 1,
+      "reply_count": 1,
+      "retweet_count": 0,
+      "retweeted": false,
+      "user_id_str": "2007674507587399680",
+      "id_str": "2019488673935552978"
+    },
+    "quick_promote_eligibility": {
+      "eligibility": "IneligibleTweet"
+    }
+  }
+}

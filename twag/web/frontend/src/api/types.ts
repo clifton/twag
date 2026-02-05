@@ -23,6 +23,15 @@ export interface Tweet {
   media_items: MediaItem[] | null;
   has_link: boolean;
   link_summary: string | null;
+  is_x_article: boolean;
+  article_title: string | null;
+  article_preview: string | null;
+  article_text: string | null;
+  article_summary_short: string | null;
+  article_primary_points: ArticlePrimaryPoint[];
+  article_action_items: ArticleActionItem[];
+  article_top_visual: ArticleTopVisual | null;
+  article_processed_at: string | null;
   reactions: string | null;
   is_retweet: boolean;
   retweeted_by_handle: string | null;
@@ -35,6 +44,27 @@ export interface Tweet {
   quote_embed?: QuoteEmbed | null;
   reference_links?: ReferenceLink[];
   display_content?: string | null;
+}
+
+export interface ArticlePrimaryPoint {
+  point: string;
+  reasoning: string;
+  evidence: string;
+}
+
+export interface ArticleActionItem {
+  action: string;
+  trigger: string;
+  horizon: string;
+  confidence: number;
+  tickers: string[];
+}
+
+export interface ArticleTopVisual {
+  url: string;
+  kind: string;
+  why_important: string;
+  key_takeaway: string;
 }
 
 export interface QuoteEmbed {

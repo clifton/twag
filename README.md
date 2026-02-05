@@ -134,6 +134,10 @@ twag fetch --source user -u @NickTimiraos -n 50
 
 # Search tweets
 twag fetch --source search -q "Fed Powell rate" -n 30
+
+# Fetch one status by ID or URL
+twag fetch 2019488673935552978
+twag fetch https://x.com/undrvalue/status/2019488673935552978
 ```
 
 ### Process Commands

@@ -185,6 +185,15 @@ CREATE TABLE IF NOT EXISTS tweets (
     media_items TEXT,
     has_link INTEGER DEFAULT 0,
     link_summary TEXT,
+    is_x_article INTEGER DEFAULT 0,
+    article_title TEXT,
+    article_preview TEXT,
+    article_text TEXT,
+    article_summary_short TEXT,
+    article_primary_points_json TEXT,
+    article_action_items_json TEXT,
+    article_top_visual_json TEXT,
+    article_processed_at TIMESTAMP,
     is_retweet INTEGER DEFAULT 0,
     retweeted_by_handle TEXT,
     retweeted_by_name TEXT,
@@ -395,6 +404,33 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
     if "original_content" not in tweet_columns:
         conn.execute("ALTER TABLE tweets ADD COLUMN original_content TEXT")
 
+    if "is_x_article" not in tweet_columns:
+        conn.execute("ALTER TABLE tweets ADD COLUMN is_x_article INTEGER DEFAULT 0")
+
+    if "article_title" not in tweet_columns:
+        conn.execute("ALTER TABLE tweets ADD COLUMN article_title TEXT")
+
+    if "article_preview" not in tweet_columns:
+        conn.execute("ALTER TABLE tweets ADD COLUMN article_preview TEXT")
+
+    if "article_text" not in tweet_columns:
+        conn.execute("ALTER TABLE tweets ADD COLUMN article_text TEXT")
+
+    if "article_summary_short" not in tweet_columns:
+        conn.execute("ALTER TABLE tweets ADD COLUMN article_summary_short TEXT")
+
+    if "article_primary_points_json" not in tweet_columns:
+        conn.execute("ALTER TABLE tweets ADD COLUMN article_primary_points_json TEXT")
+
+    if "article_action_items_json" not in tweet_columns:
+        conn.execute("ALTER TABLE tweets ADD COLUMN article_action_items_json TEXT")
+
+    if "article_top_visual_json" not in tweet_columns:
+        conn.execute("ALTER TABLE tweets ADD COLUMN article_top_visual_json TEXT")
+
+    if "article_processed_at" not in tweet_columns:
+        conn.execute("ALTER TABLE tweets ADD COLUMN article_processed_at TIMESTAMP")
+
     # Check accounts table columns
     cursor = conn.execute("PRAGMA table_info(accounts)")
     account_columns = {row[1] for row in cursor.fetchall()}
@@ -479,6 +515,10 @@ def insert_tweet(
     has_media: bool = False,
     media_items: list[dict[str, Any]] | None = None,
     has_link: bool = False,
+    is_x_article: bool = False,
+    article_title: str | None = None,
+    article_preview: str | None = None,
+    article_text: str | None = None,
     is_retweet: bool = False,
     retweeted_by_handle: str | None = None,
     retweeted_by_name: str | None = None,
@@ -494,9 +534,10 @@ def insert_tweet(
             INSERT INTO tweets (
                 id, author_handle, author_name, content, created_at, source,
                 has_quote, quote_tweet_id, has_media, media_items, has_link,
+                is_x_article, article_title, article_preview, article_text,
                 is_retweet, retweeted_by_handle, retweeted_by_name, original_tweet_id,
                 original_author_handle, original_author_name, original_content
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 tweet_id,
@@ -510,6 +551,10 @@ def insert_tweet(
                 int(has_media),
                 json.dumps(media_items) if media_items else None,
                 int(has_link),
+                int(is_x_article),
+                article_title,
+                article_preview,
+                article_text,
                 int(is_retweet),
                 retweeted_by_handle,
                 retweeted_by_name,
@@ -609,6 +654,55 @@ def update_tweet_enrichment(
             f"UPDATE tweets SET {', '.join(updates)} WHERE id = ?",
             params,
         )
+
+
+def update_tweet_article(
+    conn: sqlite3.Connection,
+    tweet_id: str,
+    *,
+    article_summary_short: str | None = None,
+    primary_points: list[dict[str, Any]] | None = None,
+    actionable_items: list[dict[str, Any]] | None = None,
+    top_visual: dict[str, Any] | None = None,
+    set_top_visual: bool = False,
+    processed_at: str | None = None,
+    mirror_to_link_summary: bool = True,
+) -> None:
+    """Update structured X article analysis fields for a tweet."""
+    updates: list[str] = []
+    params: list[Any] = []
+
+    if article_summary_short is not None:
+        updates.append("article_summary_short = ?")
+        params.append(article_summary_short)
+        if mirror_to_link_summary:
+            updates.append("link_summary = ?")
+            params.append(article_summary_short)
+
+    if primary_points is not None:
+        updates.append("article_primary_points_json = ?")
+        params.append(json.dumps(primary_points))
+
+    if actionable_items is not None:
+        updates.append("article_action_items_json = ?")
+        params.append(json.dumps(actionable_items))
+
+    if set_top_visual:
+        updates.append("article_top_visual_json = ?")
+        params.append(json.dumps(top_visual) if top_visual else None)
+
+    if processed_at is not None:
+        updates.append("article_processed_at = ?")
+        params.append(processed_at)
+
+    if not updates:
+        return
+
+    params.append(tweet_id)
+    conn.execute(
+        f"UPDATE tweets SET {', '.join(updates)} WHERE id = ?",
+        params,
+    )
 
 
 def update_tweet_analysis(
@@ -1779,6 +1873,15 @@ class FeedTweet:
     media_items: list[dict[str, Any]]
     has_link: bool
     link_summary: str | None
+    is_x_article: bool
+    article_title: str | None
+    article_preview: str | None
+    article_text: str | None
+    article_summary_short: str | None
+    article_primary_points: list[dict[str, Any]]
+    article_action_items: list[dict[str, Any]]
+    article_top_visual: dict[str, Any] | None
+    article_processed_at: datetime | None
     is_retweet: bool
     retweeted_by_handle: str | None
     retweeted_by_name: str | None
@@ -1909,6 +2012,40 @@ def get_feed_tweets(
             except json.JSONDecodeError:
                 media_items = []
 
+        article_primary_points: list[dict[str, Any]] = []
+        if row["article_primary_points_json"]:
+            try:
+                decoded = json.loads(row["article_primary_points_json"])
+                if isinstance(decoded, list):
+                    article_primary_points = [item for item in decoded if isinstance(item, dict)]
+            except json.JSONDecodeError:
+                article_primary_points = []
+
+        article_action_items: list[dict[str, Any]] = []
+        if row["article_action_items_json"]:
+            try:
+                decoded = json.loads(row["article_action_items_json"])
+                if isinstance(decoded, list):
+                    article_action_items = [item for item in decoded if isinstance(item, dict)]
+            except json.JSONDecodeError:
+                article_action_items = []
+
+        article_top_visual: dict[str, Any] | None = None
+        if row["article_top_visual_json"]:
+            try:
+                decoded = json.loads(row["article_top_visual_json"])
+                if isinstance(decoded, dict):
+                    article_top_visual = decoded
+            except json.JSONDecodeError:
+                article_top_visual = None
+
+        article_processed_at = None
+        if row["article_processed_at"]:
+            try:
+                article_processed_at = datetime.fromisoformat(row["article_processed_at"].replace("Z", "+00:00"))
+            except ValueError:
+                article_processed_at = None
+
         results.append(
             FeedTweet(
                 id=row["id"],
@@ -1930,6 +2067,15 @@ def get_feed_tweets(
                 media_items=media_items,
                 has_link=bool(row["has_link"]),
                 link_summary=row["link_summary"],
+                is_x_article=bool(row["is_x_article"]),
+                article_title=row["article_title"],
+                article_preview=row["article_preview"],
+                article_text=row["article_text"],
+                article_summary_short=row["article_summary_short"],
+                article_primary_points=article_primary_points,
+                article_action_items=article_action_items,
+                article_top_visual=article_top_visual,
+                article_processed_at=article_processed_at,
                 is_retweet=bool(row["is_retweet"]),
                 retweeted_by_handle=row["retweeted_by_handle"],
                 retweeted_by_name=row["retweeted_by_name"],

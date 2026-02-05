@@ -220,6 +220,22 @@ class TestTweetFromBirdJson:
 
         assert tweet.has_link is True
 
+    def test_parse_x_article_uses_content_when_plain_text_missing(self):
+        """X article should fall back to long tweet content when plain_text is absent."""
+        article_text = "Intro.\n\n" + ("Detailed section. " * 40)
+        data = {
+            "id": "123",
+            "author": {"username": "writer"},
+            "text": article_text,
+            "article": {"title": "Deep Dive", "previewText": "Short preview"},
+        }
+
+        tweet = Tweet.from_bird_json(data)
+
+        assert tweet.is_x_article is True
+        assert tweet.article_title == "Deep Dive"
+        assert tweet.article_text == article_text.strip()
+
     def test_parse_with_url_in_text(self):
         """Parse tweet with URL detected in text."""
         data = {
@@ -377,6 +393,13 @@ class TestParseBirdOutput:
     def test_parse_invalid_json_lines_skipped(self):
         """Invalid JSON lines should be skipped, not raise."""
         output = '{"id": "1", "author": {"username": "u1"}, "text": "T1"}\nnot json\n{"id": "2", "author": {"username": "u2"}, "text": "T2"}'
+        tweets = _parse_bird_output(output)
+
+        assert len(tweets) == 2
+
+    def test_parse_ndjson_with_non_object_values_skipped(self):
+        """Valid JSON scalar lines should be ignored instead of crashing."""
+        output = '{"id": "1", "author": {"username": "u1"}, "text": "T1"}\n"string"\n42\n{"id": "2", "author": {"username": "u2"}, "text": "T2"}'
         tweets = _parse_bird_output(output)
 
         assert len(tweets) == 2
@@ -601,6 +624,30 @@ class TestReadTweet:
         args = mock_run_bird.call_args[0][0]
         assert "read" in args
         assert "https://x.com/user/status/12345" in args
+
+    def test_read_tweet_falls_back_from_truncated_json_full(self, mock_run_bird):
+        """Fallback to --json when --json-full cannot be parsed, preserving recovered media."""
+        truncated_full = (
+            '{"id":"123","author":{"username":"single"},"text":"Single tweet","_raw":{"article":{"article_results":'
+            '{"result":{"media_entities":[{"media_info":{"original_img_url":"https:\\/\\/pbs.twimg.com\\/media\\/'
+            'HAXmiH6acAEiywu.jpg"}}]}}}}'
+        )
+        fallback_json = {
+            "id": "123",
+            "author": {"username": "single"},
+            "text": "Single tweet",
+            "article": {"title": "Deep Dive", "previewText": "Preview"},
+        }
+        mock_run_bird.side_effect = [
+            (truncated_full, "", 0),
+            (json.dumps(fallback_json), "", 0),
+        ]
+
+        tweet = read_tweet("123")
+
+        assert tweet is not None
+        assert tweet.is_x_article is True
+        assert any(item["url"] == "https://pbs.twimg.com/media/HAXmiH6acAEiywu.jpg" for item in tweet.media_items)
 
 
 # ============================================================================
