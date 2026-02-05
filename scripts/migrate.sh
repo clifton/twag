@@ -3,7 +3,6 @@
 #
 # Usage:
 #   ./migrate.sh /path/to/old/twitter-feed
-#   ./migrate.sh /home/clifton/clawd/memory/twitter-feed
 #
 # This will copy:
 #   - twag.db → ~/.local/share/twag/twag.db

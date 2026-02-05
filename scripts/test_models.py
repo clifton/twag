@@ -2,7 +2,6 @@
 """Test that all configured LLM models are working."""
 
 import sys
-sys.path.insert(0, '/home/clifton/clawd/skills/twitter-aggregator')
 
 import pytest
 

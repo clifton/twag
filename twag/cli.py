@@ -28,7 +28,6 @@ from .db import (
     get_unprocessed_tweets,
     get_tweet_stats,
     init_db,
-    migrate_seen_json,
     mute_account,
     parse_time_range,
     promote_account,
@@ -888,24 +887,6 @@ def db_shell():
 
     db_file = get_database_path()
     subprocess.run(["sqlite3", str(db_file)])
-
-
-@db.command("migrate-seen")
-def db_migrate_seen():
-    """Migrate seen.json to SQLite database."""
-    data_dir = get_data_dir()
-    seen_json = data_dir / "seen.json"
-
-    if not seen_json.exists():
-        click.echo(f"No seen.json found at: {seen_json}", err=True)
-        sys.exit(1)
-
-    with get_connection() as conn:
-        count = migrate_seen_json(conn, seen_json)
-        conn.commit()
-
-    click.echo(f"Migrated {count} tweet IDs from seen.json")
-    click.echo(f"You can now archive: {seen_json}")
 
 
 @db.command("init")
