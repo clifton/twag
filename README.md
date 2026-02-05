@@ -161,6 +161,11 @@ twag process -m claude-opus-4-20250514
 
 # Disable Telegram alerts
 twag process --no-notify
+
+# One-shot: fetch + process + print structured analysis for one status
+twag analyze 2019488673935552978
+twag analyze https://x.com/undrvalue/status/2019488673935552978
+twag analyze 2019488673935552978 --reprocess
 ```
 
 ### Digest Commands

@@ -96,6 +96,113 @@ def _normalize_status_id_or_url(status_id_or_url: str) -> str:
     return value
 
 
+def _json_list(value: str | None) -> list:
+    if not value:
+        return []
+    try:
+        decoded = json.loads(value)
+    except json.JSONDecodeError:
+        return []
+    return decoded if isinstance(decoded, list) else []
+
+
+def _json_object(value: str | None) -> dict:
+    if not value:
+        return {}
+    try:
+        decoded = json.loads(value)
+    except json.JSONDecodeError:
+        return {}
+    return decoded if isinstance(decoded, dict) else {}
+
+
+def _print_status_analysis(row) -> None:
+    score = row["relevance_score"] if row["relevance_score"] is not None else 0.0
+    categories = _json_list(row["category"])
+    tickers = _json_list(row["tickers"])
+
+    click.echo("")
+    click.echo(f"@{row['author_handle']} · {row['id']}")
+    click.echo(f"Score: {score:.1f} · Tier: {row['signal_tier'] or '-'}")
+    if categories:
+        click.echo(f"Categories: {', '.join(str(c) for c in categories)}")
+    if tickers:
+        click.echo(f"Tickers: {', '.join(str(t) for t in tickers)}")
+
+    summary = row["summary"] or row["content_summary"] or ""
+    if summary:
+        click.echo("")
+        click.echo("Summary:")
+        click.echo(summary)
+
+    article_summary = row["article_summary_short"] or ""
+    primary_points = _json_list(row["article_primary_points_json"])
+    actionable_items = _json_list(row["article_action_items_json"])
+    top_visual = _json_object(row["article_top_visual_json"])
+
+    if article_summary:
+        click.echo("")
+        click.echo("Article Summary:")
+        click.echo(f"- {article_summary}")
+
+    if primary_points:
+        click.echo("")
+        click.echo("Primary Points:")
+        for idx, point in enumerate(primary_points, start=1):
+            if not isinstance(point, dict):
+                continue
+            main = str(point.get("point") or "").strip()
+            reasoning = str(point.get("reasoning") or "").strip()
+            evidence = str(point.get("evidence") or "").strip()
+            line = f"{idx}. {main}" if main else f"{idx}."
+            extras = [part for part in [reasoning, evidence] if part]
+            if extras:
+                line = f"{line} | {' | '.join(extras)}"
+            click.echo(line)
+
+    if actionable_items:
+        click.echo("")
+        click.echo("Actionable Items:")
+        for idx, item in enumerate(actionable_items, start=1):
+            if not isinstance(item, dict):
+                continue
+            action = str(item.get("action") or "").strip()
+            trigger = str(item.get("trigger") or "").strip()
+            horizon = str(item.get("horizon") or "").strip()
+            confidence = str(item.get("confidence") or "").strip()
+            item_tickers = item.get("tickers")
+            if isinstance(item_tickers, list):
+                ticker_text = ",".join(str(t) for t in item_tickers if str(t).strip())
+            else:
+                ticker_text = ""
+            line = f"{idx}. {action}" if action else f"{idx}."
+            extras = [part for part in [trigger, horizon, confidence, ticker_text] if part]
+            if extras:
+                line = f"{line} | {' | '.join(extras)}"
+            click.echo(line)
+
+    if top_visual:
+        url = str(top_visual.get("url") or "").strip()
+        kind = str(top_visual.get("kind") or "").strip()
+        why_important = str(top_visual.get("why_important") or "").strip()
+        key_takeaway = str(top_visual.get("key_takeaway") or "").strip()
+        click.echo("")
+        click.echo("Top Visual:")
+        if url:
+            click.echo(f"- URL: {url}")
+        if kind:
+            click.echo(f"- Kind: {kind}")
+        if why_important:
+            click.echo(f"- Why: {why_important}")
+        if key_takeaway:
+            click.echo(f"- Takeaway: {key_takeaway}")
+
+    if not article_summary and row["link_summary"]:
+        click.echo("")
+        click.echo("Linked Summary:")
+        click.echo(f"- {row['link_summary']}")
+
+
 @click.group()
 @click.version_option(version=__version__)
 def cli():
@@ -625,6 +732,69 @@ def process(
             click.echo(f"Reprocessed {len(reprocessed)} quoted tweets.")
         else:
             click.echo("No quoted tweets to reprocess.")
+
+
+# ============================================================================
+# Analyze commands
+# ============================================================================
+
+
+@cli.command()
+@click.argument("status_id_or_url")
+@click.option("--model", "-m", help="Override triage model")
+@click.option("--reprocess/--no-reprocess", default=False, help="Reprocess even if already processed")
+def analyze(status_id_or_url: str, model: str | None, reprocess: bool):
+    """Fetch, process, and print structured analysis for one status."""
+    from .fetcher import read_tweet
+    from .processor import process_unprocessed, store_fetched_tweets
+
+    init_db()
+    normalized_id = _normalize_status_id_or_url(status_id_or_url)
+    click.echo(f"Analyzing status {normalized_id}...")
+
+    tweet = read_tweet(status_id_or_url)
+    if not tweet:
+        raise click.ClickException(f"Status not found or unreadable: {status_id_or_url}")
+
+    with click.progressbar(length=1, label="Storing status") as bar:
+        status_cb, progress_cb, _ = _make_progress_callbacks(bar, 1, "Storing status")
+        fetched, new = store_fetched_tweets(
+            [tweet],
+            source="status",
+            query_params={"status_id_or_url": status_id_or_url},
+            status_cb=status_cb,
+            progress_cb=progress_cb,
+        )
+    click.echo(f"Fetched {fetched} tweets, {new} new")
+
+    with get_connection() as conn:
+        row = get_tweet_by_id(conn, tweet.id) or get_tweet_by_id(conn, normalized_id)
+
+    if not row:
+        raise click.ClickException(f"Status not found in database after fetch: {normalized_id}")
+
+    if row["processed_at"] and not reprocess:
+        click.echo("Status already processed; using existing analysis (pass --reprocess to refresh).")
+    else:
+        with click.progressbar(length=1, label="Processing status") as bar:
+            status_cb, progress_cb, total_cb = _make_progress_callbacks(bar, 1, "Processing status")
+            process_unprocessed(
+                limit=1,
+                dry_run=False,
+                triage_model=model,
+                rows=[row],
+                progress_cb=progress_cb,
+                status_cb=status_cb,
+                total_cb=total_cb,
+            )
+
+    with get_connection() as conn:
+        final_row = get_tweet_by_id(conn, tweet.id) or get_tweet_by_id(conn, normalized_id)
+
+    if not final_row:
+        raise click.ClickException(f"Unable to load processed status: {normalized_id}")
+
+    _print_status_analysis(final_row)
 
 
 # ============================================================================
