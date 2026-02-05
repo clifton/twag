@@ -44,3 +44,46 @@ def test_build_article_visuals_infers_chart_kind_from_payload() -> None:
     visuals = build_article_visuals(top_visual=None, media_items=media, max_items=3)
     assert len(visuals) == 1
     assert visuals[0]["kind"] == "chart"
+
+
+def test_build_article_visuals_promotes_data_like_photo_and_keeps_multiple() -> None:
+    media = [
+        {
+            "url": "https://example.com/photo-chart.jpg",
+            "kind": "photo",
+            "short_description": "Chart of cloud revenue growth to $120B run-rate",
+        },
+        {
+            "url": "https://example.com/second-chart.jpg",
+            "kind": "photo",
+            "short_description": "Capex projected to grow 45% YoY with $180B spend",
+        },
+        {"url": "https://example.com/meme.jpg", "kind": "photo", "short_description": "reaction meme"},
+    ]
+    visuals = build_article_visuals(top_visual=None, media_items=media, max_items=5)
+
+    assert len(visuals) == 2
+    assert visuals[0]["kind"] == "chart"
+    assert visuals[1]["kind"] == "chart"
+    assert all("meme" not in v["url"] for v in visuals)
+
+
+def test_build_article_visuals_skips_non_data_top_visual() -> None:
+    top = {
+        "url": "https://example.com/meme-top.jpg",
+        "kind": "photo",
+        "why_important": "Funny meme",
+        "key_takeaway": "joke image",
+    }
+    media = [
+        {
+            "url": "https://example.com/relevant-chart.jpg",
+            "kind": "chart",
+            "chart": {"insight": "Revenue acceleration by quarter"},
+        }
+    ]
+    visuals = build_article_visuals(top_visual=top, media_items=media, max_items=4)
+
+    assert len(visuals) == 1
+    assert visuals[0]["url"] == "https://example.com/relevant-chart.jpg"
+    assert visuals[0]["is_top"] is False
