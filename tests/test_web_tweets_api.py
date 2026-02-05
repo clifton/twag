@@ -207,3 +207,94 @@ def test_list_tweets_builds_recursive_quote_embed(monkeypatch, tmp_path):
     assert quote_embed["id"] == "q1"
     assert quote_embed["quote_embed"]["id"] == "q2"
     assert quote_embed["quote_embed"]["quote_embed"]["id"] == "q3"
+
+
+def test_list_tweets_normalizes_self_and_inline_links(monkeypatch, tmp_path):
+    db_path = tmp_path / "twag_api_inline_links.db"
+    monkeypatch.setattr("twag.web.app.get_database_path", lambda: db_path)
+    app = create_app()
+
+    with get_connection(db_path) as conn:
+        _insert_processed_tweet(
+            conn,
+            tweet_id="2001",
+            author_handle="child_user",
+            content="child tweet content",
+        )
+        _insert_processed_tweet(
+            conn,
+            tweet_id="1001",
+            author_handle="root_user",
+            content="Password manager with email aliasing https://t.co/self https://t.co/child https://t.co/ext",
+            links=[
+                {
+                    "url": "https://t.co/self",
+                    "expanded_url": "https://x.com/root_user/status/1001",
+                    "display_url": "x.com/root_user/status/1001",
+                },
+                {
+                    "url": "https://t.co/child",
+                    "expanded_url": "https://x.com/child_user/status/2001",
+                    "display_url": "x.com/child_user/status/2001",
+                },
+                {
+                    "url": "https://t.co/ext",
+                    "expanded_url": "https://github.com/aliasvault/aliasvault",
+                    "display_url": "github.com/aliasvault/aliasvault",
+                },
+            ],
+        )
+        conn.commit()
+
+    client = TestClient(app)
+    response = client.get("/api/tweets", params={"author": "root_user", "since": "30d"})
+    assert response.status_code == 200
+    tweet = response.json()["tweets"][0]
+
+    assert tweet["display_content"] == "Password manager with email aliasing"
+    assert tweet["quote_embed"]["id"] == "2001"
+    assert tweet["inline_quote_embeds"] == []
+    assert tweet["external_links"] == [
+        {
+            "url": "https://github.com/aliasvault/aliasvault",
+            "display_url": "github.com/aliasvault/aliasvault",
+            "domain": "github.com",
+        }
+    ]
+
+
+def test_list_tweets_builds_multiple_inline_quote_embeds(monkeypatch, tmp_path):
+    db_path = tmp_path / "twag_api_multiple_inline_links.db"
+    monkeypatch.setattr("twag.web.app.get_database_path", lambda: db_path)
+    app = create_app()
+
+    with get_connection(db_path) as conn:
+        _insert_processed_tweet(conn, tweet_id="2101", author_handle="child1_user", content="first child")
+        _insert_processed_tweet(conn, tweet_id="2202", author_handle="child2_user", content="second child")
+        _insert_processed_tweet(
+            conn,
+            tweet_id="1100",
+            author_handle="root2_user",
+            content="Context https://t.co/c1 https://t.co/c2",
+            links=[
+                {
+                    "url": "https://t.co/c1",
+                    "expanded_url": "https://x.com/child1_user/status/2101",
+                    "display_url": "x.com/child1_user/status/2101",
+                },
+                {
+                    "url": "https://t.co/c2",
+                    "expanded_url": "https://x.com/child2_user/status/2202",
+                    "display_url": "x.com/child2_user/status/2202",
+                },
+            ],
+        )
+        conn.commit()
+
+    client = TestClient(app)
+    response = client.get("/api/tweets", params={"author": "root2_user", "since": "30d"})
+    assert response.status_code == 200
+    tweet = response.json()["tweets"][0]
+
+    assert tweet["quote_embed"]["id"] == "2101"
+    assert [q["id"] for q in tweet["inline_quote_embeds"]] == ["2202"]

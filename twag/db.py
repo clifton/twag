@@ -184,6 +184,7 @@ CREATE TABLE IF NOT EXISTS tweets (
     media_analysis TEXT,
     media_items TEXT,
     has_link INTEGER DEFAULT 0,
+    links_json TEXT,
     link_summary TEXT,
     is_x_article INTEGER DEFAULT 0,
     article_title TEXT,
@@ -431,6 +432,9 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
     if "article_processed_at" not in tweet_columns:
         conn.execute("ALTER TABLE tweets ADD COLUMN article_processed_at TIMESTAMP")
 
+    if "links_json" not in tweet_columns:
+        conn.execute("ALTER TABLE tweets ADD COLUMN links_json TEXT")
+
     # Check accounts table columns
     cursor = conn.execute("PRAGMA table_info(accounts)")
     account_columns = {row[1] for row in cursor.fetchall()}
@@ -526,6 +530,7 @@ def insert_tweet(
     original_author_handle: str | None = None,
     original_author_name: str | None = None,
     original_content: str | None = None,
+    links: list[dict[str, Any]] | None = None,
 ) -> bool:
     """Insert a tweet, returning True if new, False if duplicate."""
     try:
@@ -534,10 +539,11 @@ def insert_tweet(
             INSERT INTO tweets (
                 id, author_handle, author_name, content, created_at, source,
                 has_quote, quote_tweet_id, has_media, media_items, has_link,
+                links_json,
                 is_x_article, article_title, article_preview, article_text,
                 is_retweet, retweeted_by_handle, retweeted_by_name, original_tweet_id,
                 original_author_handle, original_author_name, original_content
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 tweet_id,
@@ -551,6 +557,7 @@ def insert_tweet(
                 int(has_media),
                 json.dumps(media_items) if media_items else None,
                 int(has_link),
+                json.dumps(links) if links else None,
                 int(is_x_article),
                 article_title,
                 article_preview,
@@ -577,6 +584,7 @@ def insert_tweet(
             has_media=has_media,
             media_items=media_items,
             has_link=has_link,
+            links=links,
             is_x_article=is_x_article,
             article_title=article_title,
             article_preview=article_preview,
@@ -639,6 +647,7 @@ def _merge_duplicate_tweet_payload(
     has_media: bool,
     media_items: list[dict[str, Any]] | None,
     has_link: bool,
+    links: list[dict[str, Any]] | None,
     is_x_article: bool,
     article_title: str | None,
     article_preview: str | None,
@@ -648,6 +657,7 @@ def _merge_duplicate_tweet_payload(
     row = conn.execute(
         """
         SELECT author_name, content, created_at, has_quote, quote_tweet_id, has_media, media_items,
+               links_json,
                has_link, is_x_article, article_title, article_preview, article_text
         FROM tweets
         WHERE id = ?
@@ -705,6 +715,20 @@ def _merge_duplicate_tweet_payload(
 
     if has_link and not row["has_link"]:
         updates.append("has_link = 1")
+
+    merged_links = _merge_media_items(row["links_json"], links)
+    if merged_links is not None:
+        existing_link_len = 0
+        if row["links_json"]:
+            try:
+                parsed = json.loads(row["links_json"])
+                if isinstance(parsed, list):
+                    existing_link_len = len(parsed)
+            except json.JSONDecodeError:
+                existing_link_len = 0
+        if len(merged_links) > existing_link_len:
+            updates.append("links_json = ?")
+            params.append(json.dumps(merged_links))
 
     if is_x_article and not row["is_x_article"]:
         updates.append("is_x_article = 1")
@@ -2107,6 +2131,7 @@ class FeedTweet:
     media_analysis: str | None
     media_items: list[dict[str, Any]]
     has_link: bool
+    links: list[dict[str, Any]]
     link_summary: str | None
     is_x_article: bool
     article_title: str | None
@@ -2247,6 +2272,15 @@ def get_feed_tweets(
             except json.JSONDecodeError:
                 media_items = []
 
+        links = []
+        if row["links_json"]:
+            try:
+                decoded = json.loads(row["links_json"])
+                if isinstance(decoded, list):
+                    links = [item for item in decoded if isinstance(item, dict)]
+            except json.JSONDecodeError:
+                links = []
+
         article_primary_points: list[dict[str, Any]] = []
         if row["article_primary_points_json"]:
             try:
@@ -2301,6 +2335,7 @@ def get_feed_tweets(
                 media_analysis=row["media_analysis"],
                 media_items=media_items,
                 has_link=bool(row["has_link"]),
+                links=links,
                 link_summary=row["link_summary"],
                 is_x_article=bool(row["is_x_article"]),
                 article_title=row["article_title"],

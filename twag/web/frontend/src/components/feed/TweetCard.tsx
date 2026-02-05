@@ -6,12 +6,54 @@ import { TweetContent } from "./TweetContent";
 import { TweetMedia } from "./TweetMedia";
 import { TweetActions } from "./TweetActions";
 import { QuoteBlock } from "./QuoteBlock";
-import type { AnalyzeResult, Tweet } from "@/api/types";
+import type { AnalyzeResult, MediaItem, Tweet } from "@/api/types";
 import { buildArticleVisuals } from "./articleVisuals";
 import { timeAgo } from "@/lib/utils";
 
 interface TweetCardProps {
   tweet: Tweet;
+}
+
+function compactLinkLabel(rawLabel: string, fallbackUrl: string): string {
+  const label = (rawLabel || fallbackUrl || "").trim();
+  if (label.length <= 64) return label;
+  try {
+    const parsed = new URL(fallbackUrl);
+    const path = parsed.pathname && parsed.pathname !== "/" ? parsed.pathname : "";
+    const shortPath = path.length > 22 ? `${path.slice(0, 22)}…` : path;
+    return `${parsed.hostname}${shortPath}`;
+  } catch {
+    return `${label.slice(0, 61)}…`;
+  }
+}
+
+function hasVisualSignal(items: MediaItem[] | null | undefined): boolean {
+  if (!items?.length) return false;
+  return items.some(
+    (item) =>
+      item.kind === "chart" ||
+      item.kind === "table" ||
+      item.kind === "document" ||
+      Boolean(item.chart?.description || item.chart?.insight || item.table?.columns?.length),
+  );
+}
+
+function mediaTextFallback(items: MediaItem[] | null | undefined): string | null {
+  if (!items?.length) return null;
+  for (const item of items) {
+    const text =
+      item.prose_summary ||
+      item.short_description ||
+      item.prose_text ||
+      item.chart?.insight ||
+      item.chart?.description ||
+      item.table?.summary ||
+      item.alt_text;
+    if (text) {
+      return text;
+    }
+  }
+  return null;
 }
 
 export function TweetCard({ tweet }: TweetCardProps) {
@@ -31,6 +73,12 @@ export function TweetCard({ tweet }: TweetCardProps) {
       tweet.article_action_items.length > 0);
   const articleVisuals = buildArticleVisuals(tweet.article_top_visual, tweet.media_items, 5);
   const [topArticleVisual, ...additionalArticleVisuals] = articleVisuals;
+  const inlineQuoteEmbeds = tweet.inline_quote_embeds ?? [];
+  const shouldShowMedia = tweet.has_media && !hasArticleSummary && hasVisualSignal(tweet.media_items);
+  const mediaSummaryFallback =
+    !hasArticleSummary && !shouldShowMedia
+      ? (tweet.media_analysis ?? mediaTextFallback(tweet.media_items) ?? null)
+      : null;
   const digestBody =
     tweet.summary ??
     (tweet.is_x_article ? tweet.article_summary_short : null) ??
@@ -82,7 +130,7 @@ export function TweetCard({ tweet }: TweetCardProps) {
       </div>
 
       {/* Media */}
-      {tweet.has_media && !hasArticleSummary && (
+      {shouldShowMedia && (
         <div className="mt-3">
           <TweetMedia
             items={tweet.media_items}
@@ -91,10 +139,21 @@ export function TweetCard({ tweet }: TweetCardProps) {
         </div>
       )}
 
+      {tweet.has_media && mediaSummaryFallback && (
+        <p className="mt-2 text-xs text-zinc-300 leading-snug">{mediaSummaryFallback}</p>
+      )}
+
       {/* Quote embed */}
       {tweet.quote_embed && (
         <div className="mt-2.5">
           <QuoteBlock quote={tweet.quote_embed} />
+        </div>
+      )}
+      {inlineQuoteEmbeds.length > 0 && (
+        <div className="mt-2 space-y-2">
+          {inlineQuoteEmbeds.map((quote) => (
+            <QuoteBlock key={`${tweet.id}-inline-${quote.id}`} quote={quote} />
+          ))}
         </div>
       )}
 
@@ -103,6 +162,22 @@ export function TweetCard({ tweet }: TweetCardProps) {
         <p className="mt-2 text-xs text-zinc-300 leading-snug">
           {tweet.link_summary}
         </p>
+      )}
+
+      {tweet.external_links && tweet.external_links.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+          {tweet.external_links.slice(0, 3).map((link) => (
+            <a
+              key={`${tweet.id}-ext-${link.url}`}
+              href={link.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[11px] text-cyan-300/85 hover:text-cyan-200 transition-colors underline decoration-cyan-700/40 underline-offset-2"
+            >
+              {compactLinkLabel(link.display_url || "", link.url)}
+            </a>
+          ))}
+        </div>
       )}
 
       {/* X article summary */}

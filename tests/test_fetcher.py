@@ -220,6 +220,33 @@ class TestTweetFromBirdJson:
 
         assert tweet.has_link is True
 
+    def test_parse_links_extracts_expanded_urls(self):
+        """Capture both raw and expanded URL metadata for later link handling."""
+        data = {
+            "id": "124",
+            "author": {"username": "linkmeta"},
+            "text": "Read this https://t.co/abc",
+            "entities": {
+                "urls": [
+                    {
+                        "url": "https://t.co/abc",
+                        "expanded_url": "https://x.com/other/status/999",
+                        "display_url": "x.com/other/status/999",
+                    }
+                ]
+            },
+        }
+        tweet = Tweet.from_bird_json(data)
+
+        assert tweet.has_link is True
+        assert tweet.links == [
+            {
+                "url": "https://t.co/abc",
+                "expanded_url": "https://x.com/other/status/999",
+                "display_url": "x.com/other/status/999",
+            }
+        ]
+
     def test_parse_x_article_uses_content_when_plain_text_missing(self):
         """X article should fall back to long tweet content when plain_text is absent."""
         article_text = "Intro.\n\n" + ("Detailed section. " * 40)

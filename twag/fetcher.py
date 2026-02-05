@@ -7,7 +7,7 @@ import re
 import subprocess
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
@@ -60,6 +60,7 @@ class Tweet:
     original_author_name: str | None
     original_content: str | None
     raw: dict[str, Any]
+    links: list[dict[str, str]] = field(default_factory=list)
 
     @classmethod
     def from_bird_json(cls, data: dict[str, Any]) -> "Tweet":
@@ -108,8 +109,9 @@ class Tweet:
         )
 
         # Links
+        links = _extract_links(data, content)
         raw_legacy_urls = data.get("_raw", {}).get("legacy", {}).get("entities", {}).get("urls")
-        has_link = bool(data.get("urls") or data.get("entities", {}).get("urls") or raw_legacy_urls)
+        has_link = bool(links or data.get("urls") or data.get("entities", {}).get("urls") or raw_legacy_urls)
         # Also check for links in text
         if not has_link:
             has_link = bool(re.search(r"https?://\S+", content))
@@ -176,6 +178,7 @@ class Tweet:
             original_author_name=original_author_name,
             original_content=original_content,
             raw=data,
+            links=links,
         )
 
 
@@ -448,6 +451,54 @@ def _extract_media_items(data: dict[str, Any]) -> list[dict[str, Any]]:
         items.append(item_data)
 
     return items
+
+
+def _extract_links(data: dict[str, Any], content: str) -> list[dict[str, str]]:
+    candidates: list[dict[str, Any]] = []
+
+    def _extend(value: Any) -> None:
+        if isinstance(value, list):
+            for item in value:
+                if isinstance(item, dict):
+                    candidates.append(item)
+
+    _extend(data.get("urls"))
+    _extend(data.get("entities", {}).get("urls"))
+    _extend(data.get("_raw", {}).get("legacy", {}).get("entities", {}).get("urls"))
+
+    links: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for item in candidates:
+        raw = str(item.get("url") or "").strip()
+        expanded = str(item.get("expanded_url") or item.get("expandedUrl") or "").strip()
+        display = str(item.get("display_url") or item.get("displayUrl") or "").strip()
+        resolved = expanded or raw
+        if not resolved:
+            continue
+        key = (raw, resolved)
+        if key in seen:
+            continue
+        seen.add(key)
+        links.append(
+            {
+                "url": raw or resolved,
+                "expanded_url": resolved,
+                "display_url": display,
+            }
+        )
+
+    if not links:
+        for match in re.finditer(r"https?://\S+", content or ""):
+            raw = match.group(0).strip().rstrip("),.?!:;")
+            if not raw:
+                continue
+            key = (raw, raw)
+            if key in seen:
+                continue
+            seen.add(key)
+            links.append({"url": raw, "expanded_url": raw, "display_url": raw})
+
+    return links
 
 
 def _extract_media_items_from_json_blob(blob: str) -> list[dict[str, Any]]:

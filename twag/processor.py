@@ -37,6 +37,7 @@ from .fetcher import (
     fetch_user_tweets,
     read_tweet,
 )
+from .link_utils import parse_tweet_status_id
 from .media import build_media_context, build_media_summary, parse_media_items
 from .scorer import (
     EnrichmentResult,
@@ -55,6 +56,7 @@ _SIGNAL_TIER_RANK = {
     "market_relevant": 2,
     "high_signal": 3,
 }
+_MAX_INLINE_LINK_FETCHES = 4
 
 
 def _prefer_stronger_signal_tier(existing: str | None, candidate: str | None) -> str | None:
@@ -121,6 +123,53 @@ def _fetch_quote_chain(
     )
 
 
+def _extract_inline_linked_tweet_ids(tweet: Tweet) -> list[str]:
+    ids: list[str] = []
+    seen: set[str] = set()
+    for link in tweet.links or []:
+        if not isinstance(link, dict):
+            continue
+        expanded = str(link.get("expanded_url") or "").strip()
+        raw = str(link.get("url") or "").strip()
+        linked_id = parse_tweet_status_id(expanded) or parse_tweet_status_id(raw)
+        if not linked_id:
+            continue
+        if linked_id == tweet.id:
+            continue
+        if tweet.quote_tweet_id and linked_id == tweet.quote_tweet_id:
+            continue
+        if linked_id in seen:
+            continue
+        seen.add(linked_id)
+        ids.append(linked_id)
+        if len(ids) >= _MAX_INLINE_LINK_FETCHES:
+            break
+    return ids
+
+
+def _fetch_inline_linked_tweets(
+    conn: sqlite3.Connection,
+    tweet: Tweet,
+    *,
+    source: str,
+    delay: float,
+    seen: set[str],
+    status_cb: Callable[[str], None] | None = None,
+) -> int:
+    total = 0
+    for linked_id in _extract_inline_linked_tweet_ids(tweet):
+        total += _fetch_quote_by_id(
+            conn,
+            linked_id,
+            source=source,
+            remaining_depth=1,
+            delay=delay,
+            seen=seen,
+            status_cb=status_cb,
+        )
+    return total
+
+
 def _fetch_quote_by_id(
     conn: sqlite3.Connection,
     quote_id: str,
@@ -175,6 +224,7 @@ def _fetch_quote_by_id(
         has_media=quoted.has_media,
         media_items=quoted.media_items,
         has_link=quoted.has_link,
+        links=quoted.links,
         is_x_article=quoted.is_x_article,
         article_title=quoted.article_title,
         article_preview=quoted.article_preview,
@@ -239,6 +289,7 @@ def _ensure_quote_row(
         has_media=quoted.has_media,
         media_items=quoted.media_items,
         has_link=quoted.has_link,
+        links=quoted.links,
         is_x_article=quoted.is_x_article,
         article_title=quoted.article_title,
         article_preview=quoted.article_preview,
@@ -347,6 +398,7 @@ def store_fetched_tweets(
                 has_media=tweet.has_media,
                 media_items=tweet.media_items,
                 has_link=tweet.has_link,
+                links=tweet.links,
                 is_x_article=tweet.is_x_article,
                 article_title=tweet.article_title,
                 article_preview=tweet.article_preview,
@@ -373,6 +425,14 @@ def store_fetched_tweets(
                         seen=seen_quotes,
                         status_cb=status_cb,
                     )
+                _fetch_inline_linked_tweets(
+                    conn,
+                    tweet,
+                    source="inline_link",
+                    delay=quote_delay,
+                    seen=seen_quotes,
+                    status_cb=status_cb,
+                )
 
             if progress_cb:
                 progress_cb(1)
@@ -429,6 +489,7 @@ def store_bookmarked_tweets(
                 has_media=tweet.has_media,
                 media_items=tweet.media_items,
                 has_link=tweet.has_link,
+                links=tweet.links,
                 is_x_article=tweet.is_x_article,
                 article_title=tweet.article_title,
                 article_preview=tweet.article_preview,
@@ -454,6 +515,15 @@ def store_bookmarked_tweets(
                     tweet,
                     source="quote",
                     max_depth=quote_depth,
+                    delay=quote_delay,
+                    seen=seen_quotes,
+                    status_cb=status_cb,
+                )
+            if inserted:
+                _fetch_inline_linked_tweets(
+                    conn,
+                    tweet,
+                    source="inline_link",
                     delay=quote_delay,
                     seen=seen_quotes,
                     status_cb=status_cb,

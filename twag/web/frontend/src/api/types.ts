@@ -42,7 +42,9 @@ export interface Tweet {
   original_content: string | null;
   // Enriched fields (from enhanced API)
   quote_embed?: QuoteEmbed | null;
+  inline_quote_embeds?: QuoteEmbed[] | null;
   reference_links?: ReferenceLink[];
+  external_links?: ExternalLink[];
   display_content?: string | null;
 }
 
@@ -79,6 +81,12 @@ export interface QuoteEmbed {
 export interface ReferenceLink {
   id: string;
   url: string;
+}
+
+export interface ExternalLink {
+  url: string;
+  display_url: string;
+  domain: string;
 }
 
 export interface MediaItem {
