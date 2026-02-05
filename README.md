@@ -146,6 +146,10 @@ twag fetch https://x.com/undrvalue/status/2019488673935552978
 # Process unscored tweets
 twag process
 
+# Process one status by ID or URL (must already be fetched)
+twag process 2019488673935552978
+twag process https://x.com/undrvalue/status/2019488673935552978
+
 # Process with limit
 twag process -n 100
 

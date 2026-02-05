@@ -1,6 +1,7 @@
 """CLI entry point for twag."""
 
 import json
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -26,6 +27,7 @@ from .db import (
     get_active_narratives,
     get_connection,
     get_processed_counts,
+    get_tweet_by_id,
     get_tweet_stats,
     get_unprocessed_tweets,
     init_db,
@@ -79,6 +81,19 @@ def _make_progress_callbacks(bar: click.progressbar, total: int, base_label: str
         _sync_label()
 
     return status_cb, progress_cb, total_cb
+
+
+def _normalize_status_id_or_url(status_id_or_url: str) -> str:
+    """Normalize a status argument to a tweet ID when possible."""
+    value = status_id_or_url.strip()
+    if value.isdigit():
+        return value
+
+    match = re.search(r"/status/(\d+)", value)
+    if match:
+        return match.group(1)
+
+    return value
 
 
 @click.group()
@@ -466,6 +481,7 @@ def fetch(
 
 
 @cli.command()
+@click.argument("status_id_or_url", required=False)
 @click.option("--limit", "-n", default=250, help="Max tweets to process")
 @click.option("--dry-run", is_flag=True, help="Show what would be processed")
 @click.option("--model", "-m", help="Override triage model")
@@ -473,6 +489,7 @@ def fetch(
 @click.option("--reprocess-quotes/--no-reprocess-quotes", default=True, help="Reprocess today's quoted tweets")
 @click.option("--reprocess-min-score", type=float, default=None, help="Min score for reprocessing quoted tweets")
 def process(
+    status_id_or_url: str | None,
     limit: int,
     dry_run: bool,
     model: str | None,
@@ -485,13 +502,26 @@ def process(
     from .processor import process_unprocessed, reprocess_today_quoted
 
     init_db()
-    click.echo(f"Processing up to {limit} tweets...")
+
+    target_tweet_id = _normalize_status_id_or_url(status_id_or_url) if status_id_or_url else None
+    if target_tweet_id:
+        click.echo(f"Processing status {target_tweet_id}...")
+    else:
+        click.echo(f"Processing up to {limit} tweets...")
 
     if dry_run:
         click.echo("(dry run - no changes will be made)")
 
     with get_connection() as conn:
-        unprocessed_rows = get_unprocessed_tweets(conn, limit=limit)
+        if target_tweet_id:
+            target_row = get_tweet_by_id(conn, target_tweet_id)
+            if not target_row:
+                raise click.ClickException(
+                    f"Status not found in database: {target_tweet_id}. Fetch it first with `twag fetch {target_tweet_id}`."
+                )
+            unprocessed_rows = [target_row]
+        else:
+            unprocessed_rows = get_unprocessed_tweets(conn, limit=limit)
 
     if unprocessed_rows:
         with click.progressbar(length=len(unprocessed_rows), label="Processing tweets") as bar:
@@ -545,6 +575,10 @@ def process(
                                 summary=r.summary,
                                 tickers=r.tickers,
                             )
+
+    if target_tweet_id and reprocess_quotes:
+        click.echo("Skipping quote reprocessing for single-status mode.")
+        reprocess_quotes = False
 
     if reprocess_quotes:
         cfg = load_config()
