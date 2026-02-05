@@ -1,5 +1,6 @@
 """Bird CLI wrapper for fetching tweets."""
 
+import html
 import json
 import os
 import re
@@ -245,9 +246,9 @@ def _extract_content(data: dict[str, Any]) -> str:
     if note_candidates:
         longest_note = max(note_candidates, key=len)
         if len(longest_note) > len(base_text):
-            return longest_note
+            return html.unescape(longest_note)
 
-    return base_text
+    return html.unescape(base_text)
 
 
 def _extract_retweeted_tweet(data: dict[str, Any]) -> dict[str, Any] | None:

@@ -8,7 +8,7 @@ from fastapi import APIRouter, Query, Request
 
 from ...db import get_connection, get_feed_tweets, get_tweet_by_id, parse_time_range
 from ...media import parse_media_items
-from ..tweet_utils import extract_tweet_links, quote_embed_from_row, remove_tweet_links
+from ..tweet_utils import decode_html_entities, extract_tweet_links, quote_embed_from_row, remove_tweet_links
 
 router = APIRouter(tags=["tweets"])
 MAX_QUOTE_DEPTH = 3
@@ -126,8 +126,8 @@ async def list_tweets(
         # Enrich tweets with quote embeds and display content
         tweets_data = []
         for t in tweets:
-            content = t.content or ""
-            links = extract_tweet_links(content)
+            content_raw = t.content or ""
+            links = extract_tweet_links(content_raw)
             link_map: dict[str, str] = {}
             for tid, url in links:
                 if tid and tid not in link_map:
@@ -155,7 +155,7 @@ async def list_tweets(
             # Clean display content
             remove_ids = set(link_map.keys())
             remove_ids.add(t.id)
-            display_content = remove_tweet_links(content, links, remove_ids) if content else content
+            display_content = remove_tweet_links(content_raw, links, remove_ids) if content_raw else content_raw
 
             is_retweet = bool(t.is_retweet)
             retweeted_by_handle = t.retweeted_by_handle
@@ -167,7 +167,7 @@ async def list_tweets(
 
             # Legacy rows may store RT-form text without retweet metadata columns populated.
             if not is_retweet:
-                match = LEGACY_RETWEET_RE.match(content)
+                match = LEGACY_RETWEET_RE.match(content_raw)
                 if match:
                     is_retweet = True
                     retweeted_by_handle = t.author_handle
@@ -183,6 +183,10 @@ async def list_tweets(
             if is_retweet and original_content:
                 display_content = original_content
 
+            content = decode_html_entities(t.content)
+            original_content = decode_html_entities(original_content)
+            display_content = decode_html_entities(display_content)
+
             tweets_data.append(
                 {
                     "id": t.id,
@@ -191,7 +195,7 @@ async def list_tweets(
                     "display_author_handle": display_author_handle,
                     "display_author_name": display_author_name,
                     "display_tweet_id": display_tweet_id,
-                    "content": t.content,
+                    "content": content,
                     "content_summary": t.content_summary,
                     "summary": t.summary,
                     "created_at": t.created_at.isoformat() if t.created_at else None,
@@ -300,7 +304,7 @@ async def get_tweet(request: Request, tweet_id: str) -> dict[str, Any]:
         "id": tweet["id"],
         "author_handle": tweet["author_handle"],
         "author_name": tweet["author_name"],
-        "content": tweet["content"],
+        "content": decode_html_entities(tweet["content"]),
         "content_summary": tweet["content_summary"],
         "summary": tweet["summary"],
         "created_at": tweet["created_at"],
@@ -331,7 +335,7 @@ async def get_tweet(request: Request, tweet_id: str) -> dict[str, Any]:
         "original_tweet_id": tweet["original_tweet_id"],
         "original_author_handle": tweet["original_author_handle"],
         "original_author_name": tweet["original_author_name"],
-        "original_content": tweet["original_content"],
+        "original_content": decode_html_entities(tweet["original_content"]),
     }
 
 

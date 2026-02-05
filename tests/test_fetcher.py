@@ -330,6 +330,17 @@ class TestTweetFromBirdJson:
         assert tweet.original_content == "edge case fallback"
         assert tweet.original_tweet_id is None
 
+    def test_parse_content_unescapes_html_entities(self):
+        """Decode HTML entities from tweet content variants."""
+        data = {
+            "id": "302",
+            "author": {"username": "entity_user"},
+            "text": "Spotify is down -33% and A &gt;$100B move with P&amp;L implications",
+        }
+        tweet = Tweet.from_bird_json(data)
+
+        assert tweet.content == "Spotify is down -33% and A >$100B move with P&L implications"
+
     def test_parse_retweet_from_nested_raw_retweeted_status_result(self):
         """Parse retweet metadata from Bird --json-full nested _raw legacy payload."""
         data = {

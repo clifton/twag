@@ -98,6 +98,45 @@ def test_list_tweets_legacy_rt_text_fallback(monkeypatch, tmp_path):
     assert rt_tweet["display_content"] == "Legacy retweet text that should be attributed correctly."
 
 
+def test_list_tweets_decodes_html_entities_in_content_and_display(monkeypatch, tmp_path):
+    db_path = tmp_path / "twag_api_html_entities.db"
+    monkeypatch.setattr("twag.web.app.get_database_path", lambda: db_path)
+    app = create_app()
+
+    with get_connection(db_path) as conn:
+        _insert_processed_tweet(
+            conn,
+            tweet_id="entity-1",
+            author_handle="entity_user",
+            content="Spotify is down -33% in a month. A &gt;$100B company with P&amp;L pressure.",
+        )
+        _insert_processed_tweet(
+            conn,
+            tweet_id="entity-rt-1",
+            author_handle="retweeter",
+            content="RT @entity_user: Spotify is down -33% in a month. A &gt;$100B company.",
+            is_retweet=True,
+            retweeted_by_handle="retweeter",
+            original_author_handle="entity_user",
+            original_content="Spotify is down -33% in a month. A &gt;$100B company.",
+        )
+        conn.commit()
+
+    client = TestClient(app)
+    response = client.get("/api/tweets", params={"sort": "latest", "since": "30d"})
+    assert response.status_code == 200
+    tweets = response.json()["tweets"]
+
+    base = next(t for t in tweets if t["id"] == "entity-1")
+    assert base["content"] == "Spotify is down -33% in a month. A >$100B company with P&L pressure."
+    assert base["display_content"] == "Spotify is down -33% in a month. A >$100B company with P&L pressure."
+
+    rt = next(t for t in tweets if t["id"] == "entity-rt-1")
+    assert rt["content"] == "RT @entity_user: Spotify is down -33% in a month. A >$100B company."
+    assert rt["original_content"] == "Spotify is down -33% in a month. A >$100B company."
+    assert rt["display_content"] == "Spotify is down -33% in a month. A >$100B company."
+
+
 def test_list_tweets_legacy_rt_truncated_text_does_not_override_display_content(monkeypatch, tmp_path):
     db_path = tmp_path / "twag_api_legacy_rt_truncated.db"
     monkeypatch.setattr("twag.web.app.get_database_path", lambda: db_path)
