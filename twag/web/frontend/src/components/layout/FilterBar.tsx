@@ -28,17 +28,18 @@ export function FilterBar({
   const { data: tickerData } = useTickers();
 
   return (
-    <div className="sticky top-0 z-10 bg-zinc-950/80 backdrop-blur-sm shadow-[0_1px_0_0_rgba(63,63,70,0.3)] overflow-x-auto">
+    <div className="sticky top-0 z-10 overflow-x-auto border-b border-zinc-800/80 bg-zinc-950/95 backdrop-blur-md">
       <div className="mx-auto max-w-2xl flex items-center gap-2 px-4 py-1.5">
         {/* Time range */}
         <Select
-          value={filters.since ?? ""}
-          onValueChange={(v) => setFilter("since", v || undefined)}
+          value={filters.since ?? "all"}
+          onValueChange={(v) => setFilter("since", v === "all" ? undefined : v || undefined)}
         >
           <SelectTrigger className="w-[80px]">
             <SelectValue placeholder="Time" />
           </SelectTrigger>
           <SelectContent>
+            <SelectItem value="all">All</SelectItem>
             <SelectItem value="today">Today</SelectItem>
             <SelectItem value="24h">24h</SelectItem>
             <SelectItem value="7d">7d</SelectItem>
@@ -147,7 +148,7 @@ export function FilterBar({
 
         {/* Clear filters */}
         {activeFilterCount > 0 && (
-          <Button variant="ghost" size="sm" onClick={clearFilters} className="text-xs text-zinc-500">
+          <Button variant="ghost" size="sm" onClick={clearFilters} className="text-xs text-zinc-300">
             <X className="h-3 w-3" />
             Clear ({activeFilterCount})
           </Button>

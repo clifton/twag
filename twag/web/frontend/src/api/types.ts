@@ -4,6 +4,9 @@ export interface Tweet {
   id: string;
   author_handle: string;
   author_name: string | null;
+  display_author_handle: string;
+  display_author_name: string | null;
+  display_tweet_id: string;
   content: string | null;
   content_summary: string | null;
   summary: string | null;
@@ -21,6 +24,13 @@ export interface Tweet {
   has_link: boolean;
   link_summary: string | null;
   reactions: string | null;
+  is_retweet: boolean;
+  retweeted_by_handle: string | null;
+  retweeted_by_name: string | null;
+  original_tweet_id: string | null;
+  original_author_handle: string | null;
+  original_author_name: string | null;
+  original_content: string | null;
   // Enriched fields (from enhanced API)
   quote_embed?: QuoteEmbed | null;
   reference_links?: ReferenceLink[];
@@ -33,6 +43,7 @@ export interface QuoteEmbed {
   author_name: string | null;
   content: string | null;
   created_at: string | null;
+  quote_embed?: QuoteEmbed | null;
 }
 
 export interface ReferenceLink {

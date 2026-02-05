@@ -16,31 +16,42 @@ interface TweetCardProps {
 export function TweetCard({ tweet }: TweetCardProps) {
   const [analysis, setAnalysis] = useState<AnalyzeResult | null>(null);
 
-  const tweetUrl = `https://x.com/${tweet.author_handle}/status/${tweet.id}`;
+  const displayAuthor = tweet.display_author_handle || tweet.author_handle;
+  const displayTweetId = tweet.display_tweet_id || tweet.id;
+  const hasOriginalTweetTarget =
+    tweet.is_retweet && displayTweetId.length > 0 && displayTweetId !== tweet.id;
+  const linkAuthor = hasOriginalTweetTarget ? displayAuthor : tweet.author_handle;
+  const linkTweetId = hasOriginalTweetTarget ? displayTweetId : tweet.id;
+  const tweetUrl = `https://x.com/${linkAuthor}/status/${linkTweetId}`;
 
   return (
-    <article className="group border-b border-zinc-800/40 px-4 py-3">
+    <article className="group border-b border-zinc-800/80 px-4 py-3 bg-zinc-950/40 hover:bg-zinc-900/20 transition-colors">
       {/* Line 1: @author · time · external link */}
-      <div className="flex items-baseline gap-1.5 text-[11px] text-zinc-500">
+      <div className="flex items-baseline gap-1.5 text-[11px] text-zinc-400">
         <a
           href={tweetUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="font-mono text-zinc-400 hover:text-cyan-400 transition-colors"
+          className="font-mono text-zinc-200 hover:text-cyan-300 transition-colors"
         >
-          @{tweet.author_handle}
+          @{displayAuthor}
         </a>
+        {tweet.is_retweet && tweet.retweeted_by_handle && (
+          <span className="text-zinc-500">
+            RT by @{tweet.retweeted_by_handle}
+          </span>
+        )}
         {tweet.created_at && (
           <>
-            <span className="text-zinc-700">&middot;</span>
+            <span className="text-zinc-600">&middot;</span>
             <span className="font-mono">{timeAgo(tweet.created_at)}</span>
           </>
         )}
         {tweet.tickers.length > 0 && (
           <>
-            <span className="text-zinc-700">&middot;</span>
+            <span className="text-zinc-600">&middot;</span>
             {tweet.tickers.map((t) => (
-              <span key={t} className="font-mono text-cyan-500/70">
+              <span key={t} className="font-mono text-cyan-300/80">
                 ${t}
               </span>
             ))}
@@ -50,7 +61,7 @@ export function TweetCard({ tweet }: TweetCardProps) {
           href={tweetUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="ml-auto text-zinc-700 hover:text-zinc-400 transition-colors"
+          className="ml-auto text-zinc-500 hover:text-zinc-200 transition-colors"
         >
           <ExternalLink className="h-3 w-3" />
         </a>
@@ -84,7 +95,7 @@ export function TweetCard({ tweet }: TweetCardProps) {
 
       {/* Link summary */}
       {tweet.has_link && tweet.link_summary && (
-        <p className="mt-2 text-xs text-zinc-500 leading-snug">
+        <p className="mt-2 text-xs text-zinc-300 leading-snug">
           {tweet.link_summary}
         </p>
       )}
@@ -98,7 +109,7 @@ export function TweetCard({ tweet }: TweetCardProps) {
               href={link.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-[10px] text-zinc-600 hover:text-cyan-400 font-mono transition-colors"
+              className="text-[10px] text-zinc-400 hover:text-cyan-300 font-mono transition-colors"
             >
               ref:{link.id.slice(-6)}
             </a>
@@ -114,7 +125,7 @@ export function TweetCard({ tweet }: TweetCardProps) {
               {tweet.categories.map((c) => (
                 <span
                   key={c}
-                  className="text-[10px] font-medium uppercase tracking-wider text-zinc-600"
+                  className="text-[10px] font-medium uppercase tracking-wider text-zinc-400"
                 >
                   {c.replace(/_/g, " ")}
                 </span>
@@ -125,7 +136,7 @@ export function TweetCard({ tweet }: TweetCardProps) {
         <div className="flex items-center gap-2">
           <TweetActions
             tweetId={tweet.id}
-            authorHandle={tweet.author_handle}
+            authorHandle={displayAuthor}
             onAnalyze={setAnalysis}
           />
           <ScoreBadge score={tweet.relevance_score} tier={tweet.signal_tier} />
@@ -139,7 +150,7 @@ export function TweetCard({ tweet }: TweetCardProps) {
             <span className="text-xs font-medium text-cyan-400">Deep Analysis</span>
             <button
               onClick={() => setAnalysis(null)}
-              className="text-[10px] text-zinc-500 hover:text-zinc-300"
+              className="text-[10px] text-zinc-300 hover:text-zinc-100"
             >
               dismiss
             </button>
