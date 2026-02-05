@@ -78,25 +78,25 @@ Article text:
 {article_text}
 
 Return JSON only:
-{
+{{
   "short_summary": "2-4 concise lines max",
   "primary_points": [
-    {
+    {{
       "point": "Main claim or takeaway",
       "reasoning": "Why this point is argued",
       "evidence": "Specific figures, comparisons, or facts from article"
-    }
+    }}
   ],
   "actionable_items": [
-    {
+    {{
       "action": "Monitor/position/hedge idea",
       "trigger": "What confirms or invalidates",
       "horizon": "near_term|medium_term|long_term",
       "confidence": 0.0,
       "tickers": ["GOOGL"]
-    }
+    }}
   ]
-}
+}}
 
 Rules:
 - Include at most 6 primary_points.
@@ -618,20 +618,45 @@ def summarize_x_article(
     if not clean_text:
         return XArticleSummaryResult(short_summary=(article_preview or article_title or "").strip())
 
+    fallback_summary = (article_preview or article_title or clean_text[:400]).strip()
+
     prompt = ARTICLE_SUMMARY_PROMPT.format(
         article_title=(article_title or "").strip() or "[untitled]",
         article_preview=(article_preview or "").strip() or "[none]",
         article_text=clean_text,
     )
-    text = _call_llm(provider, model, prompt, max_tokens=4096, reasoning=reasoning)
-    data = _parse_json_response(text)
+
+    fallback_provider = config["llm"].get("triage_provider", "gemini")
+    fallback_model = config["llm"].get("triage_model", model)
+    candidates: list[tuple[str, str]] = []
+    for cand_provider, cand_model in [
+        (provider, model),
+        (fallback_provider, fallback_model),
+    ]:
+        pair = (cand_provider, cand_model)
+        if pair not in candidates:
+            candidates.append(pair)
+
+    data: dict[str, Any] | list[dict[str, Any]] | None = None
+    for cand_provider, cand_model in candidates:
+        try:
+            text = _call_llm(cand_provider, cand_model, prompt, max_tokens=4096, reasoning=reasoning)
+            data = _parse_json_response(text)
+            break
+        except Exception:
+            continue
+
+    if data is None:
+        return XArticleSummaryResult(short_summary=fallback_summary)
 
     if isinstance(data, list):
         data = data[0] if data else {}
+    if not isinstance(data, dict):
+        return XArticleSummaryResult(short_summary=fallback_summary)
 
     short_summary = (data.get("short_summary") or "").strip()
     if not short_summary:
-        short_summary = (article_preview or article_title or "").strip()
+        short_summary = fallback_summary
 
     primary_points_raw = data.get("primary_points")
     primary_points: list[dict[str, Any]] = []

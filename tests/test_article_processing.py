@@ -13,7 +13,8 @@ from twag.db import (
     update_tweet_processing,
 )
 from twag.fetcher import Tweet
-from twag.processor import _select_article_top_visual
+from twag.processor import _build_triage_text, _prefer_stronger_signal_tier, _select_article_top_visual
+from twag.scorer import summarize_x_article
 
 
 def _load_real_article_fixture() -> dict:
@@ -173,3 +174,131 @@ def test_article_fields_round_trip_in_feed(tmp_path) -> None:
     assert len(tweet.article_primary_points) == 1
     assert len(tweet.article_action_items) == 1
     assert tweet.article_top_visual is None
+
+
+def test_duplicate_insert_upgrades_article_payload(tmp_path) -> None:
+    db_path = tmp_path / "article_upgrade.db"
+    init_db(db_path)
+
+    with get_connection(db_path) as conn:
+        inserted_first = insert_tweet(
+            conn,
+            tweet_id="dup-1",
+            author_handle="analyst",
+            content="Short teaser",
+            created_at=datetime.now(timezone.utc),
+            source="status",
+            has_link=True,
+            is_x_article=True,
+            article_title="Capex note",
+            article_preview="Short preview",
+            article_text=None,
+            has_media=False,
+        )
+        assert inserted_first is True
+
+        inserted_second = insert_tweet(
+            conn,
+            tweet_id="dup-1",
+            author_handle="analyst",
+            content="Longer full article body " * 100,
+            created_at=datetime.now(timezone.utc),
+            source="status",
+            has_link=True,
+            is_x_article=True,
+            article_title="Capex note full",
+            article_preview="Longer preview with extra context",
+            article_text="Longer full article body " * 200,
+            has_media=True,
+            media_items=[{"url": "https://pbs.twimg.com/media/HAXmiH6acAEiywu.jpg", "type": "photo"}],
+        )
+        assert inserted_second is False
+
+        row = conn.execute(
+            "SELECT content, has_media, media_items, article_title, article_preview, article_text FROM tweets WHERE id = ?",
+            ("dup-1",),
+        ).fetchone()
+
+    assert row is not None
+    assert len(row["content"]) > 1000
+    assert row["has_media"] == 1
+    assert "HAXmiH6acAEiywu.jpg" in (row["media_items"] or "")
+    assert row["article_title"] == "Capex note full"
+    assert "Longer preview" in (row["article_preview"] or "")
+    assert len(row["article_text"] or "") > 2000
+
+
+def test_prefer_stronger_signal_tier_avoids_downgrade() -> None:
+    assert _prefer_stronger_signal_tier("market_relevant", "noise") == "market_relevant"
+    assert _prefer_stronger_signal_tier("news", "high_signal") == "high_signal"
+    assert _prefer_stronger_signal_tier(None, "noise") == "noise"
+
+
+def test_build_triage_text_prefers_article_body() -> None:
+    row = {
+        "content": "Short teaser",
+        "is_x_article": 1,
+        "article_title": "Capex note",
+        "article_preview": "Preview",
+        "article_text": "Deep dive " * 800,
+    }
+    text = _build_triage_text(row)  # type: ignore[arg-type]
+
+    assert text.startswith("Capex note")
+    assert "Deep dive" in text
+    assert len(text) <= 6000
+
+
+def test_summarize_x_article_fallback_on_llm_error(monkeypatch) -> None:
+    import twag.scorer as scorer_mod
+
+    monkeypatch.setattr(scorer_mod, "_call_llm", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("boom")))
+
+    result = summarize_x_article(
+        "Body text",
+        article_title="Title",
+        article_preview="Preview line",
+        model="dummy",
+        provider="anthropic",
+    )
+
+    assert result.short_summary == "Preview line"
+    assert result.primary_points == []
+    assert result.actionable_items == []
+
+
+def test_summarize_x_article_falls_back_to_triage_provider(monkeypatch) -> None:
+    import twag.scorer as scorer_mod
+
+    calls: list[tuple[str, str]] = []
+
+    def _fake_call_llm(provider, model, prompt, max_tokens=2048, reasoning=None):
+        calls.append((provider, model))
+        if provider == "anthropic":
+            raise RuntimeError("ANTHROPIC_API_KEY not set")
+        return '{"short_summary":"Structured summary","primary_points":[{"point":"P1","reasoning":"R1","evidence":"E1"}],"actionable_items":[]}'
+
+    monkeypatch.setattr(scorer_mod, "_call_llm", _fake_call_llm)
+    monkeypatch.setattr(
+        scorer_mod,
+        "load_config",
+        lambda: {
+            "llm": {
+                "enrichment_model": "opus",
+                "enrichment_provider": "anthropic",
+                "triage_model": "gemini-3-flash-preview",
+                "triage_provider": "gemini",
+            }
+        },
+    )
+
+    result = summarize_x_article(
+        "Body text",
+        article_title="Title",
+        article_preview="Preview line",
+    )
+
+    assert ("anthropic", "opus") in calls
+    assert ("gemini", "gemini-3-flash-preview") in calls
+    assert result.short_summary == "Structured summary"
+    assert len(result.primary_points) == 1

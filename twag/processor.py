@@ -49,6 +49,52 @@ from .scorer import (
     triage_tweets_batch,
 )
 
+_SIGNAL_TIER_RANK = {
+    "noise": 0,
+    "news": 1,
+    "market_relevant": 2,
+    "high_signal": 3,
+}
+
+
+def _prefer_stronger_signal_tier(existing: str | None, candidate: str | None) -> str | None:
+    """Return the stronger signal tier, defaulting to existing when equal/unknown."""
+    if not existing and not candidate:
+        return None
+    if not existing:
+        return candidate
+    if not candidate:
+        return existing
+
+    existing_rank = _SIGNAL_TIER_RANK.get(str(existing), -1)
+    candidate_rank = _SIGNAL_TIER_RANK.get(str(candidate), -1)
+    return candidate if candidate_rank > existing_rank else existing
+
+
+def _build_triage_text(tweet_row: sqlite3.Row) -> str:
+    """Build triage text, favoring article body for X-native articles."""
+    content = (tweet_row["content"] or "").strip()
+    if not tweet_row["is_x_article"]:
+        return content
+
+    article_text = (tweet_row["article_text"] or "").strip()
+    if not article_text:
+        return content
+
+    title = (tweet_row["article_title"] or "").strip()
+    preview = (tweet_row["article_preview"] or "").strip()
+    parts = [part for part in [title, preview, article_text] if part]
+    combined = "\n\n".join(parts)
+
+    # Keep triage payload bounded while preserving rich article context.
+    if len(combined) > 6000:
+        combined = combined[:6000]
+
+    # Prefer article-aware text when materially richer than tweet content.
+    if not content or len(combined) >= len(content) + 120:
+        return combined
+    return content
+
 
 def _fetch_quote_chain(
     conn: sqlite3.Connection,
@@ -680,6 +726,7 @@ def process_unprocessed(
     progress_cb: Callable[[int], None] | None = None,
     status_cb: Callable[[str], None] | None = None,
     total_cb: Callable[[int], None] | None = None,
+    force_refresh: bool = False,
 ) -> list[TriageResult]:
     """Process tweets that haven't been scored yet."""
     config = load_config()
@@ -759,6 +806,7 @@ def process_unprocessed(
             media_min_score=media_min_score,
             progress_cb=progress_cb,
             status_cb=status_cb,
+            force_refresh=force_refresh,
         )
 
         conn.commit()
@@ -780,6 +828,7 @@ def _triage_rows(
     media_min_score: float | None = None,
     progress_cb: Callable[[int], None] | None = None,
     status_cb: Callable[[str], None] | None = None,
+    force_refresh: bool = False,
 ) -> list[TriageResult]:
     """Run triage on provided rows and persist results."""
     config = load_config()
@@ -797,7 +846,7 @@ def _triage_rows(
         tweets_for_triage.append(
             {
                 "id": tweet_id,
-                "text": row["content"],
+                "text": _build_triage_text(row),
                 "handle": row["author_handle"],
             }
         )
@@ -941,7 +990,7 @@ def _triage_rows(
                 analysis_min_score is not None
                 and result.score >= analysis_min_score
                 and tweet_row is not None
-                and not tweet_row["analysis_json"]
+                and (force_refresh or not tweet_row["analysis_json"])
             )
             if needs_analysis:
                 enrich_candidates.add(result.tweet_id)
@@ -950,7 +999,7 @@ def _triage_rows(
             needs_article = (
                 tweet_row is not None
                 and bool(tweet_row["is_x_article"])
-                and not tweet_row["article_processed_at"]
+                and (force_refresh or not tweet_row["article_processed_at"])
                 and result.score >= article_min_score
                 and bool(tweet_row["article_text"] or tweet_row["article_preview"] or tweet_row["article_title"])
             )
@@ -1032,7 +1081,7 @@ def _triage_rows(
         if article_candidates:
             for tweet_id in list(article_candidates):
                 row = get_tweet_by_id(conn, tweet_id)
-                if not row or row["article_processed_at"]:
+                if not row or (row["article_processed_at"] and not force_refresh):
                     _complete_task(tweet_id)
                     continue
 
@@ -1116,7 +1165,7 @@ def _triage_rows(
         if enrich_candidates:
             for tweet_id in list(enrich_candidates):
                 row = get_tweet_by_id(conn, tweet_id)
-                if not row or row["analysis_json"]:
+                if not row or (row["analysis_json"] and not force_refresh):
                     _complete_task(tweet_id)
                     continue
 
@@ -1183,7 +1232,7 @@ def _triage_rows(
                             conn,
                             tweet_id=tweet_id,
                             analysis=analysis_payload,
-                            signal_tier=result.signal_tier or row["signal_tier"],
+                            signal_tier=_prefer_stronger_signal_tier(row["signal_tier"], result.signal_tier),
                             tickers=merged_tickers,
                         )
                     except Exception:
@@ -1215,7 +1264,7 @@ def _triage_rows(
                         conn,
                         tweet_id=tweet_id,
                         analysis=analysis_payload,
-                        signal_tier=result.signal_tier or row["signal_tier"],
+                        signal_tier=_prefer_stronger_signal_tier(row["signal_tier"], result.signal_tier),
                         tickers=merged_tickers,
                     )
                 except Exception:

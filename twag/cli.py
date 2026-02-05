@@ -786,6 +786,7 @@ def analyze(status_id_or_url: str, model: str | None, reprocess: bool):
                 progress_cb=progress_cb,
                 status_cb=status_cb,
                 total_cb=total_cb,
+                force_refresh=reprocess,
             )
 
     with get_connection() as conn:

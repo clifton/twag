@@ -91,7 +91,7 @@ def test_analyze_status_success(monkeypatch):
     import twag.fetcher as fetcher_mod
     import twag.processor as processor_mod
 
-    process_calls = {"count": 0}
+    process_calls = {"count": 0, "force_refresh": None}
     row = _sample_row(processed_at=None)
 
     monkeypatch.setattr(cli_mod, "init_db", lambda: None)
@@ -105,7 +105,11 @@ def test_analyze_status_success(monkeypatch):
     monkeypatch.setattr(
         processor_mod,
         "process_unprocessed",
-        lambda **kwargs: process_calls.__setitem__("count", process_calls["count"] + 1) or [],
+        lambda **kwargs: (
+            process_calls.__setitem__("count", process_calls["count"] + 1),
+            process_calls.__setitem__("force_refresh", kwargs.get("force_refresh")),
+            [],
+        )[-1],
     )
     monkeypatch.setattr(cli_mod, "get_tweet_by_id", lambda _conn, _tweet_id: row)
 
@@ -120,6 +124,7 @@ def test_analyze_status_success(monkeypatch):
     assert "Actionable Items:" in result.output
     assert "Top Visual:" in result.output
     assert process_calls["count"] == 1
+    assert process_calls["force_refresh"] is False
 
 
 def test_analyze_status_skips_processing_when_already_processed(monkeypatch):
@@ -145,6 +150,33 @@ def test_analyze_status_skips_processing_when_already_processed(monkeypatch):
 
     assert result.exit_code == 0
     assert "Status already processed; using existing analysis" in result.output
+
+
+def test_analyze_status_reprocess_forces_refresh(monkeypatch):
+    """--reprocess should force article/enrichment refresh path."""
+    import twag.cli as cli_mod
+    import twag.fetcher as fetcher_mod
+    import twag.processor as processor_mod
+
+    calls = {"force_refresh": None}
+    row = _sample_row(processed_at="2026-02-05T14:00:00+00:00")
+
+    monkeypatch.setattr(cli_mod, "init_db", lambda: None)
+    monkeypatch.setattr(cli_mod, "get_connection", _fake_connection)
+    monkeypatch.setattr(cli_mod, "get_tweet_by_id", lambda _conn, _tweet_id: row)
+    monkeypatch.setattr(fetcher_mod, "read_tweet", lambda _status: _sample_tweet())
+    monkeypatch.setattr(processor_mod, "store_fetched_tweets", lambda tweets, **kwargs: (len(tweets), 0))
+    monkeypatch.setattr(
+        processor_mod,
+        "process_unprocessed",
+        lambda **kwargs: calls.__setitem__("force_refresh", kwargs.get("force_refresh")) or [],
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["analyze", "2019488673935552978", "--reprocess"])
+
+    assert result.exit_code == 0
+    assert calls["force_refresh"] is True
 
 
 def test_analyze_status_not_found(monkeypatch):
