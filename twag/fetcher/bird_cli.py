@@ -63,7 +63,14 @@ def run_bird(args: list[str], timeout: int = 60) -> tuple[str, str, int]:
 
 
 def _parse_bird_output(stdout: str) -> list[Tweet]:
-    """Parse bird JSON output into Tweet objects."""
+    """Parse bird JSON output into Tweet objects.
+
+    Handles three formats:
+    1. A complete JSON array: ``[{...}, {...}]``
+    2. NDJSON (one JSON object per line)
+    3. A *truncated* JSON array (bird may clip stdout for large responses) —
+       we recover every complete object before the truncation point.
+    """
     if not stdout.strip():
         return []
 
@@ -81,9 +88,11 @@ def _parse_bird_output(stdout: str) -> list[Tweet]:
         else:
             _append_item(data)
     except json.JSONDecodeError:
-        # Fallback: try line-by-line for NDJSON format
-        for line in stdout.strip().split("\n"):
-            if not line.strip():
+        text = stdout.strip()
+        # Try NDJSON first (one JSON value per line)
+        for line in text.split("\n"):
+            line = line.strip()
+            if not line:
                 continue
             try:
                 item = json.loads(line)
@@ -94,6 +103,22 @@ def _parse_bird_output(stdout: str) -> list[Tweet]:
                     _append_item(item)
             except json.JSONDecodeError:
                 continue
+        # If NDJSON found nothing and it looks like a truncated JSON array
+        # (bird clips stdout at ~64 KB), recover complete objects via raw_decode.
+        if not tweets and text.startswith("["):
+            decoder = json.JSONDecoder()
+            idx = 1  # skip opening '['
+            while idx < len(text):
+                while idx < len(text) and text[idx] in " \t\n\r,":
+                    idx += 1
+                if idx >= len(text) or text[idx] == "]":
+                    break
+                try:
+                    obj, end = decoder.raw_decode(text, idx)
+                    _append_item(obj)
+                    idx = end
+                except json.JSONDecodeError:
+                    break
 
     return tweets
 
