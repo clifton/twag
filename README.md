@@ -4,6 +4,10 @@ Twitter/X market-signal aggregation with LLM-powered triage, enrichment, and dig
 
 **twag** pulls tweets from your timeline, scores them for market relevance using LLMs, enriches high-signal content, and generates daily digests. It's designed for traders and investors who want signal without the noise.
 
+Example telegram notification. Chart emojis are links to tweets that have charts:
+
+![telegram-cloud-photo-size-1-4911387561196981374-x](https://github.com/user-attachments/assets/22d96b0e-7bae-485d-93ab-c24928f071a9)
+
 ## Features
 
 - **Smart Scoring** — LLM-powered triage (0-10) with category tagging
