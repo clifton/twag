@@ -77,7 +77,6 @@ def fetch(
             tweets = fetch_search(query=query or "", count=count)
 
         if not tweets:
-            console.print("Fetched 0 tweets.")
             fetched, new = 0, 0
         else:
             with create_progress() as progress:
