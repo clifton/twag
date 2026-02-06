@@ -15,8 +15,7 @@
 #   GEMINI_API_KEY - For triage/vision (required)
 #   ANTHROPIC_API_KEY - For enrichment (optional)
 #   TELEGRAM_CHAT_ID - For error notifications (optional)
-#   TELEGRAM_BOT_TOKEN - For error notifications (optional)
-#   OPENCLAW_TOKEN - For error notifications via OpenClaw gateway (optional)
+#   TELEGRAM_BOT_TOKEN - For error notifications via direct API (optional fallback)
 
 # Load environment from common locations
 for envfile in ~/.env ~/.config/twag/env /etc/twag/env; do
@@ -54,14 +53,13 @@ notify_error() {
     local msg="$1"
     log "ERROR: $msg"
 
-    # Try OpenClaw gateway first (if running locally)
-    if [ -n "$OPENCLAW_TOKEN" ] && curl -sf --max-time 3 --connect-timeout 2 http://127.0.0.1:8443/health >/dev/null 2>&1; then
-        local json_msg="${msg//$'\n'/\\n}"
-        curl -sf --max-time 10 --connect-timeout 5 -X POST "http://127.0.0.1:8443/api/message" \
-            -H "Authorization: Bearer $OPENCLAW_TOKEN" \
-            -H "Content-Type: application/json" \
-            -d "{\"channel\":\"telegram\",\"to\":\"${TELEGRAM_CHAT_ID}\",\"message\":\"⚠️ twag pipeline failed:\\n${json_msg}\"}" \
-            >/dev/null 2>&1 && return 0
+    # Try OpenClaw CLI first (if available and gateway is running)
+    if command -v openclaw >/dev/null 2>&1 && [ -n "$TELEGRAM_CHAT_ID" ]; then
+        if curl -sf --max-time 2 --connect-timeout 1 http://127.0.0.1:8443/health >/dev/null 2>&1; then
+            openclaw message send --channel telegram --target "$TELEGRAM_CHAT_ID" \
+                --message "⚠️ twag pipeline failed:
+${msg}" >/dev/null 2>&1 && return 0
+        fi
     fi
 
     # Fallback to direct Telegram API
@@ -73,7 +71,7 @@ notify_error() {
     fi
 
     # No notification method available
-    log "WARNING: Could not send error notification (no TELEGRAM_BOT_TOKEN or OPENCLAW_TOKEN)"
+    log "WARNING: Could not send error notification (no TELEGRAM_BOT_TOKEN or openclaw CLI)"
 }
 
 run_cmd() {
