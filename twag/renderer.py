@@ -7,8 +7,9 @@ from pathlib import Path
 
 from .article_visuals import build_article_visuals
 from .config import get_digests_dir, load_config
-from .db import get_connection, get_tweets_for_digest, mark_tweet_in_digest
+from .db import get_connection, get_tweet_by_id, get_tweets_for_digest, mark_tweet_in_digest
 from .fetcher import get_tweet_url
+from .link_utils import normalize_tweet_links
 
 
 def _value(tweet: sqlite3.Row | dict, key: str, default=None):
@@ -72,7 +73,7 @@ def render_digest(
                 ]
             )
             for tweet in high_signal:
-                lines.extend(_render_tweet(tweet))
+                lines.extend(_render_tweet(conn, tweet))
                 mark_tweet_in_digest(conn, tweet["id"], date)
 
         if market_relevant:
@@ -85,7 +86,7 @@ def render_digest(
                 ]
             )
             for tweet in market_relevant:
-                lines.extend(_render_tweet(tweet))
+                lines.extend(_render_tweet(conn, tweet))
                 mark_tweet_in_digest(conn, tweet["id"], date)
 
         if news:
@@ -98,7 +99,7 @@ def render_digest(
                 ]
             )
             for tweet in news:
-                lines.extend(_render_tweet(tweet, compact=True))
+                lines.extend(_render_tweet(conn, tweet, compact=True))
                 mark_tweet_in_digest(conn, tweet["id"], date)
 
         conn.commit()
@@ -119,7 +120,7 @@ def render_digest(
     return content
 
 
-def _render_tweet(tweet: sqlite3.Row, compact: bool = False) -> list[str]:
+def _render_tweet(conn: sqlite3.Connection, tweet: sqlite3.Row, compact: bool = False) -> list[str]:
     """Render a single tweet to markdown lines."""
     lines = []
 
@@ -135,6 +136,22 @@ def _render_tweet(tweet: sqlite3.Row, compact: bool = False) -> list[str]:
 
     handle = tweet["author_handle"]
     url = get_tweet_url(tweet["id"], handle)
+    links = []
+    if _value(tweet, "links_json"):
+        try:
+            decoded = json.loads(_value(tweet, "links_json"))
+            if isinstance(decoded, list):
+                links = [item for item in decoded if isinstance(item, dict)]
+        except json.JSONDecodeError:
+            links = []
+    normalized_links = normalize_tweet_links(
+        tweet_id=tweet["id"],
+        text=tweet["content"],
+        links=links,
+        has_media=bool(_value(tweet, "has_media", False)),
+    )
+    inline_tweet_links = normalized_links.inline_tweet_links
+    external_links = normalized_links.external_links
 
     # Bookmark flag
     is_bookmarked = _value(tweet, "bookmarked", False)
@@ -168,7 +185,7 @@ def _render_tweet(tweet: sqlite3.Row, compact: bool = False) -> list[str]:
             lines.append("")
             lines.append(content_summary)
         else:
-            lines.append(tweet["content"])
+            lines.append(normalized_links.display_text or tweet["content"])
         lines.append("")
 
         # Summary/insight
@@ -296,6 +313,34 @@ def _render_tweet(tweet: sqlite3.Row, compact: bool = False) -> list[str]:
         elif tweet["link_summary"]:
             lines.append("🔗 **Linked Article:**")
             lines.append(f"> {tweet['link_summary']}")
+            lines.append("")
+
+        if external_links:
+            lines.append("🌐 **Links:**")
+            for link in external_links[:4]:
+                url_text = link.get("url") or ""
+                if not url_text:
+                    continue
+                lines.append(f"- [{link.get('display_url') or url_text}]({url_text})")
+            lines.append("")
+
+        if inline_tweet_links:
+            lines.append("💬 **Linked Tweets:**")
+            for link in inline_tweet_links[:3]:
+                linked_id = link.get("id")
+                linked_url = link.get("url") or get_tweet_url(linked_id or "", "i")
+                if not linked_id:
+                    continue
+                linked_row = get_tweet_by_id(conn, linked_id)
+                if linked_row and linked_row["summary"]:
+                    linked_handle = linked_row["author_handle"] or "unknown"
+                    lines.append(f"- **@{linked_handle}**: {linked_row['summary']} ([link]({linked_url}))")
+                elif linked_row and linked_row["content"]:
+                    linked_handle = linked_row["author_handle"] or "unknown"
+                    preview = linked_row["content"][:180].strip()
+                    lines.append(f"- **@{linked_handle}**: {preview} ([link]({linked_url}))")
+                else:
+                    lines.append(f"- [Tweet {linked_id}]({linked_url})")
             lines.append("")
 
         lines.append(f"[View tweet]({url})")

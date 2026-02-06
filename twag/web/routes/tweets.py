@@ -1,5 +1,6 @@
 """Tweet feed API routes."""
 
+import json
 import re
 from datetime import datetime
 from typing import Any
@@ -8,15 +9,20 @@ from fastapi import APIRouter, Query, Request
 
 from ...db import get_connection, get_feed_tweets, get_tweet_by_id, parse_time_range
 from ...media import parse_media_items
-from ..tweet_utils import decode_html_entities, extract_tweet_links, quote_embed_from_row, remove_tweet_links
+from ..tweet_utils import (
+    decode_html_entities,
+    normalize_links_for_display,
+    quote_embed_from_row,
+)
 
 router = APIRouter(tags=["tweets"])
 MAX_QUOTE_DEPTH = 3
 LEGACY_RETWEET_RE = re.compile(r"^\s*RT\s+@([A-Za-z0-9_]{1,15}):\s*(.+)$")
 
 
-def _inline_quote_id_from_links(tweet_id: str, links: dict[str, str]) -> str | None:
-    for linked_tweet_id in links:
+def _inline_quote_id_from_links(tweet_id: str, links: list[dict[str, str]]) -> str | None:
+    for link in links:
+        linked_tweet_id = link.get("id")
         if linked_tweet_id and linked_tweet_id != tweet_id:
             return linked_tweet_id
     return None
@@ -49,13 +55,21 @@ def _build_quote_embed(
     embed = quote_embed_from_row(row)
 
     content = row["content"] or ""
-    links = extract_tweet_links(content)
-    link_map: dict[str, str] = {}
-    for linked_tweet_id, linked_url in links:
-        if linked_tweet_id and linked_tweet_id not in link_map:
-            link_map[linked_tweet_id] = linked_url
-
-    nested_quote_id = row["quote_tweet_id"] or _inline_quote_id_from_links(row["id"], link_map)
+    links_json = []
+    if row["links_json"]:
+        try:
+            decoded = json.loads(row["links_json"])
+            if isinstance(decoded, list):
+                links_json = [item for item in decoded if isinstance(item, dict)]
+        except json.JSONDecodeError:
+            links_json = []
+    normalized = normalize_links_for_display(
+        tweet_id=row["id"],
+        text=content,
+        links=links_json,
+        has_media=bool(row["has_media"]),
+    )
+    nested_quote_id = row["quote_tweet_id"] or _inline_quote_id_from_links(row["id"], normalized.inline_tweet_links)
     if nested_quote_id and nested_quote_id != row["id"]:
         nested_embed = _build_quote_embed(conn, nested_quote_id, depth=depth + 1, seen=visited)
         if nested_embed:
@@ -127,35 +141,42 @@ async def list_tweets(
         tweets_data = []
         for t in tweets:
             content_raw = t.content or ""
-            links = extract_tweet_links(content_raw)
-            link_map: dict[str, str] = {}
-            for tid, url in links:
-                if tid and tid not in link_map:
-                    link_map[tid] = url
+            normalized = normalize_links_for_display(
+                tweet_id=t.id,
+                text=content_raw,
+                links=t.links,
+                has_media=bool(t.has_media),
+            )
+            inline_links = normalized.inline_tweet_links
 
             # Determine quote tweet
             inline_quote_id = None
             if not t.has_quote:
-                inline_quote_id = _inline_quote_id_from_links(t.id, link_map)
+                inline_quote_id = _inline_quote_id_from_links(t.id, inline_links)
 
             quote_id = t.quote_tweet_id or inline_quote_id
             if quote_id == t.id:
                 quote_id = None
             quote_embed = _build_quote_embed(conn, quote_id)
+            inline_quote_embeds: list[dict[str, Any]] = []
 
-            # Reference links (other tweet URLs that aren't the quote)
+            # Additional inline linked tweet embeds.
             reference_links: list[dict[str, str]] = []
-            for tid, url in link_map.items():
-                if tid == t.id:
+            for link in inline_links:
+                tid = link.get("id")
+                url = link.get("url") or ""
+                if not tid or tid == t.id:
                     continue
                 if quote_id and tid == quote_id:
                     continue
-                reference_links.append({"id": tid, "url": url})
+                embed = _build_quote_embed(conn, tid)
+                if embed:
+                    inline_quote_embeds.append(embed)
+                else:
+                    reference_links.append({"id": tid, "url": url})
 
             # Clean display content
-            remove_ids = set(link_map.keys())
-            remove_ids.add(t.id)
-            display_content = remove_tweet_links(content_raw, links, remove_ids) if content_raw else content_raw
+            display_content = normalized.display_text if content_raw else content_raw
 
             is_retweet = bool(t.is_retweet)
             retweeted_by_handle = t.retweeted_by_handle
@@ -182,6 +203,12 @@ async def list_tweets(
             display_tweet_id = original_tweet_id if is_retweet and original_tweet_id else t.id
             if is_retweet and original_content:
                 display_content = original_content
+                display_content = normalize_links_for_display(
+                    tweet_id=display_tweet_id,
+                    text=display_content,
+                    links=t.links,
+                    has_media=bool(t.has_media),
+                ).display_text
 
             content = decode_html_entities(t.content)
             original_content = decode_html_entities(original_content)
@@ -229,7 +256,9 @@ async def list_tweets(
                     "original_content": original_content,
                     "reactions": t.reactions,
                     "quote_embed": quote_embed,
+                    "inline_quote_embeds": inline_quote_embeds,
                     "reference_links": reference_links,
+                    "external_links": normalized.external_links,
                     "display_content": display_content,
                 }
             )
@@ -246,8 +275,6 @@ async def list_tweets(
 @router.get("/tweets/{tweet_id}")
 async def get_tweet(request: Request, tweet_id: str) -> dict[str, Any]:
     """Get a single tweet by ID."""
-    import json
-
     db_path = request.app.state.db_path
 
     with get_connection(db_path) as conn:
@@ -336,6 +363,7 @@ async def get_tweet(request: Request, tweet_id: str) -> dict[str, Any]:
         "original_author_handle": tweet["original_author_handle"],
         "original_author_name": tweet["original_author_name"],
         "original_content": decode_html_entities(tweet["original_content"]),
+        "links_json": tweet["links_json"],
     }
 
 

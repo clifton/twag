@@ -6,12 +6,41 @@ import { TweetContent } from "./TweetContent";
 import { TweetMedia } from "./TweetMedia";
 import { TweetActions } from "./TweetActions";
 import { QuoteBlock } from "./QuoteBlock";
-import type { AnalyzeResult, Tweet } from "@/api/types";
+import type { AnalyzeResult, MediaItem, Tweet } from "@/api/types";
 import { buildArticleVisuals } from "./articleVisuals";
 import { timeAgo } from "@/lib/utils";
 
 interface TweetCardProps {
   tweet: Tweet;
+}
+
+function hasVisualSignal(items: MediaItem[] | null | undefined): boolean {
+  if (!items?.length) return false;
+  return items.some(
+    (item) =>
+      item.kind === "chart" ||
+      item.kind === "table" ||
+      item.kind === "document" ||
+      Boolean(item.chart?.description || item.chart?.insight || item.table?.columns?.length),
+  );
+}
+
+function mediaTextFallback(items: MediaItem[] | null | undefined): string | null {
+  if (!items?.length) return null;
+  for (const item of items) {
+    const text =
+      item.prose_summary ||
+      item.short_description ||
+      item.prose_text ||
+      item.chart?.insight ||
+      item.chart?.description ||
+      item.table?.summary ||
+      item.alt_text;
+    if (text) {
+      return text;
+    }
+  }
+  return null;
 }
 
 export function TweetCard({ tweet }: TweetCardProps) {
@@ -31,6 +60,12 @@ export function TweetCard({ tweet }: TweetCardProps) {
       tweet.article_action_items.length > 0);
   const articleVisuals = buildArticleVisuals(tweet.article_top_visual, tweet.media_items, 5);
   const [topArticleVisual, ...additionalArticleVisuals] = articleVisuals;
+  const inlineQuoteEmbeds = tweet.inline_quote_embeds ?? [];
+  const shouldShowMedia = tweet.has_media && !hasArticleSummary && hasVisualSignal(tweet.media_items);
+  const mediaSummaryFallback =
+    !hasArticleSummary && !shouldShowMedia
+      ? (tweet.media_analysis ?? mediaTextFallback(tweet.media_items) ?? null)
+      : null;
   const digestBody =
     tweet.summary ??
     (tweet.is_x_article ? tweet.article_summary_short : null) ??
@@ -82,7 +117,7 @@ export function TweetCard({ tweet }: TweetCardProps) {
       </div>
 
       {/* Media */}
-      {tweet.has_media && !hasArticleSummary && (
+      {shouldShowMedia && (
         <div className="mt-3">
           <TweetMedia
             items={tweet.media_items}
@@ -91,10 +126,21 @@ export function TweetCard({ tweet }: TweetCardProps) {
         </div>
       )}
 
+      {tweet.has_media && mediaSummaryFallback && (
+        <p className="mt-2 text-xs text-zinc-300 leading-snug">{mediaSummaryFallback}</p>
+      )}
+
       {/* Quote embed */}
       {tweet.quote_embed && (
         <div className="mt-2.5">
           <QuoteBlock quote={tweet.quote_embed} />
+        </div>
+      )}
+      {inlineQuoteEmbeds.length > 0 && (
+        <div className="mt-2 space-y-2">
+          {inlineQuoteEmbeds.map((quote) => (
+            <QuoteBlock key={`${tweet.id}-inline-${quote.id}`} quote={quote} />
+          ))}
         </div>
       )}
 

@@ -1,446 +1,303 @@
-# twag - Twitter Aggregator
+# twag
 
-A CLI tool for aggregating and curating market-relevant Twitter/X content. Uses LLM-powered scoring to filter signal from noise.
+Twitter/X market-signal aggregation with LLM triage, enrichment, article summarization, and a web feed.
 
-## Installation
+## What It Does
+
+- Fetches timeline/user/search/status data via `bird`
+- Stores tweets in SQLite with dedupe and FTS search
+- Scores and categorizes tweets with LLMs
+- Enriches high-signal tweets with deeper analysis
+- Summarizes X Articles into:
+  - short summary
+  - primary points + reasoning
+  - actionable items + triggers
+  - data-oriented visuals (top visual first)
+- Renders daily markdown digests
+- Serves a FastAPI + React web UI
+
+## Requirements
+
+- Python `>=3.10`
+- `bird` CLI in `PATH`
+- Env vars:
+  - `GEMINI_API_KEY` (triage + vision)
+  - `AUTH_TOKEN` and `CT0` (Twitter auth for `bird`)
+- Optional:
+  - `ANTHROPIC_API_KEY` (deep enrichment)
+  - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` (alerts)
+
+## Install
 
 ```bash
-# Install from PyPI (when published)
-pip install twag
-
-# Or install from source
-pip install git+https://github.com/clifton/twag.git
-
-# Or local development install
-git clone https://github.com/clifton/twag.git
-cd twag
+# from source
 pip install -e .
+
+# with dev tools
+pip install -e ".[dev]"
 ```
 
 ## Quick Start
 
 ```bash
-# 1. Initialize twag (creates dirs, config, database)
+# 1) bootstrap config + db
 twag init
 
-# 2. Check dependencies
+# 2) verify dependencies/env
 twag doctor
 
-# 3. Set environment variables (add to ~/.bashrc or ~/.env)
-export GEMINI_API_KEY="your-key"
-export AUTH_TOKEN="your-twitter-auth-token"
-export CT0="your-twitter-ct0"
+# 3) pull data
+twag fetch
 
-# 4. Add accounts to track
-twag accounts add @NickTimiraos --tier 1
-twag accounts add @zerohedge --tier 1
+# 4) score + enrich
+twag process
 
-# 5. Fetch, process, and generate digest
-twag fetch && twag process && twag digest
+# 5) generate digest
+twag digest
+
+# 6) open web feed
+twag web
 ```
 
-## Prerequisites
+## Data Paths
 
-- Python 3.10+
-- `bird` CLI installed and configured with Twitter auth
-- `GEMINI_API_KEY` environment variable (for triage/vision)
-- `ANTHROPIC_API_KEY` environment variable (optional, for enrichment)
-- Twitter auth tokens: `AUTH_TOKEN`, `CT0`
+twag follows XDG defaults:
 
-## Data Locations
+- Config: `~/.config/twag/config.json`
+- Data dir: `~/.local/share/twag/`
+- DB: `~/.local/share/twag/twag.db`
+- Digests: `~/.local/share/twag/digests/`
+- Following list: `~/.local/share/twag/following.txt`
 
-twag follows the [XDG Base Directory Specification](https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html):
+Override with:
 
-| Data | Default Location | Override |
-|------|------------------|----------|
-| Config | `~/.config/twag/config.json` | `XDG_CONFIG_HOME` |
-| Database | `~/.local/share/twag/twag.db` | `TWAG_DATA_DIR` |
-| Digests | `~/.local/share/twag/digests/` | `TWAG_DATA_DIR` |
-| Following | `~/.local/share/twag/following.txt` | `TWAG_DATA_DIR` |
+- Env var: `TWAG_DATA_DIR`
+- Config key: `paths.data_dir`
 
-### Custom Data Directory
+## Pipeline
 
-Set `TWAG_DATA_DIR` to use a custom location:
+1. `fetch` phase
+- Pull tweets from home/user/search/bookmarks or a single status
+- Store normalized tweet rows
 
-```bash
-export TWAG_DATA_DIR=/path/to/my/data
-twag fetch  # Uses /path/to/my/data/twag.db, etc.
-```
+2. `process` phase
+- Batch triage scoring
+- Optional enrichment for higher-signal tweets
+- Optional quote reprocessing for today’s quoted tweets
+- Optional X Article summarization (score-gated)
 
-Or configure in `~/.config/twag/config.json`:
+3. `digest` phase
+- Query processed tweets by date and score
+- Render grouped markdown output
 
-```json
-{
-  "paths": {
-    "data_dir": "/path/to/my/data"
-  }
-}
-```
+## Link Handling Rules
 
-### Migration from Old Location
+Normalized link behavior is shared across digest + web feed:
 
-If migrating from an existing workspace:
+- Self-links to the same tweet are removed
+- Twitter/X links to other tweets become inline quote embeds when available
+- Non-twitter links are expanded and rendered as clickable URLs
+- Trailing unresolved `t.co` links that look like self/media pointers are pruned
+  - for media tweets
+  - and for mixed-link tweets where another URL already resolves externally
 
-```bash
-./scripts/migrate.sh /old/path/to/twitter-feed
-```
+## X Article Output
 
-## Architecture
+For article tweets (`is_x_article`), twag stores and renders:
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         FETCH PHASE                              │
-│  bird CLI → Parse tweets → Dedupe against SQLite → Store        │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                        PROCESS PHASE                             │
-│  Batch triage (Gemini Flash) → Score 0-10 → Expand high-signal  │
-│  → Enrich (Claude) → Update account stats                       │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                        DIGEST PHASE                              │
-│  Query by date → Group by tier → Render markdown                │
-└─────────────────────────────────────────────────────────────────┘
-```
+- `article_summary_short`
+- `article_primary_points` (point + reasoning + evidence)
+- `article_action_items` (action + trigger + horizon + confidence + tickers)
+- `article_top_visual`
+- additional relevant visuals selected from media
+
+Visual selection is data-oriented (chart/table/document/screenshot), with noisy/irrelevant images filtered out when possible.
 
 ## CLI Reference
 
-### Setup Commands
+### Setup
 
 ```bash
-# Initialize twag (run once after install)
 twag init
-twag init --force  # Overwrite existing config
-
-# Check dependencies and configuration
+twag init --force
 twag doctor
 ```
 
-### Fetch Commands
+### Fetch
 
 ```bash
-# Fetch home timeline + tier-1 accounts
+# default home fetch (+ tier1 + bookmarks)
 twag fetch
 
-# Fetch home only (no tier-1)
-twag fetch --no-tier1
-
-# Fetch specific user
-twag fetch --source user -u @NickTimiraos -n 50
-
-# Search tweets
-twag fetch --source search -q "Fed Powell rate" -n 30
-
-# Fetch one status by ID or URL
+# single status (id or url)
 twag fetch 2019488673935552978
 twag fetch https://x.com/undrvalue/status/2019488673935552978
+
+# user/search sources
+twag fetch --source user --handle @NickTimiraos --count 50
+twag fetch --source search --query "Fed Powell rate" --count 30
+
+# source controls
+twag fetch --no-tier1 --no-bookmarks
+twag fetch --delay 2 --stagger 10
 ```
 
-### Process Commands
+### Process
 
 ```bash
-# Process unscored tweets
+# process queued tweets
 twag process
 
-# Process one status by ID or URL (must already be fetched)
+# process one already-fetched status
 twag process 2019488673935552978
 twag process https://x.com/undrvalue/status/2019488673935552978
 
-# Process with limit
-twag process -n 100
-
-# Dry run (preview only)
+# options
+twag process --limit 100
 twag process --dry-run
-
-# Override model
-twag process -m claude-opus-4-20250514
-
-# Disable Telegram alerts
+twag process --model gemini-3-flash-preview
 twag process --no-notify
+twag process --no-reprocess-quotes
+```
 
-# One-shot: fetch + process + print structured analysis for one status
+### Analyze (one-shot)
+
+```bash
+# fetch + process + print analysis
 twag analyze 2019488673935552978
 twag analyze https://x.com/undrvalue/status/2019488673935552978
+
+# force refresh
 twag analyze 2019488673935552978 --reprocess
 ```
 
-### Digest Commands
+### Digest
 
 ```bash
-# Generate today's digest
 twag digest
-
-# Generate for specific date
-twag digest -d 2026-01-29
-
-# Output to stdout
+twag digest --date 2026-02-06
 twag digest --stdout
-
-# Custom minimum score
 twag digest --min-score 6
 ```
 
-### Account Commands
+### Accounts
 
 ```bash
-# List all accounts
 twag accounts list
+twag accounts list --tier 1 --muted
 
-# List tier-1 only
-twag accounts list -t 1
-
-# Include muted
-twag accounts list --muted
-
-# Add account
-twag accounts add @NickTimiraos
-
-# Add as tier-1
-twag accounts add @DeItaone -t 1
-
-# Promote to tier-1
+twag accounts add @handle --tier 2 --category tech_business
 twag accounts promote @handle
-
-# Mute account
+twag accounts demote @handle --tier 2
 twag accounts mute @handle
-
-# Apply daily decay
-twag accounts decay
-
-# Boost account weight
 twag accounts boost @handle --amount 10
-
-# Import from following.txt
-twag accounts import
+twag accounts decay --rate 0.05
+twag accounts import --tier 2
 ```
 
-### Search Commands
+### Narratives
 
 ```bash
-# Basic full-text search
-twag search "inflation fed"
-
-# Search with filters
-twag search "rate hike" -c fed_policy -s 7
-twag search "NVDA" -a zerohedge --time 7d
-twag search "earnings" --ticker AAPL --today
-
-# Bookmarked tweets only
-twag search "macro" --bookmarks
-
-# Output formats
-twag search "fed" --format brief   # default: one-liner per result
-twag search "fed" --format full    # digest-style with full content
-twag search "fed" --format json    # JSON output
-```
-
-**Query syntax:**
-- Simple terms: `inflation fed` (matches both)
-- Phrases: `"rate hike"` (exact match)
-- Boolean: `inflation AND fed`, `fed NOT fomc`
-- Prefix: `infla*` (wildcard)
-- Column filter: `author_handle:zerohedge`
-
-**Filter options:**
-- `--category, -c`: Filter by category (fed_policy, equities, etc.)
-- `--author, -a`: Filter by author handle
-- `--min-score, -s`: Minimum relevance score
-- `--ticker, -T`: Filter by ticker symbol
-- `--bookmarks, -b`: Only bookmarked tweets
-
-**Time filters:**
-- `--since`: Start time (YYYY-MM-DD or relative like 1d, 7d)
-- `--until`: End time (YYYY-MM-DD)
-- `--today`: Since previous market close (4pm ET)
-- `--time`: Time range shorthand (today, 7d, 2025-01-15, etc.)
-
-### Narrative Commands
-
-```bash
-# List active narratives
 twag narratives list
 ```
 
-### Stats & Maintenance
+### Search
 
 ```bash
-# Show all-time stats
+twag search "inflation fed"
+twag search "rate hike" --category fed_policy --min-score 7
+twag search "NVDA" --author zerohedge --time 7d
+twag search "earnings" --ticker AAPL --today
+
+# output + sorting
+twag search "fed" --format brief
+twag search "fed" --format full
+twag search "fed" --format json
+twag search "fed" --order rank
+```
+
+### Stats / Maintenance
+
+```bash
 twag stats
-
-# Show today's stats
 twag stats --today
+twag stats --date 2026-02-06
 
-# Show specific date
-twag stats -d 2026-01-29
-
-# Prune old tweets
 twag prune --days 14
-
-# Preview prune
 twag prune --days 14 --dry-run
 
-# Export recent data
-twag export --days 7
+twag export --days 7 --format json
 ```
 
-### Config Commands
+### Config
 
 ```bash
-# Show config
 twag config show
-
-# Show config path
 twag config path
-
-# Set value
 twag config set llm.triage_model gemini-3-flash-preview
 twag config set scoring.alert_threshold 9
-twag config set paths.data_dir /custom/path
+twag config set paths.data_dir ./data
 ```
 
-### Database Commands
+### DB
 
 ```bash
-# Show database path
 twag db path
-
-# Open SQLite shell
 twag db shell
-
-# Initialize database
 twag db init
-
-# Migrate from seen.json
-twag db migrate-seen
-
-# Rebuild FTS5 search index
 twag db rebuild-fts
+
+twag db dump
+twag db dump backup.sql
+twag db dump --stdout
+
+twag db restore backup.sql --force
+twag db restore backup.sql.gz --force
 ```
 
-### Web Interface
+### Web
 
 ```bash
-# Start web interface
+# production-style server
 twag web
 
-# Custom host/port
-twag web --host 0.0.0.0 --port 8080
+# custom host/port
+twag web --host 0.0.0.0 --port 5173
+
+# dev mode (Vite + API)
+twag web --dev
 ```
 
-## Account Tiers
+Notes:
+- In dev mode, Vite runs on `http://localhost:8080`.
+- API target defaults to `http://localhost:5173` unless you change `--port`.
 
-- **Tier 1 (Core)**: High-value accounts fetched individually every cycle
-- **Tier 2 (Followed)**: Accounts from following.txt, caught via home timeline
-- **Tier 3 (Discovered)**: Auto-discovered accounts with good signal
+## Scoring Tiers
 
-## Scoring System
+- `high_signal`: strongest actionable content
+- `market_relevant`: useful market context/opinion
+- `news`: informational context
+- `noise`: low signal
 
-| Score | Tier | Description |
-|-------|------|-------------|
-| 8-10 | High Signal | Actionable insights, triggers Telegram alert |
-| 6-7 | Market Relevant | Worth including in digest |
-| 4-5 | News | Context, included if space allows |
-| 0-3 | Noise | Filtered out |
-
-## Categories
-
-- `fed_policy` - Fed/central bank policy
-- `inflation` - Inflation data and expectations
-- `job_market` - Employment and labor data
-- `macro_data` - Economic data releases
-- `earnings` - Company earnings
-- `equities` - Stock analysis
-- `rates_fx` - Rates and FX
-- `credit` - Credit markets and spreads
-- `banks` - Banking sector news
-- `consumer_spending` - Consumer spending trends
-- `capex` - Capital expenditure and investment
-- `commodities` - Commodities (general)
-- `energy` - Energy markets (oil, gas, etc.)
-- `metals_mining` - Metals and mining
-- `geopolitical` - Geopolitics affecting markets
-- `sanctions` - Sanctions and trade restrictions
-- `tech_business` - Tech business news
-- `ai_advancement` - AI developments and implications
-- `crypto` - Cryptocurrency
-- `noise` - Not market relevant
-
-## Cron Setup
+## Development
 
 ```bash
-# Morning full cycle (7 AM)
-0 7 * * * /path/to/cron-runner.sh full
+# python lint/format/test
+uv run ruff format .
+uv run ruff check .
+uv run pytest
 
-# Daytime fetch-only (every 30 min, 7am-10pm)
-*/30 7-22 * * * /path/to/cron-runner.sh fetch-only
+# frontend
+cd twag/web/frontend
+npm install
+npm run dev
+npm run build
 ```
 
-Or using the installed script:
+## Temporary Artifacts
 
-```bash
-# Copy to local bin
-cp scripts/cron-runner.sh ~/.local/bin/twag-cron
-chmod +x ~/.local/bin/twag-cron
-
-# Add to crontab
-0 7 * * * ~/.local/bin/twag-cron full
-*/30 7-22 * * * ~/.local/bin/twag-cron fetch-only
-```
-
-## Configuration
-
-Default config in `~/.config/twag/config.json`:
-
-```json
-{
-  "llm": {
-    "triage_model": "gemini-3-flash-preview",
-    "triage_provider": "gemini",
-    "enrichment_model": "claude-opus-4-5-20251101",
-    "enrichment_provider": "anthropic",
-    "vision_model": "gemini-3-flash-preview",
-    "vision_provider": "gemini"
-  },
-  "scoring": {
-    "min_score_for_digest": 5,
-    "high_signal_threshold": 7,
-    "alert_threshold": 8,
-    "batch_size": 15
-  },
-  "notifications": {
-    "telegram_enabled": true,
-    "quiet_hours_start": 23,
-    "quiet_hours_end": 8,
-    "max_alerts_per_hour": 10
-  },
-  "accounts": {
-    "decay_rate": 0.05,
-    "boost_increment": 5,
-    "auto_promote_threshold": 75
-  },
-  "paths": {
-    "data_dir": null
-  }
-}
-```
-
-## Telegram Notifications
-
-High-signal tweets (score >= 8) trigger real-time Telegram alerts.
-
-Required environment variables:
-- `TELEGRAM_BOT_TOKEN`
-- `TELEGRAM_CHAT_ID`
-
-Or set in config:
-```bash
-twag config set notifications.telegram_chat_id YOUR_CHAT_ID
-```
+Use repo-local `tmp/` for screenshots/debug artifacts. Root-level ad-hoc artifacts should be avoided.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+MIT. See `LICENSE`.

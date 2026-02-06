@@ -5,6 +5,13 @@ import re
 from datetime import datetime
 from typing import Any
 
+from ..link_utils import (
+    LinkNormalizationResult,
+    normalize_tweet_links,
+    parse_tweet_status_id,
+    remove_urls_from_text,
+)
+
 _TWEET_URL_RE = re.compile(
     r"https?://(?:www\.)?(?:mobile\.)?(?:x|twitter)\.com/(?:i/(?:web/)?|[^/]+/)?status/(\d+)(?:\?[^\s]+)?",
     re.IGNORECASE,
@@ -28,12 +35,28 @@ def extract_tweet_links(text: str) -> list[tuple[str, str]]:
 
 def remove_tweet_links(text: str, links: list[tuple[str, str]], remove_ids: set[str]) -> str:
     cleaned = text
+    urls_to_remove: set[str] = set()
     for tweet_id, url in links:
         if tweet_id not in remove_ids:
             continue
-        cleaned = re.sub(rf"\s*{re.escape(url)}", "", cleaned)
+        urls_to_remove.add(url)
+    cleaned = remove_urls_from_text(cleaned, urls_to_remove)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned
+
+
+def normalize_links_for_display(
+    *,
+    tweet_id: str,
+    text: str | None,
+    links: list[dict] | None,
+    has_media: bool = False,
+) -> LinkNormalizationResult:
+    return normalize_tweet_links(tweet_id=tweet_id, text=text, links=links, has_media=has_media)
+
+
+def parse_tweet_id_from_url(url: str | None) -> str | None:
+    return parse_tweet_status_id(url)
 
 
 def decode_html_entities(text: str | None) -> str | None:
