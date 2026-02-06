@@ -3,6 +3,7 @@
 import json
 import logging
 import subprocess
+import tempfile
 import threading
 import time
 from typing import Any
@@ -51,13 +52,17 @@ def run_bird(args: list[str], timeout: int = 60) -> tuple[str, str, int]:
         cmd.extend(["--ct0", ct0])
 
     try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            env=env,
-        )
+        with tempfile.TemporaryFile(mode="w+") as tmp:
+            result = subprocess.run(
+                cmd,
+                stdout=tmp,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=timeout,
+                env=env,
+            )
+            tmp.seek(0)
+            stdout = tmp.read()
         if result.stderr.strip():
             lines = result.stderr.strip().splitlines()
             meaningful = [ln for ln in lines if not ln.strip().startswith("\u2139")]
@@ -66,7 +71,7 @@ def run_bird(args: list[str], timeout: int = 60) -> tuple[str, str, int]:
                 log.log(level, "bird %s stderr: %s", args[0] if args else "?", "\n".join(meaningful))
         if result.returncode != 0:
             log.error("bird %s exited with code %d", args[0] if args else "?", result.returncode)
-        return result.stdout, result.stderr, result.returncode
+        return stdout, result.stderr, result.returncode
     except subprocess.TimeoutExpired:
         log.error("bird %s timed out after %ds", args[0] if args else "?", timeout)
         return "", "Command timed out", 1

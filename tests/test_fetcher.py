@@ -571,7 +571,15 @@ class TestRunBird:
 
     def test_run_bird_success(self, mock_subprocess, mock_auth_env):
         """Successful bird command execution."""
-        mock_subprocess.return_value = MagicMock(stdout="output", stderr="", returncode=0)
+
+        def _fake_run(*args, **kwargs):
+            # Write to the temp file passed as stdout
+            tmp = kwargs.get("stdout")
+            if tmp and hasattr(tmp, "write"):
+                tmp.write("output")
+            return MagicMock(stderr="", returncode=0)
+
+        mock_subprocess.side_effect = _fake_run
 
         stdout, stderr, code = run_bird(["home", "-n", "10", "--json"])
 
@@ -581,7 +589,11 @@ class TestRunBird:
 
     def test_run_bird_adds_auth_flags(self, mock_subprocess, mock_auth_env):
         """Auth flags should be added from environment."""
-        mock_subprocess.return_value = MagicMock(stdout="", stderr="", returncode=0)
+
+        def _fake_run(*args, **kwargs):
+            return MagicMock(stderr="", returncode=0)
+
+        mock_subprocess.side_effect = _fake_run
 
         run_bird(["home"])
 
