@@ -120,6 +120,8 @@ The script:
 - Sources `~/.env` automatically
 - Ensures PATH includes common install locations
 - Logs with timestamps
+- Prevents concurrent runs via `flock` (Linux; degrades gracefully on macOS)
+- Sends error notifications via OpenClaw gateway (`OPENCLAW_TOKEN`) or direct Telegram API (`TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID`)
 
 ## Telegram Digest Delivery
 
