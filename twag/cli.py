@@ -726,6 +726,7 @@ def process(
                 WHERE processed_at IS NOT NULL
                   AND has_quote = 1
                   AND quote_tweet_id IS NOT NULL
+                  AND quote_reprocessed_at IS NULL
                   AND date(created_at) = ?
                   AND relevance_score >= ?
                 ORDER BY created_at DESC

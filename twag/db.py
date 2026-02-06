@@ -195,6 +195,7 @@ CREATE TABLE IF NOT EXISTS tweets (
     article_action_items_json TEXT,
     article_top_visual_json TEXT,
     article_processed_at TIMESTAMP,
+    quote_reprocessed_at TIMESTAMP,
     is_retweet INTEGER DEFAULT 0,
     retweeted_by_handle TEXT,
     retweeted_by_name TEXT,
@@ -273,6 +274,7 @@ CREATE INDEX IF NOT EXISTS idx_accounts_tier ON accounts(tier, weight DESC);
 
 -- Feed query and filter indexes
 CREATE INDEX IF NOT EXISTS idx_tweets_processed_score ON tweets(processed_at, relevance_score DESC, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tweets_processed_created ON tweets(processed_at, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tweets_author ON tweets(author_handle);
 CREATE INDEX IF NOT EXISTS idx_tweets_signal_tier ON tweets(signal_tier);
 CREATE INDEX IF NOT EXISTS idx_tweets_bookmarked ON tweets(bookmarked) WHERE bookmarked = 1;
@@ -442,6 +444,9 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
 
     if "links_json" not in tweet_columns:
         conn.execute("ALTER TABLE tweets ADD COLUMN links_json TEXT")
+
+    if "quote_reprocessed_at" not in tweet_columns:
+        conn.execute("ALTER TABLE tweets ADD COLUMN quote_reprocessed_at TIMESTAMP")
 
     # Check accounts table columns
     cursor = conn.execute("PRAGMA table_info(accounts)")
@@ -2202,61 +2207,67 @@ def get_feed_tweets(
     offset: int = 0,
 ) -> list[FeedTweet]:
     """Get tweets for the web feed with filters."""
-    conditions = ["t.processed_at IS NOT NULL"]
+    conditions = ["processed_at IS NOT NULL"]
     params: list[Any] = []
 
     if category:
-        conditions.append("(t.category LIKE ? OR t.category = ?)")
+        conditions.append("(category LIKE ? OR category = ?)")
         params.append(f'%"{category}"%')
         params.append(category)
 
     if ticker:
-        conditions.append("(t.tickers LIKE ? OR t.tickers LIKE ?)")
+        conditions.append("(tickers LIKE ? OR tickers LIKE ?)")
         params.append(f'%"{ticker.upper()}"%')
         params.append(f"%{ticker.upper()}%")
 
     if min_score is not None:
-        conditions.append("t.relevance_score >= ?")
+        conditions.append("relevance_score >= ?")
         params.append(min_score)
 
     if signal_tier:
-        conditions.append("t.signal_tier = ?")
+        conditions.append("signal_tier = ?")
         params.append(signal_tier)
 
     if author:
-        conditions.append("t.author_handle = ?")
+        conditions.append("author_handle = ?")
         params.append(author.lstrip("@"))
 
     if bookmarked_only:
-        conditions.append("t.bookmarked = 1")
+        conditions.append("bookmarked = 1")
 
     if since:
-        conditions.append("t.created_at >= ?")
+        conditions.append("created_at >= ?")
         params.append(since.isoformat())
 
     if until:
-        conditions.append("t.created_at < ?")
+        conditions.append("created_at < ?")
         params.append(until.isoformat())
 
     where_clause = " AND ".join(conditions)
     params.extend([limit, offset])
 
     if order_by == "latest":
-        order_clause = "t.created_at DESC"
+        inner_order = "created_at DESC"
+        outer_order = "t.created_at DESC"
     else:
-        order_clause = "t.relevance_score DESC, t.created_at DESC"
+        inner_order = "relevance_score DESC, created_at DESC"
+        outer_order = "t.relevance_score DESC, t.created_at DESC"
 
     cursor = conn.execute(
         f"""
         SELECT
             t.*,
             GROUP_CONCAT(DISTINCT r.reaction_type) as reaction_types
-        FROM tweets t
+        FROM (
+            SELECT *
+            FROM tweets
+            WHERE {where_clause}
+            ORDER BY {inner_order}
+            LIMIT ? OFFSET ?
+        ) t
         LEFT JOIN reactions r ON t.id = r.tweet_id
-        WHERE {where_clause}
         GROUP BY t.id
-        ORDER BY {order_clause}
-        LIMIT ? OFFSET ?
+        ORDER BY {outer_order}
         """,
         params,
     )
