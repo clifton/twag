@@ -44,10 +44,20 @@ fi
 
 MODE="${1:-full}"
 ERRORS=""
+LOG_DIR="${TWAG_LOG_DIR:-$HOME/.local/share/twag/logs}"
+LOG_FILE="$LOG_DIR/cron-$(date '+%Y-%m-%d').log"
+
+# Ensure log directory exists
+mkdir -p "$LOG_DIR"
 
 log() {
-    echo "$(date '+%Y-%m-%d %H:%M:%S') [twag] $*"
+    local msg="$(date '+%Y-%m-%d %H:%M:%S') [twag] $*"
+    echo "$msg"
+    echo "$msg" >> "$LOG_FILE"
 }
+
+# Rotate logs older than 7 days
+find "$LOG_DIR" -name "cron-*.log" -mtime +7 -delete 2>/dev/null || true
 
 notify_error() {
     local msg="$1"
@@ -77,11 +87,27 @@ ${msg}" >/dev/null 2>&1 && return 0
 run_cmd() {
     local desc="$1"
     shift
-
-    if ! "$@"; then
-        ERRORS="${ERRORS}${desc} failed"$'\n'
+    
+    log "Starting: $desc"
+    local output
+    local exit_code
+    
+    # Capture both stdout and stderr, log to file
+    output=$("$@" 2>&1) 
+    exit_code=$?
+    
+    # Always log output
+    if [ -n "$output" ]; then
+        echo "$output" | tee -a "$LOG_FILE"
+    fi
+    
+    if [ $exit_code -ne 0 ]; then
+        log "FAILED: $desc (exit code $exit_code)"
+        ERRORS="${ERRORS}${desc} failed (exit $exit_code)"$'\n'
         return 1
     fi
+    
+    log "Completed: $desc"
     return 0
 }
 
