@@ -1,21 +1,21 @@
-import { useState, useEffect } from "react";
+import { Loader2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import type { ContextCommand } from "@/api/types";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2 } from "lucide-react";
+import { toast } from "@/components/ui/toaster";
 import {
   useCreateContextCommand,
   useUpdateContextCommand,
 } from "@/hooks/use-context-commands";
-import { toast } from "@/components/ui/toaster";
-import type { ContextCommand } from "@/api/types";
 
 interface CommandFormProps {
   command: ContextCommand | null; // null = create mode
@@ -62,13 +62,19 @@ export function CommandForm({ command, onClose }: CommandFormProps) {
       update.mutate(
         { name: command.name, command: payload },
         {
-          onSuccess: () => { toast("Command updated", "success"); onClose(); },
+          onSuccess: () => {
+            toast("Command updated", "success");
+            onClose();
+          },
           onError: () => toast("Update failed", "error"),
         },
       );
     } else {
       create.mutate(payload, {
-        onSuccess: () => { toast("Command created", "success"); onClose(); },
+        onSuccess: () => {
+          toast("Command created", "success");
+          onClose();
+        },
         onError: () => toast("Create failed", "error"),
       });
     }
@@ -129,7 +135,9 @@ export function CommandForm({ command, onClose }: CommandFormProps) {
             <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
               {VARIABLES.map((v) => (
                 <div key={v.name} className="flex items-center gap-1.5">
-                  <code className="text-[10px] text-cyan-500/70 font-mono">{v.name}</code>
+                  <code className="text-[10px] text-cyan-500/70 font-mono">
+                    {v.name}
+                  </code>
                   <span className="text-[10px] text-zinc-600">{v.desc}</span>
                 </div>
               ))}

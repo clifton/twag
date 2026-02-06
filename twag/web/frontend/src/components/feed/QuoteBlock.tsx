@@ -1,6 +1,5 @@
 import type { QuoteEmbed } from "@/api/types";
-import { cn } from "@/lib/utils";
-import { timeAgo } from "@/lib/utils";
+import { cn, timeAgo } from "@/lib/utils";
 
 interface QuoteBlockProps {
   quote: QuoteEmbed;

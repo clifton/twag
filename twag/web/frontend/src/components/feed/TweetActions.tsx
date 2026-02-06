@@ -1,22 +1,22 @@
-import { useState } from "react";
 import {
+  Ban,
+  ChevronDown,
   ChevronsUp,
   ChevronUp,
-  ChevronDown,
-  Ban,
-  Search,
   Loader2,
+  Search,
 } from "lucide-react";
+import { useState } from "react";
+import type { AnalyzeResult } from "@/api/types";
 import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/toaster";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useCreateReaction, useAnalyzeTweet } from "@/hooks/use-reactions";
-import { toast } from "@/components/ui/toaster";
+import { useAnalyzeTweet, useCreateReaction } from "@/hooks/use-reactions";
 import { ReactionModal } from "./ReactionModal";
-import type { AnalyzeResult } from "@/api/types";
 
 interface TweetActionsProps {
   tweetId: string;
@@ -24,7 +24,11 @@ interface TweetActionsProps {
   onAnalyze?: (result: AnalyzeResult) => void;
 }
 
-export function TweetActions({ tweetId, authorHandle, onAnalyze }: TweetActionsProps) {
+export function TweetActions({
+  tweetId,
+  authorHandle,
+  onAnalyze,
+}: TweetActionsProps) {
   const [showModal, setShowModal] = useState<string | null>(null);
   const createReaction = useCreateReaction();
   const analyzeMutation = useAnalyzeTweet();

@@ -33,7 +33,9 @@ export function fetchPromptHistory(
 }
 
 export function rollbackPrompt(name: string, version: number) {
-  return post<{ message: string }>(`/api/prompts/${name}/rollback?version=${version}`);
+  return post<{ message: string }>(
+    `/api/prompts/${name}/rollback?version=${version}`,
+  );
 }
 
 export function tunePrompt(promptName: string, reactionLimit = 50) {

@@ -1,4 +1,5 @@
 import { X } from "lucide-react";
+import type { FeedFilters } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -9,11 +10,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useCategories, useTickers } from "@/hooks/use-categories";
-import type { FeedFilters } from "@/api/types";
 
 interface FilterBarProps {
   filters: FeedFilters;
-  setFilter: (key: keyof FeedFilters, value: string | number | boolean | undefined) => void;
+  setFilter: (
+    key: keyof FeedFilters,
+    value: string | number | boolean | undefined,
+  ) => void;
   clearFilters: () => void;
   activeFilterCount: number;
 }
@@ -33,7 +36,9 @@ export function FilterBar({
         {/* Time range */}
         <Select
           value={filters.since ?? "all"}
-          onValueChange={(v) => setFilter("since", v === "all" ? undefined : v || undefined)}
+          onValueChange={(v) =>
+            setFilter("since", v === "all" ? undefined : v || undefined)
+          }
         >
           <SelectTrigger className="w-[80px]">
             <SelectValue placeholder="Time" />
@@ -50,7 +55,9 @@ export function FilterBar({
         {/* Min score */}
         <Select
           value={filters.min_score?.toString() ?? ""}
-          onValueChange={(v) => setFilter("min_score", v ? Number(v) : undefined)}
+          onValueChange={(v) =>
+            setFilter("min_score", v ? Number(v) : undefined)
+          }
         >
           <SelectTrigger className="w-[80px]">
             <SelectValue placeholder="Score" />
@@ -126,7 +133,9 @@ export function FilterBar({
         <Button
           variant={filters.bookmarked ? "secondary" : "ghost"}
           size="sm"
-          onClick={() => setFilter("bookmarked", !filters.bookmarked || undefined)}
+          onClick={() =>
+            setFilter("bookmarked", !filters.bookmarked || undefined)
+          }
           className="text-xs"
         >
           {filters.bookmarked ? "★" : "☆"}
@@ -135,7 +144,9 @@ export function FilterBar({
         {/* Sort */}
         <Select
           value={filters.sort ?? "relevance"}
-          onValueChange={(v) => setFilter("sort", v === "relevance" ? undefined : v)}
+          onValueChange={(v) =>
+            setFilter("sort", v === "relevance" ? undefined : v)
+          }
         >
           <SelectTrigger className="w-[100px]">
             <SelectValue />
@@ -148,7 +159,12 @@ export function FilterBar({
 
         {/* Clear filters */}
         {activeFilterCount > 0 && (
-          <Button variant="ghost" size="sm" onClick={clearFilters} className="text-xs text-zinc-300">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={clearFilters}
+            className="text-xs text-zinc-300"
+          >
             <X className="h-3 w-3" />
             Clear ({activeFilterCount})
           </Button>

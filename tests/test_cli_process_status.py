@@ -14,7 +14,7 @@ def _fake_connection(readonly=False):
 
 def test_process_status_id_fast_path(monkeypatch):
     """`twag process <status>` should process exactly one DB row."""
-    import twag.cli as cli_mod
+    import twag.cli.process as cli_mod
     import twag.processor as processor_mod
 
     calls: dict[str, object] = {}
@@ -66,7 +66,7 @@ def test_process_status_id_fast_path(monkeypatch):
 
 def test_process_status_url_normalized(monkeypatch):
     """Status URLs should normalize to the numeric tweet ID."""
-    import twag.cli as cli_mod
+    import twag.cli.process as cli_mod
     import twag.processor as processor_mod
 
     seen: dict[str, str] = {}
@@ -98,7 +98,7 @@ def test_process_status_url_normalized(monkeypatch):
 
 def test_process_status_id_not_found(monkeypatch):
     """Single-status process should fail clearly when tweet is not stored."""
-    import twag.cli as cli_mod
+    import twag.cli.process as cli_mod
 
     monkeypatch.setattr(cli_mod, "init_db", lambda: None)
     monkeypatch.setattr(cli_mod, "get_connection", _fake_connection)

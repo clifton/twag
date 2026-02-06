@@ -1,9 +1,12 @@
-import { Pencil, Trash2, Loader2 } from "lucide-react";
+import { Loader2, Pencil, Trash2 } from "lucide-react";
+import type { ContextCommand } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { useToggleContextCommand, useDeleteContextCommand } from "@/hooks/use-context-commands";
 import { toast } from "@/components/ui/toaster";
-import type { ContextCommand } from "@/api/types";
+import {
+  useDeleteContextCommand,
+  useToggleContextCommand,
+} from "@/hooks/use-context-commands";
 
 interface CommandListProps {
   commands: ContextCommand[];
@@ -19,7 +22,8 @@ export function CommandList({ commands, onEdit, onTest }: CommandListProps) {
     toggle.mutate(
       { name, enabled },
       {
-        onSuccess: () => toast(`${name} ${enabled ? "enabled" : "disabled"}`, "success"),
+        onSuccess: () =>
+          toast(`${name} ${enabled ? "enabled" : "disabled"}`, "success"),
         onError: () => toast("Toggle failed", "error"),
       },
     );
@@ -56,7 +60,9 @@ export function CommandList({ commands, onEdit, onTest }: CommandListProps) {
 
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <span className="font-mono text-sm text-zinc-200">{cmd.name}</span>
+              <span className="font-mono text-sm text-zinc-200">
+                {cmd.name}
+              </span>
             </div>
             {cmd.description && (
               <p className="mt-0.5 text-xs text-zinc-500">{cmd.description}</p>

@@ -17,12 +17,14 @@ This project doubles as an OpenClaw skill for agent automation.
 FETCH → PROCESS → DIGEST
 ```
 
-**Core modules:**
-- `twag/cli.py` — Click command entry points
-- `twag/fetcher.py` — bird integration + tweet parsing
-- `twag/processor.py` — orchestration (triage, enrichment, article passes)
-- `twag/scorer.py` — LLM scoring and article summarization
-- `twag/db.py` — SQLite schema, migrations, query layer
+**Core packages:**
+- `twag/models/` — Pydantic data models (tweet, scoring, media, links, config, API)
+- `twag/auth.py` — Shared credential and env-file parsing
+- `twag/db/` — SQLite database layer (schema, connections, CRUD, search, maintenance)
+- `twag/fetcher/` — bird CLI integration + tweet parsing/extraction
+- `twag/scorer/` — LLM scoring, prompts, and client management
+- `twag/processor/` — Pipeline orchestration (storage, dependencies, triage, pipeline)
+- `twag/cli/` — Rich-enhanced Click CLI commands
 - `twag/renderer.py` — Markdown digest generation
 - `twag/link_utils.py` — URL expansion and embed classification
 - `twag/article_visuals.py` — Visual selection for X Articles
@@ -139,7 +141,7 @@ Visual selection prioritizes data-oriented images (charts, tables, documents).
 
 ## CLI Surface
 
-Defined in `twag/cli.py`:
+Defined in `twag/cli/`:
 
 - **Setup:** `init`, `doctor`
 - **Pipeline:** `fetch`, `process`, `analyze`, `digest`

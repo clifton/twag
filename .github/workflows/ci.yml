@@ -22,6 +22,16 @@ jobs:
       - run: uv run ruff check twag/ tests/ scripts/
       - run: uv run ruff format --check twag/ tests/ scripts/
 
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --group dev
+      - run: uvx ty check --output-format github
+
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -44,3 +54,19 @@ jobs:
       - name: Run parallel timing harness
         if: matrix.python-version == '3.12'
         run: uv run python scripts/benchmark_parallelism.py
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: twag/web/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: twag/web/frontend/package-lock.json
+      - run: npm ci
+      - run: npx biome check .
+      - run: npm run build

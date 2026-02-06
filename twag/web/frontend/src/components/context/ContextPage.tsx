@@ -1,11 +1,11 @@
+import { Loader2, Plus } from "lucide-react";
 import { useState } from "react";
-import { Plus, Loader2 } from "lucide-react";
+import type { ContextCommand } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { useContextCommands } from "@/hooks/use-context-commands";
-import { CommandList } from "./CommandList";
 import { CommandForm } from "./CommandForm";
+import { CommandList } from "./CommandList";
 import { CommandTest } from "./CommandTest";
-import type { ContextCommand } from "@/api/types";
 
 export function ContextPage() {
   const { data, isLoading } = useContextCommands();
@@ -28,7 +28,9 @@ export function ContextPage() {
         {/* Header */}
         <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
           <div>
-            <h1 className="text-sm font-medium text-zinc-200">Context Commands</h1>
+            <h1 className="text-sm font-medium text-zinc-200">
+              Context Commands
+            </h1>
             <p className="text-xs text-zinc-500 mt-0.5">
               Shell commands injected into deep analysis as additional context
             </p>
@@ -57,10 +59,7 @@ export function ContextPage() {
 
       {/* Test modal */}
       {testing && (
-        <CommandTest
-          command={testing}
-          onClose={() => setTesting(null)}
-        />
+        <CommandTest command={testing} onClose={() => setTesting(null)} />
       )}
     </div>
   );

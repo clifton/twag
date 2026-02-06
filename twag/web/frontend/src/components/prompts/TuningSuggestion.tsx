@@ -1,9 +1,9 @@
+import { Check, Loader2, Sparkles } from "lucide-react";
 import { useState } from "react";
-import { Sparkles, Check, Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { useTunePrompt, useApplySuggestion } from "@/hooks/use-prompts";
-import { toast } from "@/components/ui/toaster";
 import type { TuneResponse } from "@/api/types";
+import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/toaster";
+import { useApplySuggestion, useTunePrompt } from "@/hooks/use-prompts";
 
 interface TuningSuggestionProps {
   promptName: string;
@@ -62,15 +62,9 @@ export function TuningSuggestion({ promptName }: TuningSuggestionProps) {
         <div className="space-y-2">
           {result.reactions_analyzed && (
             <div className="flex gap-3 text-[10px] text-zinc-500 font-mono">
-              <span>
-                &gt;&gt; {result.reactions_analyzed.high_importance}
-              </span>
-              <span>
-                &gt; {result.reactions_analyzed.should_be_higher}
-              </span>
-              <span>
-                &lt; {result.reactions_analyzed.less_important}
-              </span>
+              <span>&gt;&gt; {result.reactions_analyzed.high_importance}</span>
+              <span>&gt; {result.reactions_analyzed.should_be_higher}</span>
+              <span>&lt; {result.reactions_analyzed.less_important}</span>
             </div>
           )}
 
@@ -83,7 +77,9 @@ export function TuningSuggestion({ promptName }: TuningSuggestionProps) {
           {result.suggested_prompt && (
             <div className="space-y-1.5">
               <div className="rounded border border-zinc-800 bg-zinc-900/50 p-2 text-xs font-mono text-zinc-400 leading-relaxed max-h-48 overflow-y-auto">
-                <pre className="whitespace-pre-wrap">{result.suggested_prompt}</pre>
+                <pre className="whitespace-pre-wrap">
+                  {result.suggested_prompt}
+                </pre>
               </div>
               <Button
                 size="sm"

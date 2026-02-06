@@ -37,7 +37,7 @@ def _sample_tweet() -> Tweet:
 
 def test_fetch_status_id_fast_path(monkeypatch):
     """`twag fetch <status>` should fetch/store only that status."""
-    import twag.cli as cli_mod
+    import twag.cli.fetch as cli_mod
     import twag.fetcher as fetcher_mod
     import twag.processor as processor_mod
 
@@ -85,7 +85,7 @@ def test_fetch_status_id_fast_path(monkeypatch):
 
 def test_fetch_status_id_not_found(monkeypatch):
     """Single-status fetch should fail clearly when status cannot be read."""
-    import twag.cli as cli_mod
+    import twag.cli.fetch as cli_mod
     import twag.fetcher as fetcher_mod
 
     monkeypatch.setattr(cli_mod, "init_db", lambda: None)

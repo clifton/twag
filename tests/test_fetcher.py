@@ -1,8 +1,6 @@
 """Unit tests for the fetcher module."""
 
 import json
-import os
-import tempfile
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -97,7 +95,7 @@ def single_tweet_json():
 @pytest.fixture
 def mock_auth_env():
     """Mock for get_auth_env returning auth tokens."""
-    with patch("twag.fetcher.get_auth_env") as mock:
+    with patch("twag.fetcher.bird_cli.get_auth_env") as mock:
         mock.return_value = {"AUTH_TOKEN": "test_token", "CT0": "test_ct0", "PATH": "/usr/bin"}
         yield mock
 
@@ -105,14 +103,14 @@ def mock_auth_env():
 @pytest.fixture
 def mock_run_bird():
     """Mock for run_bird function."""
-    with patch("twag.fetcher.run_bird") as mock:
+    with patch("twag.fetcher.bird_cli.run_bird") as mock:
         yield mock
 
 
 @pytest.fixture
 def mock_subprocess():
     """Mock for subprocess.run."""
-    with patch("twag.fetcher.subprocess.run") as mock:
+    with patch("twag.fetcher.bird_cli.subprocess.run") as mock:
         yield mock
 
 
@@ -548,26 +546,19 @@ class TestGetAuthEnv:
 
     def test_loads_from_env_file(self):
         """Should load variables from ~/.env file."""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".env", delete=False) as f:
-            f.write("TEST_VAR=test_value\n")
-            f.write("AUTH_TOKEN=secret123\n")
-            f.write("# comment line\n")
-            f.write("export CT0=csrf_token\n")
-            f.write('QUOTED_VAR="quoted value"\n')
-            env_path = f.name
-
-        try:
-            # Mock load_config to avoid it trying to load JSON from our .env file
-            with patch("twag.fetcher.load_config", return_value={"bird": {}}):
-                with patch("twag.fetcher.os.path.expanduser", return_value=env_path):
-                    env = get_auth_env()
-                    assert isinstance(env, dict)
-                    # Verify env vars were loaded from the file
-                    assert env.get("AUTH_TOKEN") == "secret123"
-                    assert env.get("CT0") == "csrf_token"
-                    assert env.get("QUOTED_VAR") == "quoted value"
-        finally:
-            os.unlink(env_path)
+        fake_env = {
+            "TEST_VAR": "test_value",
+            "AUTH_TOKEN": "secret123",
+            "CT0": "csrf_token",
+            "QUOTED_VAR": "quoted value",
+        }
+        with patch("twag.auth.load_env_file", return_value=fake_env):
+            env = get_auth_env()
+            assert isinstance(env, dict)
+            # Verify env vars were loaded from the file
+            assert env.get("AUTH_TOKEN") == "secret123"
+            assert env.get("CT0") == "csrf_token"
+            assert env.get("QUOTED_VAR") == "quoted value"
 
 
 # ============================================================================
@@ -685,7 +676,7 @@ class TestFetchFunctions:
             raw={},
         )
 
-        with patch("twag.fetcher.read_tweet", return_value=hydrated) as mock_read_tweet:
+        with patch("twag.fetcher.bird_cli.read_tweet", return_value=hydrated) as mock_read_tweet:
             tweets = fetch_home_timeline(count=1)
 
         assert len(tweets) == 1

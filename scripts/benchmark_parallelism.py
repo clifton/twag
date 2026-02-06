@@ -8,9 +8,11 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Any
 
-import twag.processor as processor_mod
+import twag.processor.triage as triage_mod
 from twag.db import get_connection, init_db, insert_tweet
+from twag.processor import _triage_rows
 from twag.scorer import TriageResult
 
 
@@ -40,11 +42,11 @@ def _run_triage_case(
     triage_latency_s: float,
     summary_latency_s: float,
 ) -> float:
-    original_load_config = processor_mod.load_config
-    original_triage_batch = processor_mod.triage_tweets_batch
-    original_summarize_tweet = processor_mod.summarize_tweet
+    original_load_config = triage_mod.load_config
+    original_triage_batch = triage_mod.triage_tweets_batch
+    original_summarize_tweet = triage_mod.summarize_tweet
 
-    def _fake_load_config() -> dict:
+    def _fake_load_config() -> dict[str, Any]:
         return {
             "llm": {
                 "max_concurrency_text": text_workers,
@@ -59,7 +61,11 @@ def _run_triage_case(
             },
         }
 
-    def _fake_triage_tweets_batch(batch, model=None, provider=None):
+    def _fake_triage_tweets_batch(
+        tweets: list[dict[str, str]],
+        model: str | None = None,
+        provider: str | None = None,
+    ) -> list[TriageResult]:
         time.sleep(triage_latency_s)
         return [
             TriageResult(
@@ -68,22 +74,27 @@ def _run_triage_case(
                 categories=["news"],
                 summary="benchmark",
             )
-            for item in batch
+            for item in tweets
         ]
 
-    def _fake_summarize_tweet(tweet_text, handle, model=None, provider=None):
+    def _fake_summarize_tweet(
+        tweet_text: str,
+        handle: str,
+        model: str | None = None,
+        provider: str | None = None,
+    ) -> str:
         time.sleep(summary_latency_s)
         return f"summary for @{handle}"
 
-    processor_mod.load_config = _fake_load_config
-    processor_mod.triage_tweets_batch = _fake_triage_tweets_batch
-    processor_mod.summarize_tweet = _fake_summarize_tweet
+    triage_mod.load_config = _fake_load_config  # ty: ignore[invalid-assignment]
+    triage_mod.triage_tweets_batch = _fake_triage_tweets_batch  # ty: ignore[invalid-assignment]
+    triage_mod.summarize_tweet = _fake_summarize_tweet  # ty: ignore[invalid-assignment]
 
     try:
         with get_connection(db_path) as conn:
             rows = conn.execute("SELECT * FROM tweets ORDER BY id ASC").fetchall()
             start = time.perf_counter()
-            results = processor_mod._triage_rows(
+            results = _triage_rows(
                 conn,
                 tweet_rows=rows,
                 batch_size=batch_size,
@@ -100,9 +111,9 @@ def _run_triage_case(
                 raise RuntimeError(f"Expected {len(rows)} triage results, got {len(results)}")
             return elapsed
     finally:
-        processor_mod.load_config = original_load_config
-        processor_mod.triage_tweets_batch = original_triage_batch
-        processor_mod.summarize_tweet = original_summarize_tweet
+        triage_mod.load_config = original_load_config
+        triage_mod.triage_tweets_batch = original_triage_batch
+        triage_mod.summarize_tweet = original_summarize_tweet
 
 
 def _measure(

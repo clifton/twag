@@ -1,14 +1,14 @@
-import { useState } from "react";
 import { ExternalLink } from "lucide-react";
+import { useState } from "react";
+import type { AnalyzeResult, MediaItem, Tweet } from "@/api/types";
 import { Badge } from "@/components/ui/badge";
+import { timeAgo } from "@/lib/utils";
+import { buildArticleVisuals } from "./articleVisuals";
+import { QuoteBlock } from "./QuoteBlock";
 import { ScoreBadge } from "./ScoreBadge";
+import { TweetActions } from "./TweetActions";
 import { TweetContent } from "./TweetContent";
 import { TweetMedia } from "./TweetMedia";
-import { TweetActions } from "./TweetActions";
-import { QuoteBlock } from "./QuoteBlock";
-import type { AnalyzeResult, MediaItem, Tweet } from "@/api/types";
-import { buildArticleVisuals } from "./articleVisuals";
-import { timeAgo } from "@/lib/utils";
 
 interface TweetCardProps {
   tweet: Tweet;
@@ -21,11 +21,17 @@ function hasVisualSignal(items: MediaItem[] | null | undefined): boolean {
       item.kind === "chart" ||
       item.kind === "table" ||
       item.kind === "document" ||
-      Boolean(item.chart?.description || item.chart?.insight || item.table?.columns?.length),
+      Boolean(
+        item.chart?.description ||
+          item.chart?.insight ||
+          item.table?.columns?.length,
+      ),
   );
 }
 
-function mediaTextFallback(items: MediaItem[] | null | undefined): string | null {
+function mediaTextFallback(
+  items: MediaItem[] | null | undefined,
+): string | null {
   if (!items?.length) return null;
   for (const item of items) {
     const text =
@@ -49,8 +55,12 @@ export function TweetCard({ tweet }: TweetCardProps) {
   const displayAuthor = tweet.display_author_handle || tweet.author_handle;
   const displayTweetId = tweet.display_tweet_id || tweet.id;
   const hasOriginalTweetTarget =
-    tweet.is_retweet && displayTweetId.length > 0 && displayTweetId !== tweet.id;
-  const linkAuthor = hasOriginalTweetTarget ? displayAuthor : tweet.author_handle;
+    tweet.is_retweet &&
+    displayTweetId.length > 0 &&
+    displayTweetId !== tweet.id;
+  const linkAuthor = hasOriginalTweetTarget
+    ? displayAuthor
+    : tweet.author_handle;
   const linkTweetId = hasOriginalTweetTarget ? displayTweetId : tweet.id;
   const tweetUrl = `https://x.com/${linkAuthor}/status/${linkTweetId}`;
   const hasArticleSummary =
@@ -58,10 +68,15 @@ export function TweetCard({ tweet }: TweetCardProps) {
     (Boolean(tweet.article_summary_short) ||
       tweet.article_primary_points.length > 0 ||
       tweet.article_action_items.length > 0);
-  const articleVisuals = buildArticleVisuals(tweet.article_top_visual, tweet.media_items, 5);
+  const articleVisuals = buildArticleVisuals(
+    tweet.article_top_visual,
+    tweet.media_items,
+    5,
+  );
   const [topArticleVisual, ...additionalArticleVisuals] = articleVisuals;
   const inlineQuoteEmbeds = tweet.inline_quote_embeds ?? [];
-  const shouldShowMedia = tweet.has_media && !hasArticleSummary && hasVisualSignal(tweet.media_items);
+  const shouldShowMedia =
+    tweet.has_media && !hasArticleSummary && hasVisualSignal(tweet.media_items);
   const mediaSummaryFallback =
     !hasArticleSummary && !shouldShowMedia
       ? (tweet.media_analysis ?? mediaTextFallback(tweet.media_items) ?? null)
@@ -100,7 +115,9 @@ export function TweetCard({ tweet }: TweetCardProps) {
           rel="noopener noreferrer"
           className="ml-auto inline-flex items-center gap-1 text-zinc-500 hover:text-zinc-200 transition-colors"
         >
-          {hasArticleSummary && <span className="text-[10px] uppercase tracking-wide">Article</span>}
+          {hasArticleSummary && (
+            <span className="text-[10px] uppercase tracking-wide">Article</span>
+          )}
           <ExternalLink className="h-3 w-3" />
         </a>
       </div>
@@ -127,7 +144,9 @@ export function TweetCard({ tweet }: TweetCardProps) {
       )}
 
       {tweet.has_media && mediaSummaryFallback && (
-        <p className="mt-2 text-xs text-zinc-300 leading-snug">{mediaSummaryFallback}</p>
+        <p className="mt-2 text-xs text-zinc-300 leading-snug">
+          {mediaSummaryFallback}
+        </p>
       )}
 
       {/* Quote embed */}
@@ -156,42 +175,60 @@ export function TweetCard({ tweet }: TweetCardProps) {
         <section className="mt-3 space-y-3">
           <div
             className={`grid gap-3 ${
-              tweet.article_primary_points.length > 0 && tweet.article_action_items.length > 0
+              tweet.article_primary_points.length > 0 &&
+              tweet.article_action_items.length > 0
                 ? "lg:grid-cols-2 lg:gap-5"
                 : "grid-cols-1"
             }`}
           >
             {tweet.article_primary_points.length > 0 && (
               <div className="space-y-1.5">
-                <div className="text-[10px] uppercase tracking-wide text-zinc-400">Primary Points</div>
+                <div className="text-[10px] uppercase tracking-wide text-zinc-400">
+                  Primary Points
+                </div>
                 <ul className="space-y-2">
-                  {tweet.article_primary_points.slice(0, 4).map((point, idx) => (
-                    <li key={`${tweet.id}-pp-${idx}`} className="flex gap-2.5">
-                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-300/80" />
-                      <div className="min-w-0">
-                        <div className="text-[14px] text-zinc-100 leading-snug font-medium">{point.point}</div>
-                        {point.reasoning ? (
-                          <div className="mt-0.5 text-[13px] text-zinc-300 leading-snug">{point.reasoning}</div>
-                        ) : null}
-                      </div>
-                    </li>
-                  ))}
+                  {tweet.article_primary_points
+                    .slice(0, 4)
+                    .map((point, idx) => (
+                      <li
+                        key={`${tweet.id}-pp-${idx}`}
+                        className="flex gap-2.5"
+                      >
+                        <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-300/80" />
+                        <div className="min-w-0">
+                          <div className="text-[14px] text-zinc-100 leading-snug font-medium">
+                            {point.point}
+                          </div>
+                          {point.reasoning ? (
+                            <div className="mt-0.5 text-[13px] text-zinc-300 leading-snug">
+                              {point.reasoning}
+                            </div>
+                          ) : null}
+                        </div>
+                      </li>
+                    ))}
                 </ul>
               </div>
             )}
 
             {tweet.article_action_items.length > 0 && (
               <div className="space-y-1.5">
-                <div className="text-[10px] uppercase tracking-wide text-zinc-400">Actionable Items</div>
+                <div className="text-[10px] uppercase tracking-wide text-zinc-400">
+                  Actionable Items
+                </div>
                 <ul className="space-y-2">
                   {tweet.article_action_items.slice(0, 3).map((item, idx) => (
                     <li key={`${tweet.id}-ai-${idx}`} className="flex gap-2.5">
                       <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-300/80" />
                       <div className="min-w-0">
-                        <div className="text-[14px] text-zinc-100 leading-snug font-medium">{item.action}</div>
+                        <div className="text-[14px] text-zinc-100 leading-snug font-medium">
+                          {item.action}
+                        </div>
                         {item.trigger ? (
                           <div className="mt-0.5 text-[13px] text-zinc-300 leading-snug">
-                            <span className="text-[10px] uppercase tracking-wide text-zinc-500">Trigger</span>{" "}
+                            <span className="text-[10px] uppercase tracking-wide text-zinc-500">
+                              Trigger
+                            </span>{" "}
                             {item.trigger}
                           </div>
                         ) : null}
@@ -205,7 +242,9 @@ export function TweetCard({ tweet }: TweetCardProps) {
 
           {articleVisuals.length > 0 && (
             <div className="space-y-2">
-              <div className="text-[10px] uppercase tracking-wide text-zinc-400">Visuals</div>
+              <div className="text-[10px] uppercase tracking-wide text-zinc-400">
+                Visuals
+              </div>
 
               {topArticleVisual && (
                 <a
@@ -217,7 +256,10 @@ export function TweetCard({ tweet }: TweetCardProps) {
                 >
                   <img
                     src={topArticleVisual.url}
-                    alt={topArticleVisual.keyTakeaway || `${topArticleVisual.kind} visual`}
+                    alt={
+                      topArticleVisual.keyTakeaway ||
+                      `${topArticleVisual.kind} visual`
+                    }
                     className="block h-auto w-full rounded bg-zinc-950/60"
                     loading="lazy"
                   />
@@ -248,9 +290,13 @@ export function TweetCard({ tweet }: TweetCardProps) {
                         className="block h-auto w-full rounded bg-zinc-950/60"
                         loading="lazy"
                       />
-                      <div className="mt-1 text-[10px] text-zinc-500 uppercase tracking-wide">{visual.kind}</div>
+                      <div className="mt-1 text-[10px] text-zinc-500 uppercase tracking-wide">
+                        {visual.kind}
+                      </div>
                       {visual.keyTakeaway && (
-                        <div className="mt-0.5 text-[12px] text-zinc-300 leading-snug">{visual.keyTakeaway}</div>
+                        <div className="mt-0.5 text-[12px] text-zinc-300 leading-snug">
+                          {visual.keyTakeaway}
+                        </div>
                       )}
                     </a>
                   ))}
@@ -315,8 +361,11 @@ export function TweetCard({ tweet }: TweetCardProps) {
       {analysis && (
         <div className="mt-2 rounded border border-cyan-900/50 bg-cyan-950/20 p-3">
           <div className="flex items-center justify-between mb-1.5">
-            <span className="text-xs font-medium text-cyan-400">Deep Analysis</span>
+            <span className="text-xs font-medium text-cyan-400">
+              Deep Analysis
+            </span>
             <button
+              type="button"
               onClick={() => setAnalysis(null)}
               className="text-[10px] text-zinc-300 hover:text-zinc-100"
             >

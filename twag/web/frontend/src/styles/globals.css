@@ -1,7 +1,8 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Space Grotesk", "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-sans:
+    "Space Grotesk", "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", monospace;
 
   --color-accent: #22d3ee;
@@ -28,7 +29,11 @@
   body {
     @apply bg-zinc-950 text-zinc-50;
     background-image:
-      radial-gradient(1200px 550px at 50% -100px, rgba(34, 211, 238, 0.08), transparent 60%),
+      radial-gradient(
+        1200px 550px at 50% -100px,
+        rgba(34, 211, 238, 0.08),
+        transparent 60%
+      ),
       linear-gradient(180deg, #080a10 0%, #090b12 55%, #090c12 100%);
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }

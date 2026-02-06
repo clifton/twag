@@ -1,13 +1,13 @@
-import { useState, useEffect } from "react";
-import CodeMirror from "@uiw/react-codemirror";
 import { markdown } from "@codemirror/lang-markdown";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView } from "@codemirror/view";
-import { Button } from "@/components/ui/button";
-import { Save, RotateCcw, Loader2 } from "lucide-react";
-import { useUpdatePrompt } from "@/hooks/use-prompts";
-import { toast } from "@/components/ui/toaster";
+import CodeMirror from "@uiw/react-codemirror";
+import { Loader2, RotateCcw, Save } from "lucide-react";
+import { useEffect, useState } from "react";
 import type { Prompt } from "@/api/types";
+import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/toaster";
+import { useUpdatePrompt } from "@/hooks/use-prompts";
 
 interface PromptEditorProps {
   prompt: Prompt;
@@ -15,7 +15,10 @@ interface PromptEditorProps {
 
 const darkTheme = EditorView.theme({
   "&": { backgroundColor: "#09090b", fontSize: "13px" },
-  ".cm-gutters": { backgroundColor: "#09090b", borderRight: "1px solid #27272a" },
+  ".cm-gutters": {
+    backgroundColor: "#09090b",
+    borderRight: "1px solid #27272a",
+  },
   ".cm-activeLineGutter": { backgroundColor: "#18181b" },
   ".cm-activeLine": { backgroundColor: "#18181b50" },
 });
@@ -28,7 +31,7 @@ export function PromptEditor({ prompt }: PromptEditorProps) {
   useEffect(() => {
     setValue(prompt.template);
     setDirty(false);
-  }, [prompt.template, prompt.version]);
+  }, [prompt.template]);
 
   const handleChange = (val: string) => {
     setValue(val);
@@ -58,8 +61,12 @@ export function PromptEditor({ prompt }: PromptEditorProps) {
       <div className="flex items-center justify-between border-b border-zinc-800 px-3 py-1.5">
         <div className="flex items-center gap-2">
           <span className="font-mono text-sm text-zinc-200">{prompt.name}</span>
-          <span className="text-[11px] text-zinc-600 font-mono">v{prompt.version}</span>
-          {dirty && <span className="text-[10px] text-yellow-500">modified</span>}
+          <span className="text-[11px] text-zinc-600 font-mono">
+            v{prompt.version}
+          </span>
+          {dirty && (
+            <span className="text-[10px] text-yellow-500">modified</span>
+          )}
         </div>
         <div className="flex items-center gap-1">
           {dirty && (
