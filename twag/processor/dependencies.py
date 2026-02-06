@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import time
 from collections import deque
@@ -21,6 +22,8 @@ from ..db import (
 )
 from ..fetcher import Tweet, read_tweet
 from ..link_utils import expand_links_in_place, parse_tweet_status_id
+
+log = logging.getLogger(__name__)
 
 _MAX_INLINE_LINK_FETCHES = 4
 
@@ -340,6 +343,7 @@ def _fetch_quote_by_id(
 
     quoted = read_tweet(quote_id)
     if not quoted or not quoted.id:
+        log.warning("Failed to fetch dependency tweet %s", quote_id)
         return 0
 
     inserted = insert_tweet(
@@ -417,6 +421,7 @@ def _ensure_quote_row(
 
     quoted = read_tweet(quote_id)
     if not quoted or not quoted.id:
+        log.warning("Failed to fetch dependency tweet %s", quote_id)
         return None
 
     inserted = insert_tweet(

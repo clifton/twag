@@ -1,6 +1,7 @@
 """Bird CLI interaction: subprocess execution, rate limiting, and fetch commands."""
 
 import json
+import logging
 import subprocess
 import threading
 import time
@@ -9,6 +10,8 @@ from typing import Any
 from ..auth import get_auth_env
 from ..config import load_config
 from .extractors import Tweet, _extract_media_items_from_json_blob, _looks_truncated_text, _needs_retweet_hydration
+
+log = logging.getLogger(__name__)
 
 _BIRD_RATE_LOCK = threading.Lock()
 _BIRD_LAST_CALL = 0.0
@@ -55,10 +58,17 @@ def run_bird(args: list[str], timeout: int = 60) -> tuple[str, str, int]:
             timeout=timeout,
             env=env,
         )
+        if result.stderr.strip():
+            level = logging.WARNING if result.returncode == 0 else logging.ERROR
+            log.log(level, "bird %s stderr: %s", args[0] if args else "?", result.stderr.strip())
+        if result.returncode != 0:
+            log.error("bird %s exited with code %d", args[0] if args else "?", result.returncode)
         return result.stdout, result.stderr, result.returncode
     except subprocess.TimeoutExpired:
+        log.error("bird %s timed out after %ds", args[0] if args else "?", timeout)
         return "", "Command timed out", 1
     except FileNotFoundError:
+        log.error("bird CLI not found on PATH")
         return "", "bird CLI not found", 1
 
 
@@ -119,6 +129,12 @@ def _parse_bird_output(stdout: str) -> list[Tweet]:
                     idx = end
                 except json.JSONDecodeError:
                     break
+            if tweets:
+                log.warning(
+                    "bird output truncated at %d bytes; recovered %d tweets (some may be lost)",
+                    len(stdout),
+                    len(tweets),
+                )
 
     return tweets
 
@@ -154,9 +170,11 @@ def fetch_home_timeline(count: int = 100) -> list[Tweet]:
     stdout, stderr, code = run_bird(["home", "-n", str(count), "--json"])
 
     if code != 0:
-        raise RuntimeError(f"bird home failed: {stderr}")
+        raise RuntimeError(f"bird home failed (exit {code}): {stderr.strip()}")
 
     tweets = _parse_bird_output(stdout)
+    if not tweets and stdout.strip():
+        log.warning("bird home returned %d bytes but 0 parseable tweets", len(stdout))
     return _hydrate_truncated_retweets(tweets)
 
 
@@ -169,7 +187,7 @@ def fetch_user_tweets(handle: str, count: int = 50) -> list[Tweet]:
     stdout, stderr, code = run_bird(["user-tweets", handle, "-n", str(count), "--json"])
 
     if code != 0:
-        raise RuntimeError(f"bird user-tweets failed for {handle}: {stderr}")
+        raise RuntimeError(f"bird user-tweets failed for {handle} (exit {code}): {stderr.strip()}")
 
     tweets = _parse_bird_output(stdout)
     return _hydrate_truncated_retweets(tweets)
@@ -180,7 +198,7 @@ def fetch_search(query: str, count: int = 30) -> list[Tweet]:
     stdout, stderr, code = run_bird(["search", query, "-n", str(count), "--json"])
 
     if code != 0:
-        raise RuntimeError(f"bird search failed: {stderr}")
+        raise RuntimeError(f"bird search failed (exit {code}): {stderr.strip()}")
 
     tweets = _parse_bird_output(stdout)
     return _hydrate_truncated_retweets(tweets)
@@ -191,7 +209,7 @@ def fetch_bookmarks(count: int = 100) -> list[Tweet]:
     stdout, stderr, code = run_bird(["bookmarks", "-n", str(count), "--json"])
 
     if code != 0:
-        raise RuntimeError(f"bird bookmarks failed: {stderr}")
+        raise RuntimeError(f"bird bookmarks failed (exit {code}): {stderr.strip()}")
 
     tweets = _parse_bird_output(stdout)
     return _hydrate_truncated_retweets(tweets)
@@ -208,14 +226,18 @@ def read_tweet(tweet_url_or_id: str) -> Tweet | None:
         if tweets:
             return tweets[0]
         recovered_media = _extract_media_items_from_json_blob(stdout)
+    else:
+        log.warning("bird read --json-full failed for %s (exit %d): %s", tweet_url_or_id, code, stderr.strip())
 
     stdout, stderr, code = run_bird(["read", tweet_url_or_id, "--json"])
 
     if code != 0:
+        log.error("bird read failed for %s (exit %d): %s", tweet_url_or_id, code, stderr.strip())
         return None
 
     tweets = _parse_bird_output(stdout)
     if not tweets:
+        log.warning("bird read returned output for %s but 0 parseable tweets", tweet_url_or_id)
         return None
 
     tweet = tweets[0]

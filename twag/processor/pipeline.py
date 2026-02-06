@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -24,6 +25,8 @@ from .triage import (
     _triage_rows,
     ensure_media_analysis,
 )
+
+log = logging.getLogger(__name__)
 
 
 def process_unprocessed(
@@ -294,6 +297,8 @@ def enrich_high_signal(
                         quoted = read_tweet(tweet["quote_tweet_id"])
                         if quoted:
                             quoted_text = f"@{quoted.author_handle}: {quoted.content}"
+                        else:
+                            log.warning("Could not fetch quoted tweet %s for enrichment", tweet["quote_tweet_id"])
 
                 media_items = ensure_media_analysis(conn, tweet)
                 media_context = build_media_context(media_items) if media_items else (tweet["media_analysis"] or "")
