@@ -250,7 +250,7 @@ def test_build_triage_text_prefers_article_body() -> None:
 
 
 def test_summarize_x_article_fallback_on_llm_error(monkeypatch) -> None:
-    import twag.scorer as scorer_mod
+    import twag.scorer.scoring as scorer_mod
 
     monkeypatch.setattr(scorer_mod, "_call_llm", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("boom")))
 
@@ -268,7 +268,7 @@ def test_summarize_x_article_fallback_on_llm_error(monkeypatch) -> None:
 
 
 def test_summarize_x_article_falls_back_to_triage_provider(monkeypatch) -> None:
-    import twag.scorer as scorer_mod
+    import twag.scorer.scoring as scorer_mod
 
     calls: list[tuple[str, str]] = []
 

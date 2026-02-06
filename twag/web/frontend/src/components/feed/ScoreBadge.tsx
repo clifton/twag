@@ -7,11 +7,16 @@ interface ScoreBadgeProps {
 
 function tierLabel(tier: string | null): string {
   switch (tier) {
-    case "high_signal": return "HIGH";
-    case "market_relevant": return "MKT";
-    case "news": return "NEWS";
-    case "noise": return "NOISE";
-    default: return "";
+    case "high_signal":
+      return "HIGH";
+    case "market_relevant":
+      return "MKT";
+    case "news":
+      return "NEWS";
+    case "noise":
+      return "NOISE";
+    default:
+      return "";
   }
 }
 

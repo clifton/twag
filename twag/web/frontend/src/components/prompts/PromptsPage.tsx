@@ -1,7 +1,7 @@
-import { useState } from "react";
 import { FileText, Loader2 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { useState } from "react";
 import { usePrompts } from "@/hooks/use-prompts";
+import { cn } from "@/lib/utils";
 import { PromptEditor } from "./PromptEditor";
 import { PromptHistory } from "./PromptHistory";
 import { TuningSuggestion } from "./TuningSuggestion";
@@ -48,6 +48,7 @@ export function PromptsPage() {
         <div className="flex-1 overflow-y-auto">
           {prompts.map((p) => (
             <button
+              type="button"
               key={p.name}
               onClick={() => setSelected(p.name)}
               className={cn(

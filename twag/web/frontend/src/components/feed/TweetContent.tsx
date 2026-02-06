@@ -11,7 +11,10 @@ interface TweetContentProps {
   emphasizeSummary?: boolean;
 }
 
-export function shouldShowSummary(summary: string | null, renderedText: string | null): boolean {
+export function shouldShowSummary(
+  summary: string | null,
+  renderedText: string | null,
+): boolean {
   if (!summary) return false;
   if (!renderedText) return true;
   return renderedText.length >= SUMMARY_MIN_LENGTH;
@@ -27,7 +30,12 @@ export function TweetContent({
   const [expanded, setExpanded] = useState(false);
   const text = displayContent ?? content;
   const summaryVisible = shouldShowSummary(summary, text);
-  const hasFull = showOriginalToggle && summaryVisible && text && text !== summary && text.length > 0;
+  const hasFull =
+    showOriginalToggle &&
+    summaryVisible &&
+    text &&
+    text !== summary &&
+    text.length > 0;
 
   const renderText = (value: string, className: string) => {
     const lines = value.split("\n");
@@ -39,7 +47,10 @@ export function TweetContent({
             <Fragment key={`line-${lineIdx}`}>
               {chunks.map((chunk, chunkIdx) => {
                 if (!chunk) return null;
-                if (chunk.startsWith("http://") || chunk.startsWith("https://")) {
+                if (
+                  chunk.startsWith("http://") ||
+                  chunk.startsWith("https://")
+                ) {
                   return (
                     <a
                       key={`chunk-${lineIdx}-${chunkIdx}`}
@@ -52,7 +63,11 @@ export function TweetContent({
                     </a>
                   );
                 }
-                return <Fragment key={`chunk-${lineIdx}-${chunkIdx}`}>{chunk}</Fragment>;
+                return (
+                  <Fragment key={`chunk-${lineIdx}-${chunkIdx}`}>
+                    {chunk}
+                  </Fragment>
+                );
               })}
               {lineIdx < lines.length - 1 ? <br /> : null}
             </Fragment>
@@ -64,20 +79,30 @@ export function TweetContent({
 
   return (
     <div className="space-y-1">
-      {summaryVisible && summary && (
+      {summaryVisible &&
+        summary &&
         renderText(
           summary,
           emphasizeSummary
             ? "text-[15px] text-zinc-50 leading-relaxed whitespace-pre-wrap font-medium"
             : "text-sm text-zinc-100 leading-relaxed whitespace-pre-wrap",
-        )
-      )}
-      {!summaryVisible && text && !expanded && (
-        renderText(text, "text-sm text-zinc-200 leading-relaxed whitespace-pre-wrap")
-      )}
-      {expanded && text && renderText(text, "text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap")}
+        )}
+      {!summaryVisible &&
+        text &&
+        !expanded &&
+        renderText(
+          text,
+          "text-sm text-zinc-200 leading-relaxed whitespace-pre-wrap",
+        )}
+      {expanded &&
+        text &&
+        renderText(
+          text,
+          "text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap",
+        )}
       {hasFull && (
         <button
+          type="button"
           onClick={() => setExpanded(!expanded)}
           className="text-[11px] text-zinc-400 hover:text-zinc-200 transition-colors"
         >

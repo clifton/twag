@@ -1,10 +1,10 @@
-import { useEffect, useRef, useCallback } from "react";
 import { Loader2 } from "lucide-react";
+import { useCallback, useEffect, useRef } from "react";
 import { FilterBar } from "@/components/layout/FilterBar";
-import { TweetCard } from "./TweetCard";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useTweets } from "@/hooks/use-tweets";
 import { useFilterState } from "@/hooks/use-filter-state";
+import { useTweets } from "@/hooks/use-tweets";
+import { TweetCard } from "./TweetCard";
 
 function TweetSkeleton() {
   return (
@@ -23,7 +23,8 @@ function TweetSkeleton() {
 }
 
 export function FeedPage() {
-  const { filters, setFilter, clearFilters, activeFilterCount } = useFilterState();
+  const { filters, setFilter, clearFilters, activeFilterCount } =
+    useFilterState();
   const {
     data,
     fetchNextPage,

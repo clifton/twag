@@ -4,7 +4,8 @@ import threading
 import time
 from datetime import datetime, timezone
 
-import twag.processor as processor_mod
+import twag.processor.pipeline as pipeline_mod
+import twag.processor.triage as triage_mod
 from twag.db import get_connection, init_db, insert_tweet, update_tweet_processing
 from twag.scorer import EnrichmentResult, TriageResult
 
@@ -30,7 +31,7 @@ def test_triage_overlap_with_summaries_using_dedicated_pool(monkeypatch, tmp_pat
         rows = conn.execute("SELECT * FROM tweets ORDER BY id ASC").fetchall()
 
         monkeypatch.setattr(
-            processor_mod,
+            triage_mod,
             "load_config",
             lambda: {
                 "llm": {
@@ -75,10 +76,10 @@ def test_triage_overlap_with_summaries_using_dedicated_pool(monkeypatch, tmp_pat
             time.sleep(0.03)
             return f"summary for @{handle}"
 
-        monkeypatch.setattr(processor_mod, "triage_tweets_batch", _fake_triage_tweets_batch)
-        monkeypatch.setattr(processor_mod, "summarize_tweet", _fake_summarize_tweet)
+        monkeypatch.setattr(triage_mod, "triage_tweets_batch", _fake_triage_tweets_batch)
+        monkeypatch.setattr(triage_mod, "summarize_tweet", _fake_summarize_tweet)
 
-        results = processor_mod._triage_rows(
+        results = triage_mod._triage_rows(
             conn,
             tweet_rows=rows,
             batch_size=1,
@@ -136,9 +137,9 @@ def test_enrich_high_signal_prefers_local_quote_row(monkeypatch, tmp_path) -> No
         )
         conn.commit()
 
-    monkeypatch.setattr(processor_mod, "get_connection", lambda readonly=False: get_connection(db_path))
+    monkeypatch.setattr(pipeline_mod, "get_connection", lambda readonly=False: get_connection(db_path))
     monkeypatch.setattr(
-        processor_mod,
+        pipeline_mod,
         "load_config",
         lambda: {
             "scoring": {"high_signal_threshold": 7},
@@ -146,7 +147,7 @@ def test_enrich_high_signal_prefers_local_quote_row(monkeypatch, tmp_path) -> No
         },
     )
     monkeypatch.setattr(
-        processor_mod,
+        pipeline_mod,
         "read_tweet",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("read_tweet should not be called")),
     )
@@ -171,9 +172,9 @@ def test_enrich_high_signal_prefers_local_quote_row(monkeypatch, tmp_path) -> No
             tickers=[],
         )
 
-    monkeypatch.setattr(processor_mod, "enrich_tweet", _fake_enrich_tweet)
+    monkeypatch.setattr(pipeline_mod, "enrich_tweet", _fake_enrich_tweet)
 
-    results = processor_mod.enrich_high_signal(limit=5, enrich_model="dummy-model")
+    results = pipeline_mod.enrich_high_signal(limit=5, enrich_model="dummy-model")
 
     assert len(results) == 1
     assert seen["quoted_tweet"] == "@quotedacct: Quoted local context"

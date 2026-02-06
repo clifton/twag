@@ -1,7 +1,7 @@
-import { NavLink, Outlet } from "react-router";
 import { Activity, FileText, Terminal } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { NavLink, Outlet } from "react-router";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 const navItems = [
   { to: "/", label: "Feed", icon: Activity },

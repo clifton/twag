@@ -28,10 +28,14 @@ function ChartMedia({ item }: { item: MediaItem }) {
         <p className="mt-1.5 text-xs text-zinc-300">{item.chart.description}</p>
       )}
       {item.chart?.insight && (
-        <p className="mt-1 text-xs text-zinc-300 italic">{item.chart.insight}</p>
+        <p className="mt-1 text-xs text-zinc-300 italic">
+          {item.chart.insight}
+        </p>
       )}
       {item.chart?.implication && (
-        <p className="mt-1 text-xs text-amber-300/80">{item.chart.implication}</p>
+        <p className="mt-1 text-xs text-amber-300/80">
+          {item.chart.implication}
+        </p>
       )}
     </div>
   );
@@ -116,7 +120,9 @@ function TableMedia({ item }: { item: MediaItem }) {
           />
         </a>
       )}
-      {table.summary && <p className="mb-2 text-xs text-zinc-300">{table.summary}</p>}
+      {table.summary && (
+        <p className="mb-2 text-xs text-zinc-300">{table.summary}</p>
+      )}
       {isLarge ? (
         <details>
           <summary className="cursor-pointer text-xs text-zinc-300 hover:text-zinc-100 select-none">

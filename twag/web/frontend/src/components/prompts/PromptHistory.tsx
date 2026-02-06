@@ -1,7 +1,7 @@
-import { Clock, RotateCcw, Loader2 } from "lucide-react";
+import { Clock, Loader2, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { usePromptHistory, useRollbackPrompt } from "@/hooks/use-prompts";
 import { toast } from "@/components/ui/toaster";
+import { usePromptHistory, useRollbackPrompt } from "@/hooks/use-prompts";
 
 interface PromptHistoryProps {
   name: string;
@@ -49,8 +49,12 @@ export function PromptHistory({ name, currentVersion }: PromptHistoryProps) {
         >
           <div className="flex items-center gap-2">
             <Clock className="h-3 w-3 text-zinc-600" />
-            <span className="font-mono text-xs text-zinc-400">v{entry.version}</span>
-            <span className="text-[10px] text-zinc-600">{entry.updated_by}</span>
+            <span className="font-mono text-xs text-zinc-400">
+              v{entry.version}
+            </span>
+            <span className="text-[10px] text-zinc-600">
+              {entry.updated_by}
+            </span>
             <span className="text-[10px] text-zinc-600">
               {new Date(entry.updated_at).toLocaleDateString()}
             </span>

@@ -206,7 +206,7 @@ def remove_urls_from_text(text: str, urls_to_remove: set[str]) -> str:
         for url in sorted(urls_to_remove, key=len, reverse=True):
             if not url:
                 continue
-            updated = re.sub(rf"(^|\s){re.escape(url)}(?=\s|$)", " ", updated)
+            updated = re.sub(rf"(^|\s){re.escape(url)}(?=\s|$)", " ", updated)  # ty: ignore[invalid-argument-type]
         updated = re.sub(r"\s{2,}", " ", updated).strip()
         if updated:
             lines.append(updated)
@@ -223,10 +223,10 @@ def replace_urls_in_text(text: str, replacements: dict[str, str]) -> str:
     for line in text.splitlines():
         updated = line
         for source in sorted(replacements, key=len, reverse=True):
-            replacement = replacements[source]
+            replacement = replacements[source]  # ty: ignore[invalid-argument-type]
             if not source or not replacement:
                 continue
-            updated = re.sub(rf"(^|\s){re.escape(source)}(?=\s|$)", rf"\1{replacement}", updated)
+            updated = re.sub(rf"(^|\s){re.escape(source)}(?=\s|$)", rf"\1{replacement}", updated)  # ty: ignore[invalid-argument-type]
         updated = re.sub(r"\s{2,}", " ", updated).strip()
         if updated:
             lines.append(updated)
@@ -275,7 +275,7 @@ def normalize_tweet_links(
     has_resolved_non_short = any(
         bool(
             (item.get("expanded_url") or item.get("url"))
-            and not _is_shortener_url(item.get("expanded_url") or item.get("url"))
+            and not _is_shortener_url(item.get("expanded_url") or item.get("url"))  # ty: ignore[invalid-argument-type]
         )
         for item in normalized_links
     )

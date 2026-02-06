@@ -1,17 +1,17 @@
+import { CheckCircle2, Loader2, Play, XCircle } from "lucide-react";
 import { useState } from "react";
+import type { CommandTestResult, ContextCommand } from "@/api/types";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Play, Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { useTestContextCommand } from "@/hooks/use-context-commands";
-import type { CommandTestResult, ContextCommand } from "@/api/types";
 
 interface CommandTestProps {
   command: ContextCommand;
@@ -92,15 +92,20 @@ export function CommandTest({ command, onClose }: CommandTestProps) {
               </div>
 
               {/* Variables */}
-              {result.variables_used && Object.keys(result.variables_used).length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {Object.entries(result.variables_used).map(([k, v]) => (
-                    <Badge key={k} variant="outline" className="text-[10px] font-mono">
-                      {k}={v || "(empty)"}
-                    </Badge>
-                  ))}
-                </div>
-              )}
+              {result.variables_used &&
+                Object.keys(result.variables_used).length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {Object.entries(result.variables_used).map(([k, v]) => (
+                      <Badge
+                        key={k}
+                        variant="outline"
+                        className="text-[10px] font-mono"
+                      >
+                        {k}={v || "(empty)"}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
 
               {/* Output */}
               {result.stdout && (

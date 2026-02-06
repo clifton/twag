@@ -3,7 +3,8 @@
 import json
 from datetime import datetime, timezone
 
-import twag.processor as processor_mod
+import twag.processor.dependencies as deps_mod
+import twag.processor.pipeline as pipeline_mod
 from twag.db import get_connection, get_tweet_by_id, init_db, insert_tweet, update_tweet_processing
 
 
@@ -25,9 +26,9 @@ def test_process_unprocessed_expands_links_and_persists_before_triage(monkeypatc
         assert inserted is True
         conn.commit()
 
-    monkeypatch.setattr(processor_mod, "get_connection", lambda: get_connection(db_path))
+    monkeypatch.setattr(pipeline_mod, "get_connection", lambda: get_connection(db_path))
     monkeypatch.setattr(
-        processor_mod,
+        pipeline_mod,
         "load_config",
         lambda: {
             "scoring": {
@@ -59,10 +60,10 @@ def test_process_unprocessed_expands_links_and_persists_before_triage(monkeypatc
         captured_rows.extend(tweet_rows)
         return []
 
-    monkeypatch.setattr(processor_mod, "expand_links_in_place", _fake_expand_links)
-    monkeypatch.setattr(processor_mod, "_triage_rows", _fake_triage_rows)
+    monkeypatch.setattr(deps_mod, "expand_links_in_place", _fake_expand_links)
+    monkeypatch.setattr(pipeline_mod, "_triage_rows", _fake_triage_rows)
 
-    results = processor_mod.process_unprocessed(limit=10)
+    results = pipeline_mod.process_unprocessed(limit=10)
 
     assert results == []
     assert len(calls) == 1
@@ -110,9 +111,9 @@ def test_process_unprocessed_skips_already_expanded_links(monkeypatch, tmp_path)
         )
         conn.commit()
 
-    monkeypatch.setattr(processor_mod, "get_connection", lambda: get_connection(db_path))
+    monkeypatch.setattr(pipeline_mod, "get_connection", lambda: get_connection(db_path))
     monkeypatch.setattr(
-        processor_mod,
+        pipeline_mod,
         "load_config",
         lambda: {
             "scoring": {
@@ -125,13 +126,13 @@ def test_process_unprocessed_skips_already_expanded_links(monkeypatch, tmp_path)
         },
     )
     monkeypatch.setattr(
-        processor_mod,
+        deps_mod,
         "expand_links_in_place",
         lambda _links: (_ for _ in ()).throw(AssertionError("expand_links_in_place should not run")),
     )
-    monkeypatch.setattr(processor_mod, "_triage_rows", lambda _conn, **_kwargs: [])
+    monkeypatch.setattr(pipeline_mod, "_triage_rows", lambda _conn, **_kwargs: [])
 
-    processor_mod.process_unprocessed(limit=10)
+    pipeline_mod.process_unprocessed(limit=10)
 
     with get_connection(db_path) as conn:
         row = get_tweet_by_id(conn, "1002")
@@ -190,9 +191,9 @@ def test_reprocess_today_quoted_expands_quote_row_links(monkeypatch, tmp_path) -
         root_row = get_tweet_by_id(conn, "r1")
         assert root_row is not None
 
-    monkeypatch.setattr(processor_mod, "get_connection", lambda: get_connection(db_path))
+    monkeypatch.setattr(pipeline_mod, "get_connection", lambda: get_connection(db_path))
     monkeypatch.setattr(
-        processor_mod,
+        pipeline_mod,
         "load_config",
         lambda: {
             "scoring": {
@@ -206,7 +207,7 @@ def test_reprocess_today_quoted_expands_quote_row_links(monkeypatch, tmp_path) -
         },
     )
     monkeypatch.setattr(
-        processor_mod,
+        deps_mod,
         "expand_links_in_place",
         lambda _links: [
             {
@@ -216,9 +217,9 @@ def test_reprocess_today_quoted_expands_quote_row_links(monkeypatch, tmp_path) -
             }
         ],
     )
-    monkeypatch.setattr(processor_mod, "_triage_rows", lambda _conn, **_kwargs: [])
+    monkeypatch.setattr(pipeline_mod, "_triage_rows", lambda _conn, **_kwargs: [])
 
-    results = processor_mod.reprocess_today_quoted(rows=[root_row])
+    results = pipeline_mod.reprocess_today_quoted(rows=[root_row])
     assert results == []
 
     with get_connection(db_path) as conn:
@@ -257,9 +258,9 @@ def test_process_unprocessed_adds_reply_parent_to_processing_stack(monkeypatch, 
         assert inserted_root is True
         conn.commit()
 
-    monkeypatch.setattr(processor_mod, "get_connection", lambda: get_connection(db_path))
+    monkeypatch.setattr(pipeline_mod, "get_connection", lambda: get_connection(db_path))
     monkeypatch.setattr(
-        processor_mod,
+        pipeline_mod,
         "load_config",
         lambda: {
             "scoring": {
@@ -271,7 +272,7 @@ def test_process_unprocessed_adds_reply_parent_to_processing_stack(monkeypatch, 
             "processing": {"max_concurrency_url_expansion": 2},
         },
     )
-    monkeypatch.setattr(processor_mod, "expand_links_in_place", lambda links: links)
+    monkeypatch.setattr(deps_mod, "expand_links_in_place", lambda links: links)
 
     captured_rows: list[dict] = []
 
@@ -279,9 +280,9 @@ def test_process_unprocessed_adds_reply_parent_to_processing_stack(monkeypatch, 
         captured_rows.extend(kwargs["tweet_rows"])
         return []
 
-    monkeypatch.setattr(processor_mod, "_triage_rows", _fake_triage_rows)
+    monkeypatch.setattr(pipeline_mod, "_triage_rows", _fake_triage_rows)
 
-    results = processor_mod.process_unprocessed(limit=10)
+    results = pipeline_mod.process_unprocessed(limit=10)
     assert results == []
     ids = {row["id"] for row in captured_rows}
     assert ids == {"r1", "p1"}
@@ -321,9 +322,9 @@ def test_process_unprocessed_adds_thread_linked_tweet_to_processing_stack(monkey
         assert inserted_root is True
         conn.commit()
 
-    monkeypatch.setattr(processor_mod, "get_connection", lambda: get_connection(db_path))
+    monkeypatch.setattr(pipeline_mod, "get_connection", lambda: get_connection(db_path))
     monkeypatch.setattr(
-        processor_mod,
+        pipeline_mod,
         "load_config",
         lambda: {
             "scoring": {
@@ -335,7 +336,7 @@ def test_process_unprocessed_adds_thread_linked_tweet_to_processing_stack(monkey
             "processing": {"max_concurrency_url_expansion": 2},
         },
     )
-    monkeypatch.setattr(processor_mod, "expand_links_in_place", lambda links: links)
+    monkeypatch.setattr(deps_mod, "expand_links_in_place", lambda links: links)
 
     captured_rows: list[dict] = []
 
@@ -343,9 +344,9 @@ def test_process_unprocessed_adds_thread_linked_tweet_to_processing_stack(monkey
         captured_rows.extend(kwargs["tweet_rows"])
         return []
 
-    monkeypatch.setattr(processor_mod, "_triage_rows", _fake_triage_rows)
+    monkeypatch.setattr(pipeline_mod, "_triage_rows", _fake_triage_rows)
 
-    results = processor_mod.process_unprocessed(limit=10)
+    results = pipeline_mod.process_unprocessed(limit=10)
     assert results == []
     ids = {row["id"] for row in captured_rows}
     assert ids == {"r2", "10001"}

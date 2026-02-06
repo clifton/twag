@@ -103,15 +103,15 @@ def _sample_row(processed_at: str | None = None) -> dict:
 
 def test_analyze_status_success(monkeypatch):
     """Analyze should fetch, process, and print structured article sections."""
-    import twag.cli as cli_mod
+    import twag.cli.analyze as analyze_mod
     import twag.fetcher as fetcher_mod
     import twag.processor as processor_mod
 
     process_calls = {"count": 0, "force_refresh": None}
     row = _sample_row(processed_at=None)
 
-    monkeypatch.setattr(cli_mod, "init_db", lambda: None)
-    monkeypatch.setattr(cli_mod, "get_connection", _fake_connection)
+    monkeypatch.setattr(analyze_mod, "init_db", lambda: None)
+    monkeypatch.setattr(analyze_mod, "get_connection", _fake_connection)
     monkeypatch.setattr(fetcher_mod, "read_tweet", lambda _status: _sample_tweet())
     monkeypatch.setattr(
         processor_mod,
@@ -127,7 +127,7 @@ def test_analyze_status_success(monkeypatch):
             [],
         )[-1],
     )
-    monkeypatch.setattr(cli_mod, "get_tweet_by_id", lambda _conn, _tweet_id: row)
+    monkeypatch.setattr(analyze_mod, "get_tweet_by_id", lambda _conn, _tweet_id: row)
 
     runner = CliRunner()
     result = runner.invoke(cli, ["analyze", "https://x.com/undrvalue/status/2019488673935552978"])
@@ -149,7 +149,7 @@ def test_analyze_status_success(monkeypatch):
 
 def test_analyze_status_skips_processing_when_already_processed(monkeypatch):
     """Analyze should reuse existing analysis unless --reprocess is passed."""
-    import twag.cli as cli_mod
+    import twag.cli.analyze as analyze_mod
     import twag.fetcher as fetcher_mod
     import twag.processor as processor_mod
 
@@ -158,9 +158,9 @@ def test_analyze_status_skips_processing_when_already_processed(monkeypatch):
     def _should_not_run(**kwargs):
         raise AssertionError("process_unprocessed should not run without --reprocess")
 
-    monkeypatch.setattr(cli_mod, "init_db", lambda: None)
-    monkeypatch.setattr(cli_mod, "get_connection", _fake_connection)
-    monkeypatch.setattr(cli_mod, "get_tweet_by_id", lambda _conn, _tweet_id: row)
+    monkeypatch.setattr(analyze_mod, "init_db", lambda: None)
+    monkeypatch.setattr(analyze_mod, "get_connection", _fake_connection)
+    monkeypatch.setattr(analyze_mod, "get_tweet_by_id", lambda _conn, _tweet_id: row)
     monkeypatch.setattr(fetcher_mod, "read_tweet", lambda _status: _sample_tweet())
     monkeypatch.setattr(processor_mod, "store_fetched_tweets", lambda tweets, **kwargs: (len(tweets), 0))
     monkeypatch.setattr(processor_mod, "process_unprocessed", _should_not_run)
@@ -174,16 +174,16 @@ def test_analyze_status_skips_processing_when_already_processed(monkeypatch):
 
 def test_analyze_status_reprocess_forces_refresh(monkeypatch):
     """--reprocess should force article/enrichment refresh path."""
-    import twag.cli as cli_mod
+    import twag.cli.analyze as analyze_mod
     import twag.fetcher as fetcher_mod
     import twag.processor as processor_mod
 
     calls = {"force_refresh": None}
     row = _sample_row(processed_at="2026-02-05T14:00:00+00:00")
 
-    monkeypatch.setattr(cli_mod, "init_db", lambda: None)
-    monkeypatch.setattr(cli_mod, "get_connection", _fake_connection)
-    monkeypatch.setattr(cli_mod, "get_tweet_by_id", lambda _conn, _tweet_id: row)
+    monkeypatch.setattr(analyze_mod, "init_db", lambda: None)
+    monkeypatch.setattr(analyze_mod, "get_connection", _fake_connection)
+    monkeypatch.setattr(analyze_mod, "get_tweet_by_id", lambda _conn, _tweet_id: row)
     monkeypatch.setattr(fetcher_mod, "read_tweet", lambda _status: _sample_tweet())
     monkeypatch.setattr(processor_mod, "store_fetched_tweets", lambda tweets, **kwargs: (len(tweets), 0))
     monkeypatch.setattr(
@@ -201,10 +201,10 @@ def test_analyze_status_reprocess_forces_refresh(monkeypatch):
 
 def test_analyze_status_not_found(monkeypatch):
     """Analyze should fail clearly when bird cannot read the status."""
-    import twag.cli as cli_mod
+    import twag.cli.analyze as analyze_mod
     import twag.fetcher as fetcher_mod
 
-    monkeypatch.setattr(cli_mod, "init_db", lambda: None)
+    monkeypatch.setattr(analyze_mod, "init_db", lambda: None)
     monkeypatch.setattr(fetcher_mod, "read_tweet", lambda _status: None)
 
     runner = CliRunner()
@@ -216,7 +216,7 @@ def test_analyze_status_not_found(monkeypatch):
 
 def test_print_status_analysis_wraps_and_labels_long_fields(monkeypatch, capsys):
     """Long article sections should render as wrapped labeled blocks, not pipe-delimited lines."""
-    import twag.cli as cli_mod
+    import twag.cli.analyze as cli_mod
 
     row = _sample_row(processed_at="2026-02-05T14:00:00+00:00")
     row["summary"] = (
@@ -266,7 +266,7 @@ def test_print_status_analysis_wraps_and_labels_long_fields(monkeypatch, capsys)
 
 def test_print_status_analysis_skips_invalid_points_and_actions(capsys):
     """Malformed point/action rows should be ignored without empty numbering output."""
-    import twag.cli as cli_mod
+    import twag.cli.analyze as cli_mod
 
     row = _sample_row(processed_at="2026-02-05T14:00:00+00:00")
     row["article_primary_points_json"] = json.dumps(

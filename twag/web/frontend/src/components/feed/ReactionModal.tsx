@@ -1,12 +1,12 @@
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 
 interface ReactionModalProps {
@@ -21,7 +21,11 @@ const typeLabels: Record<string, string> = {
   "<": "Mark as overrated",
 };
 
-export function ReactionModal({ type, onConfirm, onClose }: ReactionModalProps) {
+export function ReactionModal({
+  type,
+  onConfirm,
+  onClose,
+}: ReactionModalProps) {
   const [reason, setReason] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
