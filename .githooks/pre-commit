@@ -1,0 +1,22 @@
+#!/bin/sh
+# pre-commit hook: ruff format, ruff lint, ty type check
+
+exec 1>&2
+
+echo "Running ruff format check..."
+uv run ruff format --check . || {
+    echo "ruff format check failed. Run 'uv run ruff format .' to fix."
+    exit 1
+}
+
+echo "Running ruff lint..."
+uv run ruff check . || {
+    echo "ruff lint failed. Run 'uv run ruff check --fix .' to fix."
+    exit 1
+}
+
+echo "Running ty type check..."
+uvx ty check || {
+    echo "ty type check failed."
+    exit 1
+}
