@@ -65,6 +65,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "auth_token_env": "AUTH_TOKEN",
         "ct0_env": "CT0",
         "min_interval_seconds": 1.0,
+        "retry_max_attempts": 4,
+        "retry_base_seconds": 15.0,
+        "retry_max_seconds": 120.0,
     },
 }
 
