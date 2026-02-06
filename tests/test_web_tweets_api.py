@@ -361,3 +361,32 @@ def test_list_tweets_drops_trailing_unresolved_short_link_when_other_link_resolv
             "domain": "github.com",
         }
     ]
+
+
+def test_list_tweets_does_not_expand_short_urls_on_request(monkeypatch, tmp_path):
+    db_path = tmp_path / "twag_api_no_runtime_expansion.db"
+    monkeypatch.setattr("twag.web.app.get_database_path", lambda: db_path)
+    monkeypatch.setattr("twag.link_utils._expand_short_url", lambda _url: (_ for _ in ()).throw(AssertionError()))
+    app = create_app()
+
+    with get_connection(db_path) as conn:
+        _insert_processed_tweet(
+            conn,
+            tweet_id="3201",
+            author_handle="runtime_user",
+            content="No runtime expansion https://t.co/ext",
+            links=[
+                {
+                    "url": "https://t.co/ext",
+                    "expanded_url": "https://github.com/example/project",
+                    "display_url": "github.com/example/project",
+                }
+            ],
+        )
+        conn.commit()
+
+    client = TestClient(app)
+    response = client.get("/api/tweets", params={"author": "runtime_user", "since": "30d"})
+    assert response.status_code == 200
+    tweet = response.json()["tweets"][0]
+    assert tweet["display_content"] == "No runtime expansion https://github.com/example/project"

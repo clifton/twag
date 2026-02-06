@@ -1,4 +1,4 @@
-from twag.link_utils import normalize_tweet_links
+from twag.link_utils import expand_links_in_place, normalize_tweet_links
 
 
 def test_normalize_tweet_links_expands_short_urls_without_structured_links(monkeypatch):
@@ -112,5 +112,57 @@ def test_normalize_tweet_links_drops_trailing_unresolved_short_link_when_other_l
             "url": "https://github.com/fixie-ai/ultravox",
             "display_url": "github.com/fixie-ai/ultravox",
             "domain": "github.com",
+        }
+    ]
+
+
+def test_expand_links_in_place_limits_short_url_expansions(monkeypatch):
+    seen: list[str] = []
+
+    def _fake_expand(url: str) -> str:
+        seen.append(url)
+        return url.replace("https://t.co/", "https://expanded.example/")
+
+    monkeypatch.setattr("twag.link_utils._expand_short_url", _fake_expand)
+
+    expanded = expand_links_in_place(
+        [
+            {"url": "https://t.co/one"},
+            {"url": "https://t.co/two"},
+            {"url": "https://t.co/three"},
+        ]
+    )
+
+    assert len(seen) == 2
+    assert expanded[0]["expanded_url"] == "https://expanded.example/one"
+    assert expanded[1]["expanded_url"] == "https://expanded.example/two"
+    assert expanded[2]["expanded_url"] == "https://t.co/three"
+
+
+def test_normalize_tweet_links_already_expanded_skips_network_expansion(monkeypatch):
+    monkeypatch.setattr(
+        "twag.link_utils._expand_short_url",
+        lambda _url: (_ for _ in ()).throw(AssertionError("_expand_short_url should not be called")),
+    )
+
+    result = normalize_tweet_links(
+        tweet_id="123",
+        text="Check this out https://t.co/ext",
+        links=[
+            {
+                "url": "https://t.co/ext",
+                "expanded_url": "https://example.com/report",
+                "display_url": "example.com/report",
+            }
+        ],
+        already_expanded=True,
+    )
+
+    assert result.display_text == "Check this out https://example.com/report"
+    assert result.external_links == [
+        {
+            "url": "https://example.com/report",
+            "display_url": "example.com/report",
+            "domain": "example.com",
         }
     ]

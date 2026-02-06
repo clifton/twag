@@ -53,6 +53,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "quote_depth": 3,  # max recursive depth for quoted tweets
         "quote_delay": 1.0,  # seconds between recursive quoted tweet fetches
     },
+    "processing": {
+        "max_concurrency_url_expansion": 15,
+    },
     "paths": {
         # These can be overridden in config.json
         # If not set, XDG defaults are used

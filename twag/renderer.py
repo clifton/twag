@@ -157,6 +157,7 @@ def _render_tweet(conn: sqlite3.Connection, tweet: sqlite3.Row, compact: bool = 
         text=tweet["content"],
         links=links,
         has_media=bool(_value(tweet, "has_media", False)),
+        already_expanded=True,
     )
     inline_tweet_links = normalized_links.inline_tweet_links
     external_links = normalized_links.external_links

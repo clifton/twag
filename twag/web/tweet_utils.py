@@ -52,7 +52,13 @@ def normalize_links_for_display(
     links: list[dict] | None,
     has_media: bool = False,
 ) -> LinkNormalizationResult:
-    return normalize_tweet_links(tweet_id=tweet_id, text=text, links=links, has_media=has_media)
+    return normalize_tweet_links(
+        tweet_id=tweet_id,
+        text=text,
+        links=links,
+        has_media=has_media,
+        already_expanded=True,
+    )
 
 
 def parse_tweet_id_from_url(url: str | None) -> str | None:

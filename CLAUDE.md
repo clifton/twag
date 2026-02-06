@@ -51,13 +51,17 @@ Core modules:
 
 ### Link normalization (digest + web)
 
-Implemented in `twag/link_utils.py` and consumed in CLI/web renderers.
+Implemented in `twag/link_utils.py`.
+
+URL short-link expansion (`t.co` -> final URL) runs during `twag process` and is
+persisted to `tweets.links_json` with `links_expanded_at`. Digest rendering and
+web API routes are read-only consumers of stored expanded links.
 
 Rules:
 
 - Remove self links (tweet links pointing to the current tweet)
 - Convert twitter/x links to other tweets into inline quote link metadata
-- Expand non-twitter short URLs (best effort) and render as external links
+- Expand non-twitter short URLs (best effort) during processing and render as external links
 - Prune trailing unresolved `t.co` links that are likely self/media pointers:
   - for media tweets, and
   - for mixed-link tweets where another link in the same post resolved externally

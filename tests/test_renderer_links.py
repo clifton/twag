@@ -75,3 +75,48 @@ def test_render_digest_removes_self_links_and_renders_external_and_inline(monkey
     assert "[github.com/aliasvault/aliasvault](https://github.com/aliasvault/aliasvault)" in content
     assert "💬 **Linked Tweets:**" in content
     assert "**@child_user**: child linked content" in content
+
+
+def test_render_digest_does_not_expand_short_urls_at_render_time(monkeypatch, tmp_path):
+    db_path = tmp_path / "twag_renderer_no_runtime_expansion.db"
+    init_db(db_path)
+
+    now = datetime.now(timezone.utc)
+    digest_date = now.strftime("%Y-%m-%d")
+
+    with get_connection(db_path) as conn:
+        inserted = insert_tweet(
+            conn,
+            tweet_id="3001",
+            author_handle="root_user",
+            content="Interesting link https://t.co/ext",
+            created_at=now,
+            source="test",
+            has_link=True,
+            links=[
+                {
+                    "url": "https://t.co/ext",
+                    "expanded_url": "https://github.com/example/project",
+                    "display_url": "github.com/example/project",
+                }
+            ],
+        )
+        assert inserted is True
+        update_tweet_processing(
+            conn,
+            tweet_id="3001",
+            relevance_score=8.0,
+            categories=["tech_business"],
+            summary="Root summary",
+            signal_tier="high_signal",
+            tickers=["GTLB"],
+        )
+        conn.commit()
+
+    monkeypatch.setattr("twag.link_utils._expand_short_url", lambda _url: (_ for _ in ()).throw(AssertionError()))
+    monkeypatch.setattr("twag.renderer.get_connection", lambda: get_connection(db_path))
+
+    output_path = tmp_path / "digest.md"
+    content = render_digest(date=digest_date, min_score=5.0, output_path=output_path)
+
+    assert "https://github.com/example/project" in content

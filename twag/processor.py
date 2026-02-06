@@ -16,6 +16,7 @@ from .db import (
     get_authors_to_promote,
     get_connection,
     get_tweet_by_id,
+    get_tweets_by_ids,
     get_unprocessed_tweets,
     insert_tweet,
     is_tweet_seen,
@@ -26,6 +27,7 @@ from .db import (
     update_tweet_analysis,
     update_tweet_article,
     update_tweet_enrichment,
+    update_tweet_links_expanded,
     update_tweet_processing,
     upsert_account,
 )
@@ -37,7 +39,7 @@ from .fetcher import (
     fetch_user_tweets,
     read_tweet,
 )
-from .link_utils import parse_tweet_status_id
+from .link_utils import expand_links_in_place, parse_tweet_status_id
 from .media import build_media_context, build_media_summary, parse_media_items
 from .scorer import (
     EnrichmentResult,
@@ -105,6 +107,24 @@ def _build_triage_text(tweet_row: sqlite3.Row) -> str:
     if not content or len(combined) >= len(content) + 120:
         return combined
     return content
+
+
+def _expand_single_tweet_links(row: sqlite3.Row | dict[str, Any]) -> tuple[str, list[dict[str, Any]] | None]:
+    """Expand URL entities for one tweet row."""
+    tweet_id = str(row["id"])
+    raw_links = row["links_json"]
+    if not raw_links:
+        return tweet_id, None
+    try:
+        decoded = json.loads(raw_links)
+    except json.JSONDecodeError:
+        return tweet_id, None
+    if not isinstance(decoded, list):
+        return tweet_id, None
+    link_items = [item for item in decoded if isinstance(item, dict)]
+    if not link_items:
+        return tweet_id, []
+    return tweet_id, expand_links_in_place(link_items)
 
 
 def _fetch_quote_chain(
@@ -808,12 +828,25 @@ def process_unprocessed(
     force_refresh: bool = False,
 ) -> list[TriageResult]:
     """Process tweets that haven't been scored yet."""
+
+    def _row_get(row: sqlite3.Row | dict[str, Any], key: str, default: Any = None) -> Any:
+        if isinstance(row, sqlite3.Row):
+            try:
+                return row[key]
+            except (IndexError, KeyError):
+                return default
+        return row.get(key, default)
+
     config = load_config()
     batch_size = config["scoring"]["batch_size"]
     high_threshold = config["scoring"]["high_signal_threshold"]
     media_min_score = config["scoring"].get("min_score_for_media", 3)
     quote_depth = config.get("fetch", {}).get("quote_depth", 0)
     quote_delay = config.get("fetch", {}).get("quote_delay", 1.0)
+    url_expansion_workers = _normalized_worker_count(
+        config.get("processing", {}).get("max_concurrency_url_expansion", 15),
+        15,
+    )
 
     with get_connection() as conn:
         unprocessed = rows if rows is not None else get_unprocessed_tweets(conn, limit=limit)
@@ -833,6 +866,50 @@ def process_unprocessed(
                 status_cb=status_cb,
                 total_cb=total_cb,
             )
+
+        if not dry_run:
+            rows_for_link_expansion = [
+                row
+                for row in unprocessed
+                if _row_get(row, "has_link") and _row_get(row, "links_json") and not _row_get(row, "links_expanded_at")
+            ]
+            if rows_for_link_expansion:
+                if status_cb:
+                    status_cb(f"Expanding links for {len(rows_for_link_expansion)} tweets")
+
+                row_by_id = {str(_row_get(row, "id")): row for row in rows_for_link_expansion}
+                expanded_at = datetime.now(timezone.utc).isoformat()
+
+                if url_expansion_workers > 1:
+                    with ThreadPoolExecutor(max_workers=url_expansion_workers) as pool:
+                        futures = {
+                            pool.submit(_expand_single_tweet_links, row): str(_row_get(row, "id"))
+                            for row in rows_for_link_expansion
+                        }
+                        for future in as_completed(futures):
+                            tweet_id = futures[future]
+                            original_row = row_by_id[tweet_id]
+                            try:
+                                _, expanded_links = future.result()
+                            except Exception:
+                                expanded_links = None
+                            links_payload: list[dict[str, Any]] | str | None = (
+                                expanded_links if expanded_links is not None else _row_get(original_row, "links_json")
+                            )
+                            update_tweet_links_expanded(conn, tweet_id, links_payload, expanded_at)
+                else:
+                    for row in rows_for_link_expansion:
+                        tweet_id = str(_row_get(row, "id"))
+                        try:
+                            _, expanded_links = _expand_single_tweet_links(row)
+                        except Exception:
+                            expanded_links = None
+                        links_payload = expanded_links if expanded_links is not None else _row_get(row, "links_json")
+                        update_tweet_links_expanded(conn, tweet_id, links_payload, expanded_at)
+
+                conn.commit()
+                refreshed = get_tweets_by_ids(conn, {str(row["id"]) for row in unprocessed})
+                unprocessed = [refreshed.get(str(row["id"]), row) for row in unprocessed]
 
         if total_cb:
             total_cb(len(unprocessed))
