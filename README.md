@@ -272,6 +272,16 @@ Notes:
 - In dev mode, Vite runs on `http://localhost:8080`.
 - API target defaults to `http://localhost:5173` unless you change `--port`.
 
+## Security
+
+**`twag web` is designed for local/trusted-network use only.** The API endpoints are unauthenticated. Do not expose the server to the public internet without adding your own authentication layer.
+
+The default bind address is `0.0.0.0` (all interfaces). To restrict to local-only access, use:
+
+```bash
+twag web --host 127.0.0.1
+```
+
 ## Scoring Tiers
 
 - `high_signal`: strongest actionable content
