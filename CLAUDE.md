@@ -1,141 +1,172 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code when working with code in this repository.
+Repository guidance for agents working in this project.
+
+## Scope
+
+This repository provides:
+
+- CLI pipeline (`twag`)
+- SQLite storage + FTS search
+- FastAPI backend (`twag/web/`)
+- React frontend (`twag/web/frontend/`)
+- OpenClaw skill definition (`SKILL.md`)
+
+`AGENTS.md` in this repo points here; treat this file as the primary instruction source.
 
 ## OpenClaw Skill Context
 
-This project is an **OpenClaw skill**, not just a standalone CLI. The skill is defined in `SKILL.md` and loaded by OpenClaw agents.
+This project is also an OpenClaw skill. `SKILL.md` metadata controls discovery/installation and runtime requirements.
 
-### How OpenClaw Loads Skills
+### Skill loading precedence
 
-OpenClaw searches for skills in this precedence order:
-1. **Workspace skills** - `./skills/` in the current project
-2. **Managed skills** - `~/.claude/skills/` (installed via ClawdHub)
-3. **Bundled skills** - Built into the agent
+1. Workspace skills (`./skills/`)
+2. Managed skills (`~/.claude/skills/`)
+3. Bundled skills
 
-When a skill matches its `read_when` conditions, OpenClaw loads the SKILL.md instructions into context.
+### `{baseDir}` placeholder
 
-### The `{baseDir}` Placeholder
+When OpenClaw loads a skill, `{baseDir}` is replaced with the installed skill directory.
 
-In SKILL.md instructions, `{baseDir}` is replaced with the skill's installation directory at load time. This allows skills to reference their own files without hardcoding paths.
+## Current Architecture
 
-## SKILL.md Structure
+Pipeline:
 
-The skill definition lives in `SKILL.md` with YAML frontmatter:
+`FETCH -> PROCESS -> DIGEST`
 
-### Required Fields
-- `name` - Skill identifier (e.g., `twag`)
-- `description` - Brief description for skill discovery
+Core modules:
 
-### Key Optional Fields Used Here
+- `twag/cli.py`: command entry points
+- `twag/fetcher.py`: `bird` integration + tweet parsing
+- `twag/processor.py`: orchestration (triage, enrichment, media/article passes)
+- `twag/scorer.py`: LLM scoring and article summarization
+- `twag/db.py`: schema, migrations, query layer
+- `twag/renderer.py`: markdown digest generation
+- `twag/link_utils.py`: link normalization and embed classification
+- `twag/article_visuals.py`: data-visual selection for article summaries
+- `twag/web/`: FastAPI app + routes
+- `twag/web/frontend/`: React feed UI
 
-```yaml
-read_when:        # Conditions that trigger skill loading
-  - Processing Twitter/X feed for market signals
-  - Searching for market-relevant tweets
+## Key Runtime Behaviors
 
-homepage: https://github.com/clifton/twag
+### Link normalization (digest + web)
 
-metadata:         # ClawdBot/OpenClaw gating
-  clawdbot:
-    emoji: "📊"
-    requires:
-      bins: [twag, bird]    # Required binaries
-      env: [GEMINI_API_KEY, AUTH_TOKEN, CT0]  # Required env vars
-    install:
-      - id: pip
-        kind: pip
-        package: twag
-        bins: [twag]
+Implemented in `twag/link_utils.py` and consumed in CLI/web renderers.
 
-allowed-tools: Bash(twag:*)  # Tool permissions pattern
-```
+Rules:
 
-### Modifying Requirements
+- Remove self links (tweet links pointing to the current tweet)
+- Convert twitter/x links to other tweets into inline quote link metadata
+- Expand non-twitter short URLs (best effort) and render as external links
+- Prune trailing unresolved `t.co` links that are likely self/media pointers:
+  - for media tweets, and
+  - for mixed-link tweets where another link in the same post resolved externally
 
-To add new binary/env requirements, update the `metadata.clawdbot.requires` section. The `allowed-tools` field controls which Bash commands the agent can run without prompting.
+### X Article processing
 
-## Build & Development
+For article tweets (`is_x_article`), processor stores:
+
+- `article_summary_short`
+- `article_primary_points_json`
+- `article_action_items_json`
+- `article_top_visual_json`
+- `article_processed_at`
+
+`article_visuals.py` prioritizes relevant visuals (`chart`, `table`, `document`, `screenshot`) and suppresses obvious noise.
+
+### Web feed rendering
+
+`twag/web/routes/tweets.py` provides display-ready fields:
+
+- `display_content`
+- `quote_embed`
+- `inline_quote_embeds`
+- `external_links`
+
+Frontend `TweetCard` emphasizes article summaries, primary/action points, and visuals; inline URL rendering comes from `TweetContent`.
+
+## CLI Surface (Current)
+
+Defined in `twag/cli.py`:
+
+- `init`, `doctor`
+- `fetch`
+- `process`
+- `analyze`
+- `digest`
+- `accounts` (`list`, `add`, `promote`, `mute`, `demote`, `decay`, `boost`, `import`)
+- `narratives list`
+- `stats`, `prune`, `export`
+- `config` (`show`, `path`, `set`)
+- `db` (`path`, `shell`, `init`, `rebuild-fts`, `dump`, `restore`)
+- `search`
+- `web`
+
+If command behavior changes, update `README.md` and this file in the same PR.
+
+## Dev Environment
+
+### Python
 
 ```bash
-pip install -e .           # Install for development
-pip install -e ".[dev]"    # With dev dependencies
-pytest                     # Run all tests
-pytest -v tests/test_fetcher.py::test_parse_tweet  # Single test
+pip install -e .
+pip install -e ".[dev]"
 ```
 
-### Frontend (React SPA)
+### Frontend
 
 ```bash
 cd twag/web/frontend
-npm install                # Install dependencies
-npm run dev                # Dev server on :5173 (proxies /api to :8080)
-npm run build              # Production build to dist/
+npm install
+npm run dev
+npm run build
 ```
 
-When `twag/web/frontend/dist/` exists, `twag web` serves the SPA. Otherwise it has no frontend.
-The frontend is a React 19 + TypeScript SPA using Vite, Tailwind CSS 4, shadcn/ui (dark theme),
-TanStack Query v5, and React Router v7. CodeMirror 6 is used for the prompt editor.
+Dev server behavior:
 
-## Architecture Overview
+- `twag web --dev` starts Vite on `http://localhost:8080`
+- Vite proxies `/api` to `http://localhost:5173` by default
+- `twag web` (non-dev) serves FastAPI; if `twag/web/frontend/dist/` exists, it serves the SPA
 
-twag is a three-phase pipeline for aggregating market-relevant Twitter content:
+## Validation Expectations
 
-```
-FETCH → PROCESS → DIGEST
-```
+When changing Python code:
 
-### Core Modules
-
-| Module | Purpose |
-|--------|---------|
-| `cli.py` | Click CLI entry points |
-| `fetcher.py` | Bird CLI wrapper for fetching tweets |
-| `processor.py` | Pipeline orchestration (store, triage, enrich) |
-| `scorer.py` | LLM scoring engines (Gemini for triage, Claude for enrichment) |
-| `db.py` | SQLite database layer with FTS5 search |
-| `renderer.py` | Markdown digest generation |
-| `notifier.py` | Telegram alerts |
-| `config.py` | XDG-compliant configuration |
-
-### Data Flow
-
-1. **Fetch**: `fetcher.py` calls `bird` CLI → `processor.store_fetched_tweets()` dedupes and stores
-2. **Process**: `processor.process_unprocessed()` → `scorer.triage_tweets_batch()` scores in batches → high-signal tweets get `scorer.enrich_tweet()`
-3. **Digest**: `renderer.render_digest()` queries by date/score → groups by signal tier → outputs markdown
-
-### LLM Configuration
-
-- **Triage**: Fast batch scoring (default: `gemini-3-flash-preview`)
-- **Enrichment**: Deep analysis for high-signal tweets (default: `claude-opus-4-5-20251101`)
-- **Vision**: Media analysis (default: `gemini-3-flash-preview`)
-
-### Database Schema
-
-Main tables in SQLite (`twag.db`):
-- `tweets` - Content, scores, categories, media
-- `accounts` - Tracked accounts with tier/weight/stats
-- `narratives` - Emerging themes
-- `fts_tweets` - FTS5 full-text search index
-
-### Web Architecture
-
-The web interface is a React SPA served by FastAPI:
-- **Backend** (`twag/web/`): FastAPI app with JSON API routes (`/api/*`)
-- **Frontend** (`twag/web/frontend/`): React SPA (Vite + TypeScript + Tailwind)
-- **Shared utils** (`twag/web/tweet_utils.py`): Tweet link extraction/cleaning helpers
-- **API routes**: `routes/tweets.py`, `routes/reactions.py`, `routes/prompts.py`, `routes/context.py`
-- **SPA serving**: `app.py` serves `frontend/dist/index.html` for all non-API routes
-
-### Key Patterns
-
-**Database context manager:**
-```python
-with get_connection() as conn:
-    # queries here
-    conn.commit()  # explicit commit required
+```bash
+uv run ruff format <files>
+uv run ruff check <files>
+uv run pytest -q <relevant tests>
 ```
 
-**Progress callbacks:** Functions accept `progress_cb`, `status_cb`, `total_cb` for CLI progress bars.
+When changing frontend code:
 
-**Market-aware time:** "today" means since previous 4pm ET market close, not midnight.
+```bash
+cd twag/web/frontend
+npm run build
+```
+
+Favor targeted tests plus adjacent integration tests for changed behavior.
+
+## Documentation Expectations
+
+Keep docs aligned with current code:
+
+- `README.md`: user-facing commands and behavior
+- `CLAUDE.md`: agent/developer operating guidance
+- `AGENTS.md`: short pointer to `CLAUDE.md`
+
+Avoid absolute machine-specific paths in repository docs.
+
+## Repository Agent Rules
+
+### Temporary artifacts
+
+- Place screenshots/debug exports/one-off files in `tmp/`
+- Do not leave temporary artifacts at repository root
+- `tmp/` should be gitignored except `tmp/.gitkeep`
+
+### Commit hygiene
+
+- Keep commits focused and atomic
+- Run formatting/lint/tests before committing
+- Do not commit temporary artifacts unless explicitly requested

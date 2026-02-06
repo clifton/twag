@@ -51,3 +51,7 @@ twag/web/frontend/.vite/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local scratch artifacts (screenshots, exports, debug dumps)
+tmp/*
+!tmp/.gitkeep
