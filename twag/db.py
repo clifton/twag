@@ -513,15 +513,26 @@ def rebuild_fts(conn: sqlite3.Connection) -> int:
 
 
 @contextmanager
-def get_connection(db_path: Path | None = None) -> Iterator[sqlite3.Connection]:
-    """Get a database connection with row factory."""
+def get_connection(db_path: Path | None = None, readonly: bool = False) -> Iterator[sqlite3.Connection]:
+    """Get a database connection with row factory.
+
+    Args:
+        db_path: Path to database file. If None, uses default from config.
+        readonly: If True, open in readonly mode to avoid write locks.
+    """
     if db_path is None:
         db_path = get_database_path()
 
-    conn = sqlite3.connect(db_path, timeout=30)
+    if readonly:
+        # Open in readonly mode using URI syntax
+        uri = f"file:{db_path}?mode=ro"
+        conn = sqlite3.connect(uri, uri=True, timeout=30)
+    else:
+        conn = sqlite3.connect(db_path, timeout=30)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=30000")
+
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=30000")
     try:
         yield conn
     finally:

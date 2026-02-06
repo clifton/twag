@@ -90,7 +90,7 @@ async def get_tweet_reactions(request: Request, tweet_id: str) -> dict[str, Any]
     """Get all reactions for a specific tweet."""
     db_path = request.app.state.db_path
 
-    with get_connection(db_path) as conn:
+    with get_connection(db_path, readonly=True) as conn:
         reactions = get_reactions_for_tweet(conn, tweet_id)
 
     return {
@@ -127,7 +127,7 @@ async def reactions_summary(request: Request) -> dict[str, Any]:
     """Get summary of reaction counts by type."""
     db_path = request.app.state.db_path
 
-    with get_connection(db_path) as conn:
+    with get_connection(db_path, readonly=True) as conn:
         summary = get_reactions_summary(conn)
 
     return {"summary": summary}
@@ -147,7 +147,7 @@ async def export_reactions(
 
     db_path = request.app.state.db_path
 
-    with get_connection(db_path) as conn:
+    with get_connection(db_path, readonly=True) as conn:
         results = get_reactions_with_tweets(conn, reaction_type, limit)
 
     export_data = []

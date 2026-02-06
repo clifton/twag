@@ -169,7 +169,7 @@ async def list_tweets(
         except ValueError:
             pass
 
-    with get_connection(db_path) as conn:
+    with get_connection(db_path, readonly=True) as conn:
         tweets = get_feed_tweets(
             conn,
             category=category,
@@ -372,7 +372,7 @@ async def get_tweet(request: Request, tweet_id: str) -> dict[str, Any]:
     """Get a single tweet by ID."""
     db_path = request.app.state.db_path
 
-    with get_connection(db_path) as conn:
+    with get_connection(db_path, readonly=True) as conn:
         tweet = get_tweet_by_id(conn, tweet_id)
 
     if not tweet:
@@ -467,7 +467,7 @@ async def list_categories(request: Request) -> dict[str, Any]:
     """Get list of all categories with tweet counts."""
     db_path = request.app.state.db_path
 
-    with get_connection(db_path) as conn:
+    with get_connection(db_path, readonly=True) as conn:
         # Get category distribution
         cursor = conn.execute(
             """
@@ -508,7 +508,7 @@ async def list_tickers(request: Request, limit: int = 50) -> dict[str, Any]:
 
     db_path = request.app.state.db_path
 
-    with get_connection(db_path) as conn:
+    with get_connection(db_path, readonly=True) as conn:
         cursor = conn.execute(
             """
             SELECT tickers

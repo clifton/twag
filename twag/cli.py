@@ -871,7 +871,7 @@ def accounts():
 @click.option("--muted", is_flag=True, help="Include muted accounts")
 def accounts_list(tier: int | None, muted: bool):
     """List tracked accounts."""
-    with get_connection() as conn:
+    with get_connection(readonly=True) as conn:
         accts = get_accounts(conn, tier=tier, include_muted=muted)
 
     if not accts:
@@ -993,7 +993,7 @@ def narratives():
 @narratives.command("list")
 def narratives_list():
     """List active narratives."""
-    with get_connection() as conn:
+    with get_connection(readonly=True) as conn:
         narrs = get_active_narratives(conn)
 
     if not narrs:
@@ -1021,7 +1021,7 @@ def stats(date: str | None, today: bool):
     if today:
         date = datetime.now().strftime("%Y-%m-%d")
 
-    with get_connection() as conn:
+    with get_connection(readonly=True) as conn:
         s = get_tweet_stats(conn, date=date)
         recent = get_processed_counts(conn)
 
@@ -1076,7 +1076,7 @@ def prune(days: int, dry_run: bool):
 @click.option("--days", type=int, default=7, help="Export tweets from last N days")
 def export(fmt: str, days: int):
     """Export recent data."""
-    with get_connection() as conn:
+    with get_connection(readonly=True) as conn:
         cursor = conn.execute(
             """
             SELECT * FROM tweets
@@ -1366,7 +1366,7 @@ def search(
         click.echo("(auto-detected equity context, defaulting to --today)", err=True)
         time_range = "today"
 
-    with get_connection() as conn:
+    with get_connection(readonly=True) as conn:
         results = search_tweets(
             conn,
             query,
