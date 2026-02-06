@@ -136,6 +136,10 @@ def test_analyze_status_success(monkeypatch):
     assert "Article Summary:" in result.output
     assert "Primary Points:" in result.output
     assert "Actionable Items:" in result.output
+    assert "Why:" in result.output
+    assert "Evidence:" in result.output
+    assert "Trigger:" in result.output
+    assert "Tickers: GOOGL, MSFT" in result.output
     assert "Visuals:" in result.output
     assert process_calls["count"] == 1
     assert process_calls["force_refresh"] is False
@@ -206,3 +210,78 @@ def test_analyze_status_not_found(monkeypatch):
 
     assert result.exit_code == 1
     assert "Status not found or unreadable: 999" in result.output
+
+
+def test_print_status_analysis_wraps_and_labels_long_fields(monkeypatch, capsys):
+    """Long article sections should render as wrapped labeled blocks, not pipe-delimited lines."""
+    import twag.cli as cli_mod
+
+    row = _sample_row(processed_at="2026-02-05T14:00:00+00:00")
+    row["summary"] = (
+        "Deep dive into Google's record $180B 2026 capex guidance and why demand visibility from cloud "
+        "and ads likely keeps ROI above the prior-cycle infrastructure baseline."
+    )
+    row["article_primary_points_json"] = json.dumps(
+        [
+            {
+                "point": "Google's $180B capex plan is historically unprecedented at single-company scale.",
+                "reasoning": "Magnitude rivals peak dotcom telecom buildout on an inflation-adjusted basis.",
+                "evidence": "Compares to Apollo and Interstate totals while staying self-funded by operations.",
+            }
+        ]
+    )
+    row["article_action_items_json"] = json.dumps(
+        [
+            {
+                "action": "Monitor GCP growth and backlog for demand durability.",
+                "trigger": "Cloud growth decelerates below 30% or backlog growth stalls for two prints.",
+                "horizon": "medium_term",
+                "confidence": 0.7,
+                "tickers": ["GOOGL", "MSFT", "AMZN"],
+            }
+        ]
+    )
+    monkeypatch.setattr(cli_mod, "_analysis_wrap_width", lambda: 72)
+
+    cli_mod._print_status_analysis(row)
+    output = capsys.readouterr().out
+
+    assert "Primary Points:" in output
+    assert "1. Google's $180B capex plan is historically unprecedented at" in output
+    assert "single-company scale." in output
+    assert "Why: Magnitude rivals peak dotcom telecom buildout on an" in output
+    assert "inflation-adjusted basis." in output
+    assert "Evidence: Compares to Apollo and Interstate totals while staying" in output
+    assert "self-funded by operations." in output
+    assert "Actionable Items:" in output
+    assert "Trigger: Cloud growth decelerates below 30% or backlog growth stalls" in output
+    assert "for two prints." in output
+    assert "Horizon: medium term" in output
+    assert "Confidence: 0.7" in output
+    assert "Tickers: GOOGL, MSFT, AMZN" in output
+    assert " | " not in output
+
+
+def test_print_status_analysis_skips_invalid_points_and_actions(capsys):
+    """Malformed point/action rows should be ignored without empty numbering output."""
+    import twag.cli as cli_mod
+
+    row = _sample_row(processed_at="2026-02-05T14:00:00+00:00")
+    row["article_primary_points_json"] = json.dumps(
+        [
+            {"point": "", "reasoning": "missing main point", "evidence": "ignored"},
+            {"reasoning": "non-point dict"},
+        ]
+    )
+    row["article_action_items_json"] = json.dumps(
+        [
+            {"action": "", "trigger": "missing action"},
+            {"trigger": "action key missing"},
+        ]
+    )
+
+    cli_mod._print_status_analysis(row)
+    output = capsys.readouterr().out
+
+    assert "Primary Points:" not in output
+    assert "Actionable Items:" not in output

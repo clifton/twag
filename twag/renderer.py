@@ -5,6 +5,7 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 
+from .article_sections import parse_action_items, parse_primary_points
 from .article_visuals import build_article_visuals
 from .config import get_digests_dir, load_config
 from .db import get_connection, get_tweet_by_id, get_tweets_for_digest, mark_tweet_in_digest
@@ -19,6 +20,13 @@ def _value(tweet: sqlite3.Row | dict, key: str, default=None):
         except (IndexError, KeyError):
             return default
     return tweet.get(key, default)
+
+
+def _append_labeled_markdown(lines: list[str], label: str, value: str, *, indent: str = "  ") -> None:
+    cleaned = str(value or "").strip()
+    if not cleaned:
+        return
+    lines.append(f"{indent}- **{label}:** {cleaned}")
 
 
 def render_digest(
@@ -228,7 +236,7 @@ def _render_tweet(conn: sqlite3.Connection, tweet: sqlite3.Row, compact: bool = 
 
         if has_article_sections:
             lines.append("🧾 **Article Summary:**")
-            lines.append(f"> {tweet['article_summary_short']}")
+            lines.append(f"- {tweet['article_summary_short']}")
             lines.append("")
 
             article_top_visual = None
@@ -240,46 +248,24 @@ def _render_tweet(conn: sqlite3.Connection, tweet: sqlite3.Row, compact: bool = 
                 except json.JSONDecodeError:
                     article_top_visual = None
 
-            article_points = []
-            if _value(tweet, "article_primary_points_json"):
-                try:
-                    decoded = json.loads(_value(tweet, "article_primary_points_json"))
-                    if isinstance(decoded, list):
-                        article_points = [item for item in decoded if isinstance(item, dict)]
-                except json.JSONDecodeError:
-                    article_points = []
+            article_points = parse_primary_points(_value(tweet, "article_primary_points_json"), limit=4)
             if article_points:
                 lines.append("📌 **Primary Points:**")
-                for item in article_points[:4]:
-                    point = (item.get("point") or "").strip()
-                    reasoning = (item.get("reasoning") or "").strip()
-                    if not point:
-                        continue
-                    if reasoning:
-                        lines.append(f"- {point} — {reasoning}")
-                    else:
-                        lines.append(f"- {point}")
+                for idx, item in enumerate(article_points, start=1):
+                    lines.append(f"- **{idx}. {item['point']}**")
+                    _append_labeled_markdown(lines, "Why", item["reasoning"])
+                    _append_labeled_markdown(lines, "Evidence", item["evidence"])
                 lines.append("")
 
-            article_actions = []
-            if _value(tweet, "article_action_items_json"):
-                try:
-                    decoded = json.loads(_value(tweet, "article_action_items_json"))
-                    if isinstance(decoded, list):
-                        article_actions = [item for item in decoded if isinstance(item, dict)]
-                except json.JSONDecodeError:
-                    article_actions = []
+            article_actions = parse_action_items(_value(tweet, "article_action_items_json"), limit=3)
             if article_actions:
                 lines.append("✅ **Actionable Items:**")
-                for item in article_actions[:3]:
-                    action = (item.get("action") or "").strip()
-                    trigger = (item.get("trigger") or "").strip()
-                    if not action:
-                        continue
-                    if trigger:
-                        lines.append(f"- {action} (trigger: {trigger})")
-                    else:
-                        lines.append(f"- {action}")
+                for idx, item in enumerate(article_actions, start=1):
+                    lines.append(f"- **{idx}. {item['action']}**")
+                    _append_labeled_markdown(lines, "Trigger", item["trigger"])
+                    _append_labeled_markdown(lines, "Horizon", item["horizon"])
+                    _append_labeled_markdown(lines, "Confidence", item["confidence"])
+                    _append_labeled_markdown(lines, "Tickers", item["tickers"])
                 lines.append("")
 
             article_media_items: list[dict] = []
@@ -302,17 +288,16 @@ def _render_tweet(conn: sqlite3.Connection, tweet: sqlite3.Row, compact: bool = 
                     kind = str(visual.get("kind") or "visual")
                     top_suffix = " (top)" if visual.get("is_top") else ""
                     takeaway = str(visual.get("key_takeaway") or "").strip()
+                    why = str(visual.get("why_important") or "").strip()
                     url_text = str(visual.get("url") or "").strip()
-                    if takeaway:
-                        lines.append(f"- {idx}. {kind}{top_suffix}: {takeaway}")
-                    else:
-                        lines.append(f"- {idx}. {kind}{top_suffix}")
-                    if url_text:
-                        lines.append(f"  - {url_text}")
+                    lines.append(f"- **{idx}. {kind}{top_suffix}**")
+                    _append_labeled_markdown(lines, "Key takeaway", takeaway)
+                    _append_labeled_markdown(lines, "Why", why)
+                    _append_labeled_markdown(lines, "URL", url_text)
                 lines.append("")
         elif tweet["link_summary"]:
             lines.append("🔗 **Linked Article:**")
-            lines.append(f"> {tweet['link_summary']}")
+            lines.append(f"- {tweet['link_summary']}")
             lines.append("")
 
         if external_links:

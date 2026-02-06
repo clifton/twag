@@ -2,13 +2,16 @@
 
 import json
 import re
+import shutil
 import sys
+import textwrap
 from datetime import datetime
 from pathlib import Path
 
 import click
 
 from . import __version__
+from .article_sections import parse_action_items, parse_primary_points
 from .article_visuals import build_article_visuals
 from .config import (
     get_config_path,
@@ -117,6 +120,41 @@ def _json_object(value: str | None) -> dict:
     return decoded if isinstance(decoded, dict) else {}
 
 
+def _analysis_wrap_width() -> int:
+    """Best-effort terminal width for long-form analyze output."""
+    try:
+        columns = shutil.get_terminal_size(fallback=(110, 20)).columns
+    except OSError:
+        columns = 110
+    return max(78, min(columns, 132))
+
+
+def _echo_wrapped(text: str, *, initial_indent: str = "", subsequent_indent: str | None = None) -> None:
+    cleaned = str(text or "").strip()
+    if not cleaned:
+        return
+    if subsequent_indent is None:
+        subsequent_indent = initial_indent
+    click.echo(
+        textwrap.fill(
+            cleaned,
+            width=_analysis_wrap_width(),
+            initial_indent=initial_indent,
+            subsequent_indent=subsequent_indent,
+            break_long_words=False,
+            break_on_hyphens=False,
+        )
+    )
+
+
+def _echo_labeled(label: str, value: str, *, indent: str = "   ") -> None:
+    cleaned = str(value or "").strip()
+    if not cleaned:
+        return
+    prefix = f"{indent}{label}: "
+    _echo_wrapped(cleaned, initial_indent=prefix, subsequent_indent=" " * len(prefix))
+
+
 def _print_status_analysis(row) -> None:
     score = row["relevance_score"] if row["relevance_score"] is not None else 0.0
     categories = _json_list(row["category"])
@@ -134,54 +172,39 @@ def _print_status_analysis(row) -> None:
     if summary:
         click.echo("")
         click.echo("Summary:")
-        click.echo(summary)
+        _echo_wrapped(summary, initial_indent="  ")
 
     article_summary = row["article_summary_short"] or ""
-    primary_points = _json_list(row["article_primary_points_json"])
-    actionable_items = _json_list(row["article_action_items_json"])
+    primary_points = parse_primary_points(row["article_primary_points_json"])
+    actionable_items = parse_action_items(row["article_action_items_json"])
     top_visual = _json_object(row["article_top_visual_json"])
     media_items = [item for item in _json_list(row["media_items"]) if isinstance(item, dict)]
 
     if article_summary:
         click.echo("")
         click.echo("Article Summary:")
-        click.echo(f"- {article_summary}")
+        _echo_wrapped(article_summary, initial_indent="- ", subsequent_indent="  ")
 
     if primary_points:
         click.echo("")
         click.echo("Primary Points:")
         for idx, point in enumerate(primary_points, start=1):
-            if not isinstance(point, dict):
-                continue
-            main = str(point.get("point") or "").strip()
-            reasoning = str(point.get("reasoning") or "").strip()
-            evidence = str(point.get("evidence") or "").strip()
-            line = f"{idx}. {main}" if main else f"{idx}."
-            extras = [part for part in [reasoning, evidence] if part]
-            if extras:
-                line = f"{line} | {' | '.join(extras)}"
-            click.echo(line)
+            main = point["point"]
+            reasoning = point["reasoning"]
+            evidence = point["evidence"]
+            _echo_wrapped(main, initial_indent=f"{idx}. ", subsequent_indent=" " * (len(str(idx)) + 2))
+            _echo_labeled("Why", reasoning)
+            _echo_labeled("Evidence", evidence)
 
     if actionable_items:
         click.echo("")
         click.echo("Actionable Items:")
         for idx, item in enumerate(actionable_items, start=1):
-            if not isinstance(item, dict):
-                continue
-            action = str(item.get("action") or "").strip()
-            trigger = str(item.get("trigger") or "").strip()
-            horizon = str(item.get("horizon") or "").strip()
-            confidence = str(item.get("confidence") or "").strip()
-            item_tickers = item.get("tickers")
-            if isinstance(item_tickers, list):
-                ticker_text = ",".join(str(t) for t in item_tickers if str(t).strip())
-            else:
-                ticker_text = ""
-            line = f"{idx}. {action}" if action else f"{idx}."
-            extras = [part for part in [trigger, horizon, confidence, ticker_text] if part]
-            if extras:
-                line = f"{line} | {' | '.join(extras)}"
-            click.echo(line)
+            _echo_wrapped(item["action"], initial_indent=f"{idx}. ", subsequent_indent=" " * (len(str(idx)) + 2))
+            _echo_labeled("Trigger", item["trigger"])
+            _echo_labeled("Horizon", item["horizon"])
+            _echo_labeled("Confidence", item["confidence"])
+            _echo_labeled("Tickers", item["tickers"])
 
     visuals = build_article_visuals(top_visual=top_visual or None, media_items=media_items, max_items=5)
     if visuals:
@@ -193,19 +216,15 @@ def _print_status_analysis(row) -> None:
             why_important = str(visual.get("why_important") or "").strip()
             key_takeaway = str(visual.get("key_takeaway") or "").strip()
             top_prefix = " (top)" if visual.get("is_top") else ""
-            line = f"{idx}. {kind}{top_prefix}"
-            if key_takeaway:
-                line += f" | {key_takeaway}"
-            click.echo(line)
-            if why_important:
-                click.echo(f"   Why: {why_important}")
-            if url:
-                click.echo(f"   URL: {url}")
+            click.echo(f"{idx}. {kind}{top_prefix}")
+            _echo_labeled("Key takeaway", key_takeaway)
+            _echo_labeled("Why", why_important)
+            _echo_labeled("URL", url)
 
     if not article_summary and row["link_summary"]:
         click.echo("")
         click.echo("Linked Summary:")
-        click.echo(f"- {row['link_summary']}")
+        _echo_wrapped(str(row["link_summary"]), initial_indent="- ", subsequent_indent="  ")
 
 
 @click.group()
