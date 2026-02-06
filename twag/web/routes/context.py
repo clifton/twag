@@ -46,7 +46,7 @@ async def list_context_commands(
     """Get all context commands."""
     db_path = request.app.state.db_path
 
-    with get_connection(db_path) as conn:
+    with get_connection(db_path, readonly=True) as conn:
         commands = get_all_context_commands(conn, enabled_only)
 
     return {
@@ -97,7 +97,7 @@ async def get_context_command_by_name(
     """Get a specific context command."""
     db_path = request.app.state.db_path
 
-    with get_connection(db_path) as conn:
+    with get_connection(db_path, readonly=True) as conn:
         cmd = get_context_command(conn, name)
 
     if not cmd:
@@ -260,7 +260,7 @@ async def test_context_command(
     """
     db_path = request.app.state.db_path
 
-    with get_connection(db_path) as conn:
+    with get_connection(db_path, readonly=True) as conn:
         cmd = get_context_command(conn, name)
         if not cmd:
             return {"error": "Context command not found"}

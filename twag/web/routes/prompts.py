@@ -37,7 +37,7 @@ async def list_prompts(request: Request) -> dict[str, Any]:
     """Get all prompts."""
     db_path = request.app.state.db_path
 
-    with get_connection(db_path) as conn:
+    with get_connection(db_path, readonly=True) as conn:
         prompts = get_all_prompts(conn)
 
     return {
@@ -60,7 +60,7 @@ async def get_prompt_by_name(request: Request, name: str) -> dict[str, Any]:
     """Get a specific prompt by name."""
     db_path = request.app.state.db_path
 
-    with get_connection(db_path) as conn:
+    with get_connection(db_path, readonly=True) as conn:
         prompt = get_prompt(conn, name)
 
     if not prompt:
@@ -101,7 +101,7 @@ async def get_history(request: Request, name: str, limit: int = 10) -> dict[str,
     """Get version history for a prompt."""
     db_path = request.app.state.db_path
 
-    with get_connection(db_path) as conn:
+    with get_connection(db_path, readonly=True) as conn:
         history = get_prompt_history(conn, name, limit)
 
     return {

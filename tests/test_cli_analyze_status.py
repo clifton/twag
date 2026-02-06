@@ -37,7 +37,7 @@ def _sample_tweet() -> Tweet:
 
 
 @contextmanager
-def _fake_connection():
+def _fake_connection(readonly=False):
     yield object()
 
 
