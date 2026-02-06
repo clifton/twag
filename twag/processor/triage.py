@@ -305,6 +305,32 @@ def _select_article_top_visual(
     return best[1] if best else None
 
 
+def _process_article(
+    media_items: list[dict[str, Any]],
+    *,
+    vision_model: str | None,
+    vision_provider: str | None,
+    article_text: str,
+    article_title: str,
+    article_preview: str,
+    enrich_model: str | None,
+) -> tuple[Any, list[dict[str, Any]]]:
+    """Analyze media then summarize article — runs in text_pool thread."""
+    analyzed_items, _ = _analyze_media_items(
+        media_items,
+        vision_model=vision_model,
+        vision_provider=vision_provider,
+    )
+    article_result = summarize_x_article(
+        article_text,
+        article_title=article_title,
+        article_preview=article_preview,
+        model=enrich_model,
+        provider=None,
+    )
+    return article_result, analyzed_items
+
+
 def _triage_rows(
     conn: sqlite3.Connection,
     *,
@@ -353,12 +379,10 @@ def _triage_rows(
     total_batches = (total + batch_size - 1) // batch_size
 
     pending_tasks: dict[str, int] = {}
-    summary_futures = {}
-    media_futures = {}
-    article_futures = {}
-    enrich_futures = {}
-    article_candidates: set[str] = set()
-    enrich_candidates: set[str] = set()
+
+    # Unified future map: Future -> (tag, data)
+    # Tags: "summary", "media", "article", "enrich"
+    all_futures: dict[Any, tuple[str, Any]] = {}
 
     triage_pool = ThreadPoolExecutor(max_workers=max_triage_workers) if max_triage_workers > 1 else None
     text_pool = ThreadPoolExecutor(max_workers=max_text_workers) if max_text_workers and max_text_workers > 1 else None
@@ -374,6 +398,145 @@ def _triage_rows(
             pending_tasks.pop(tweet_id, None)
             if progress_cb:
                 progress_cb(1)
+
+    def _submit_enrichment(tweet_id: str, tweet_row: sqlite3.Row) -> None:
+        """Prepare enrichment parameters (fast DB reads) and submit to text_pool."""
+        row = get_tweet_by_id(conn, tweet_id)
+        if not row or (row["analysis_json"] and not force_refresh):
+            _complete_task(tweet_id)
+            return
+
+        quoted_text = ""
+        if row["has_quote"] and row["quote_tweet_id"]:
+            quoted_row = get_tweet_by_id(conn, row["quote_tweet_id"])
+            if quoted_row:
+                quoted_text = f"@{quoted_row['author_handle']}: {quoted_row['content']}"
+
+        media_items = parse_media_items(row["media_items"])
+        media_context = build_media_context(media_items) if media_items else (row["media_analysis"] or "")
+
+        acct_cursor = conn.execute(
+            "SELECT category FROM accounts WHERE handle = ?",
+            (row["author_handle"],),
+        )
+        acct_row = acct_cursor.fetchone()
+        author_category = acct_row["category"] if acct_row else "unknown"
+
+        if status_cb:
+            status_cb(f"Enriching @{row['author_handle']}")
+
+        if text_pool:
+            future = text_pool.submit(
+                enrich_tweet,
+                tweet_text=row["content"],
+                handle=row["author_handle"],
+                author_category=author_category or "unknown",
+                quoted_tweet=quoted_text,
+                article_summary=row["article_summary_short"] or row["link_summary"] or "",
+                image_description=media_context,
+                model=enrich_model,
+            )
+            all_futures[future] = ("enrich", (tweet_id, row))
+        else:
+            try:
+                result = enrich_tweet(
+                    tweet_text=row["content"],
+                    handle=row["author_handle"],
+                    author_category=author_category or "unknown",
+                    quoted_tweet=quoted_text,
+                    article_summary=row["article_summary_short"] or row["link_summary"] or "",
+                    image_description=media_context,
+                    model=enrich_model,
+                )
+                _save_enrichment_result(conn, tweet_id, row, result)
+            except Exception:
+                pass
+            _complete_task(tweet_id)
+
+    def _submit_article(tweet_id: str, tweet_row: sqlite3.Row) -> None:
+        """Prepare article processing and submit to text_pool."""
+        row = get_tweet_by_id(conn, tweet_id)
+        if not row or (row["article_processed_at"] and not force_refresh):
+            _complete_task(tweet_id)
+            return
+
+        article_text = (row["article_text"] or row["content"] or "").strip()
+        if not article_text and not row["article_preview"] and not row["article_title"]:
+            _complete_task(tweet_id)
+            return
+
+        media_items = parse_media_items(row["media_items"]) if row["has_media"] else []
+
+        if status_cb:
+            status_cb(f"Summarizing article @{row['author_handle']}")
+
+        if text_pool:
+            if media_items and _needs_media_analysis(media_items):
+                # Use wrapper that analyzes media then summarizes article
+                future = text_pool.submit(
+                    _process_article,
+                    media_items,
+                    vision_model=vision_model,
+                    vision_provider=vision_provider,
+                    article_text=article_text,
+                    article_title=row["article_title"] or "",
+                    article_preview=row["article_preview"] or "",
+                    enrich_model=enrich_model,
+                )
+            else:
+                # Media already analyzed or no media — just summarize
+                future = text_pool.submit(
+                    lambda at, atitle, aprev, em, mi: (
+                        summarize_x_article(at, article_title=atitle, article_preview=aprev, model=em, provider=None),
+                        mi,
+                    ),
+                    article_text,
+                    row["article_title"] or "",
+                    row["article_preview"] or "",
+                    enrich_model,
+                    media_items,
+                )
+            all_futures[future] = ("article", (tweet_id, row))
+        else:
+            try:
+                if media_items and _needs_media_analysis(media_items):
+                    media_items, _ = _analyze_media_items(
+                        media_items, vision_model=vision_model, vision_provider=vision_provider
+                    )
+                article_result = summarize_x_article(
+                    article_text,
+                    article_title=row["article_title"] or "",
+                    article_preview=row["article_preview"] or "",
+                    model=enrich_model,
+                )
+                top_visual = _select_article_top_visual(
+                    media_items,
+                    article_title=row["article_title"] or "",
+                    article_summary=article_result.short_summary,
+                    primary_points=article_result.primary_points,
+                )
+                update_tweet_article(
+                    conn,
+                    tweet_id,
+                    article_summary_short=article_result.short_summary,
+                    primary_points=article_result.primary_points,
+                    actionable_items=article_result.actionable_items,
+                    top_visual=top_visual,
+                    set_top_visual=True,
+                    processed_at=datetime.now(timezone.utc).isoformat(),
+                )
+                # Persist analyzed media if updated
+                if media_items:
+                    media_summary = build_media_summary(media_items)
+                    update_tweet_enrichment(
+                        conn,
+                        tweet_id=tweet_id,
+                        media_analysis=media_summary,
+                        media_items=media_items,
+                    )
+            except Exception:
+                pass
+            _complete_task(tweet_id)
 
     def _handle_results(results: list[TriageResult]) -> None:
         for result in results:
@@ -416,7 +579,7 @@ def _triage_rows(
                     if status_cb:
                         status_cb(f"Queue summary @{handle}")
                     future = text_pool.submit(summarize_tweet, content, handle, enrich_model, None)
-                    summary_futures[future] = result.tweet_id
+                    all_futures[future] = ("summary", result.tweet_id)
                     task_count += 1
                 else:
                     try:
@@ -464,7 +627,7 @@ def _triage_rows(
                             vision_model=vision_model,
                             vision_provider=vision_provider,
                         )
-                        media_futures[future] = result.tweet_id
+                        all_futures[future] = ("media", result.tweet_id)
                         task_count += 1
                     else:
                         if status_cb:
@@ -489,7 +652,6 @@ def _triage_rows(
                 and (force_refresh or not tweet_row["analysis_json"])
             )
             if needs_analysis:
-                enrich_candidates.add(result.tweet_id)
                 task_count += 1
 
             needs_article = (
@@ -500,7 +662,6 @@ def _triage_rows(
                 and bool(tweet_row["article_text"] or tweet_row["article_preview"] or tweet_row["article_title"])
             )
             if needs_article:
-                article_candidates.add(result.tweet_id)
                 task_count += 1
 
             if task_count:
@@ -508,6 +669,12 @@ def _triage_rows(
             else:
                 if progress_cb:
                     progress_cb(1)
+
+            # Submit enrichment and article immediately (after pending_tasks is set)
+            if needs_analysis:
+                _submit_enrichment(result.tweet_id, tweet_row)
+            if needs_article:
+                _submit_article(result.tweet_id, tweet_row)
 
     try:
         if triage_pool:
@@ -545,101 +712,42 @@ def _triage_rows(
                 all_results.extend(results)
                 _handle_results(results)
 
-        for future in as_completed(list(summary_futures.keys())):
-            tweet_id = summary_futures.pop(future)
-            try:
-                content_summary = future.result()
-                if content_summary:
+        # Unified collection: all downstream futures complete in natural order
+        for future in as_completed(list(all_futures.keys())):
+            tag, data = all_futures.pop(future)
+            if tag == "summary":
+                tweet_id = data
+                try:
+                    content_summary = future.result()
+                    if content_summary:
+                        update_tweet_enrichment(
+                            conn,
+                            tweet_id=tweet_id,
+                            content_summary=content_summary,
+                        )
+                except Exception:
+                    pass
+                _complete_task(tweet_id)
+            elif tag == "media":
+                tweet_id = data
+                try:
+                    updated_items, _ = future.result()
+                    media_summary = build_media_summary(updated_items)
                     update_tweet_enrichment(
                         conn,
                         tweet_id=tweet_id,
-                        content_summary=content_summary,
+                        media_analysis=media_summary,
+                        media_items=updated_items,
                     )
-            except Exception:
-                pass
-            _complete_task(tweet_id)
-
-        for future in as_completed(list(media_futures.keys())):
-            tweet_id = media_futures.pop(future)
-            try:
-                updated_items, _ = future.result()
-                media_summary = build_media_summary(updated_items)
-                update_tweet_enrichment(
-                    conn,
-                    tweet_id=tweet_id,
-                    media_analysis=media_summary,
-                    media_items=updated_items,
-                )
-            except Exception:
-                pass
-            _complete_task(tweet_id)
-
-        if article_candidates:
-            for tweet_id in list(article_candidates):
-                row = get_tweet_by_id(conn, tweet_id)
-                if not row or (row["article_processed_at"] and not force_refresh):
-                    _complete_task(tweet_id)
-                    continue
-
-                article_text = (row["article_text"] or row["content"] or "").strip()
-                if not article_text and not row["article_preview"] and not row["article_title"]:
-                    _complete_task(tweet_id)
-                    continue
-
-                media_items = ensure_media_analysis(
-                    conn,
-                    row,
-                    vision_model=vision_model,
-                    vision_provider=vision_provider,
-                )
-
-                if status_cb:
-                    status_cb(f"Summarizing article @{row['author_handle']}")
-
-                if text_pool:
-                    future = text_pool.submit(
-                        summarize_x_article,
-                        article_text,
-                        article_title=row["article_title"] or "",
-                        article_preview=row["article_preview"] or "",
-                        model=enrich_model,
-                        provider=None,
-                    )
-                    article_futures[future] = (tweet_id, row, media_items)
-                else:
-                    try:
-                        article_result = summarize_x_article(
-                            article_text,
-                            article_title=row["article_title"] or "",
-                            article_preview=row["article_preview"] or "",
-                            model=enrich_model,
-                        )
-                        top_visual = _select_article_top_visual(
-                            media_items,
-                            article_title=row["article_title"] or "",
-                            article_summary=article_result.short_summary,
-                            primary_points=article_result.primary_points,
-                        )
-                        update_tweet_article(
-                            conn,
-                            tweet_id,
-                            article_summary_short=article_result.short_summary,
-                            primary_points=article_result.primary_points,
-                            actionable_items=article_result.actionable_items,
-                            top_visual=top_visual,
-                            set_top_visual=True,
-                            processed_at=datetime.now(timezone.utc).isoformat(),
-                        )
-                    except Exception:
-                        pass
-                    _complete_task(tweet_id)
-
-            for future in as_completed(list(article_futures.keys())):
-                tweet_id, row, media_items = article_futures.pop(future)
+                except Exception:
+                    pass
+                _complete_task(tweet_id)
+            elif tag == "article":
+                tweet_id, row = data
                 try:
-                    article_result = future.result()
+                    article_result, analyzed_items = future.result()
                     top_visual = _select_article_top_visual(
-                        media_items,
+                        analyzed_items,
                         article_title=row["article_title"] or "",
                         article_summary=article_result.short_summary,
                         primary_points=article_result.primary_points,
@@ -654,115 +762,22 @@ def _triage_rows(
                         set_top_visual=True,
                         processed_at=datetime.now(timezone.utc).isoformat(),
                     )
+                    if analyzed_items:
+                        media_summary = build_media_summary(analyzed_items)
+                        update_tweet_enrichment(
+                            conn,
+                            tweet_id=tweet_id,
+                            media_analysis=media_summary,
+                            media_items=analyzed_items,
+                        )
                 except Exception:
                     pass
                 _complete_task(tweet_id)
-
-        if enrich_candidates:
-            for tweet_id in list(enrich_candidates):
-                row = get_tweet_by_id(conn, tweet_id)
-                if not row or (row["analysis_json"] and not force_refresh):
-                    _complete_task(tweet_id)
-                    continue
-
-                quoted_text = ""
-                if row["has_quote"] and row["quote_tweet_id"]:
-                    quoted_row = get_tweet_by_id(conn, row["quote_tweet_id"])
-                    if quoted_row:
-                        quoted_text = f"@{quoted_row['author_handle']}: {quoted_row['content']}"
-
-                media_items = parse_media_items(row["media_items"])
-                media_context = build_media_context(media_items) if media_items else (row["media_analysis"] or "")
-
-                acct_cursor = conn.execute(
-                    "SELECT category FROM accounts WHERE handle = ?",
-                    (row["author_handle"],),
-                )
-                acct_row = acct_cursor.fetchone()
-                author_category = acct_row["category"] if acct_row else "unknown"
-
-                if status_cb:
-                    status_cb(f"Enriching @{row['author_handle']}")
-
-                if text_pool:
-                    future = text_pool.submit(
-                        enrich_tweet,
-                        tweet_text=row["content"],
-                        handle=row["author_handle"],
-                        author_category=author_category or "unknown",
-                        quoted_tweet=quoted_text,
-                        article_summary=row["article_summary_short"] or row["link_summary"] or "",
-                        image_description=media_context,
-                        model=enrich_model,
-                    )
-                    enrich_futures[future] = (tweet_id, row)
-                else:
-                    try:
-                        result = enrich_tweet(
-                            tweet_text=row["content"],
-                            handle=row["author_handle"],
-                            author_category=author_category or "unknown",
-                            quoted_tweet=quoted_text,
-                            article_summary=row["article_summary_short"] or row["link_summary"] or "",
-                            image_description=media_context,
-                            model=enrich_model,
-                        )
-                        analysis_payload = {
-                            "signal_tier": result.signal_tier,
-                            "insight": result.insight,
-                            "implications": result.implications,
-                            "narratives": result.narratives,
-                            "tickers": result.tickers,
-                            "analyzed_at": datetime.now(timezone.utc).isoformat(),
-                        }
-                        existing_tickers: list[str] = []
-                        if row["tickers"]:
-                            try:
-                                existing_tickers = json.loads(row["tickers"])
-                            except json.JSONDecodeError:
-                                existing_tickers = [t.strip() for t in row["tickers"].split(",") if t.strip()]
-                        merged_tickers = existing_tickers
-                        if result.tickers:
-                            merged_tickers = sorted(set(existing_tickers + result.tickers))
-                        update_tweet_analysis(
-                            conn,
-                            tweet_id=tweet_id,
-                            analysis=analysis_payload,
-                            signal_tier=_prefer_stronger_signal_tier(row["signal_tier"], result.signal_tier),
-                            tickers=merged_tickers,
-                        )
-                    except Exception:
-                        pass
-                    _complete_task(tweet_id)
-
-            for future in as_completed(list(enrich_futures.keys())):
-                tweet_id, row = enrich_futures.pop(future)
+            elif tag == "enrich":
+                tweet_id, row = data
                 try:
                     result = future.result()
-                    analysis_payload = {
-                        "signal_tier": result.signal_tier,
-                        "insight": result.insight,
-                        "implications": result.implications,
-                        "narratives": result.narratives,
-                        "tickers": result.tickers,
-                        "analyzed_at": datetime.now(timezone.utc).isoformat(),
-                    }
-                    existing_tickers: list[str] = []
-                    if row["tickers"]:
-                        try:
-                            existing_tickers = json.loads(row["tickers"])
-                        except json.JSONDecodeError:
-                            existing_tickers = [t.strip() for t in row["tickers"].split(",") if t.strip()]
-                    merged_tickers = existing_tickers
-                    if result.tickers:
-                        merged_tickers = sorted(set(existing_tickers + result.tickers))
-                    update_tweet_analysis(
-                        conn,
-                        tweet_id=tweet_id,
-                        analysis=analysis_payload,
-                        signal_tier=_prefer_stronger_signal_tier(row["signal_tier"], result.signal_tier),
-                        tickers=merged_tickers,
-                    )
+                    _save_enrichment_result(conn, tweet_id, row, result)
                 except Exception:
                     pass
                 _complete_task(tweet_id)
@@ -775,3 +790,36 @@ def _triage_rows(
             vision_pool.shutdown(wait=True)
 
     return all_results
+
+
+def _save_enrichment_result(
+    conn: sqlite3.Connection,
+    tweet_id: str,
+    row: sqlite3.Row,
+    result: Any,
+) -> None:
+    """Persist enrichment result to DB."""
+    analysis_payload = {
+        "signal_tier": result.signal_tier,
+        "insight": result.insight,
+        "implications": result.implications,
+        "narratives": result.narratives,
+        "tickers": result.tickers,
+        "analyzed_at": datetime.now(timezone.utc).isoformat(),
+    }
+    existing_tickers: list[str] = []
+    if row["tickers"]:
+        try:
+            existing_tickers = json.loads(row["tickers"])
+        except json.JSONDecodeError:
+            existing_tickers = [t.strip() for t in row["tickers"].split(",") if t.strip()]
+    merged_tickers = existing_tickers
+    if result.tickers:
+        merged_tickers = sorted(set(existing_tickers + result.tickers))
+    update_tweet_analysis(
+        conn,
+        tweet_id=tweet_id,
+        analysis=analysis_payload,
+        signal_tier=_prefer_stronger_signal_tier(row["signal_tier"], result.signal_tier),
+        tickers=merged_tickers,
+    )

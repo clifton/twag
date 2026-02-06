@@ -59,8 +59,11 @@ def run_bird(args: list[str], timeout: int = 60) -> tuple[str, str, int]:
             env=env,
         )
         if result.stderr.strip():
-            level = logging.WARNING if result.returncode == 0 else logging.ERROR
-            log.log(level, "bird %s stderr: %s", args[0] if args else "?", result.stderr.strip())
+            lines = result.stderr.strip().splitlines()
+            meaningful = [ln for ln in lines if not ln.strip().startswith("\u2139")]
+            if meaningful:
+                level = logging.WARNING if result.returncode == 0 else logging.ERROR
+                log.log(level, "bird %s stderr: %s", args[0] if args else "?", "\n".join(meaningful))
         if result.returncode != 0:
             log.error("bird %s exited with code %d", args[0] if args else "?", result.returncode)
         return result.stdout, result.stderr, result.returncode

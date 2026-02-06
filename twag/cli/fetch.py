@@ -146,53 +146,48 @@ def fetch(
                 tier1_accounts = get_accounts(conn, tier=1)
 
         if tier1_accounts:
-            if stagger_count:
-                console.print(f"Fetching {len(tier1_accounts)} tier-1 accounts (staggered, delay: {fetch_delay}s)...")
-            else:
-                console.print(f"Fetching {len(tier1_accounts)} tier-1 accounts (delay: {fetch_delay}s)...")
+            console.print(f"Fetching {len(tier1_accounts)} tier-1 accounts...")
 
             total_fetched = 0
             total_new = 0
             tier1_errors = 0
 
-            for i, account in enumerate(tier1_accounts):
-                try:
-                    account_tweets = fetch_user_tweets(handle=account["handle"], count=20)
-                    if account_tweets:
-                        with create_progress() as progress:
-                            task_id = progress.add_task(
-                                f"  @{account['handle']}",
-                                total=len(account_tweets),
-                            )
-                            reporter = RichProgressReporter(progress, task_id, f"  @{account['handle']}")
-                            reporter.set_total(len(account_tweets))
-                            status_cb, progress_cb, _ = make_callbacks(reporter)
+            with create_progress() as progress:
+                task_id = progress.add_task("tier-1", total=len(tier1_accounts))
+                reporter = RichProgressReporter(progress, task_id, "tier-1")
+                reporter.set_total(len(tier1_accounts))
 
+                for i, account in enumerate(tier1_accounts):
+                    handle_label = f"@{account['handle']}"
+                    reporter.update_status(handle_label)
+                    try:
+                        account_tweets = fetch_user_tweets(handle=account["handle"], count=20)
+                        if account_tweets:
                             f, n = store_fetched_tweets(
                                 account_tweets,
                                 source="user",
                                 query_params={"handle": account["handle"], "count": 20},
-                                status_cb=status_cb,
-                                progress_cb=progress_cb,
                             )
-                    else:
-                        f, n = 0, 0
-                    total_fetched += f
-                    total_new += n
+                        else:
+                            f, n = 0, 0
+                        total_fetched += f
+                        total_new += n
 
-                    with get_connection() as conn:
-                        update_account_last_fetched(conn, account["handle"])
-                        conn.commit()
+                        with get_connection() as conn:
+                            update_account_last_fetched(conn, account["handle"])
+                            conn.commit()
 
-                except RuntimeError as e:
-                    console.print(f"[red]  @{account['handle']}: {e}[/red]")
-                    tier1_errors += 1
+                    except RuntimeError as e:
+                        console.print(f"[red]  @{account['handle']}: {e}[/red]")
+                        tier1_errors += 1
 
-                # Rate limit protection
-                if i < len(tier1_accounts) - 1 and fetch_delay > 0:
-                    time.sleep(fetch_delay)
+                    reporter.advance(1)
 
-            console.print(f"Tier-1: fetched {total_fetched} tweets, {total_new} new")
+                    # Rate limit protection
+                    if i < len(tier1_accounts) - 1 and fetch_delay > 0:
+                        time.sleep(fetch_delay)
+
+            console.print(f"Tier-1: {total_fetched} fetched, {total_new} new")
             if tier1_errors:
                 console.print(f"[red]Tier-1: {tier1_errors} account(s) failed[/red]")
                 errors.append(f"tier-1: {tier1_errors} failed")
