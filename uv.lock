@@ -1316,7 +1316,7 @@ wheels = [
 
 [[package]]
 name = "twag"
-version = "0.1.0"
+version = "0.1.7.dev0+gd5f874293.d20260206"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
