@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
-    {name = "Clifton King", email = "clifton@example.com"},
+    {name = "Clifton King"},
 ]
 keywords = ["twitter", "x", "aggregator", "market", "finance", "signals", "cli"]
 classifiers = [

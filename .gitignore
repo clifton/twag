@@ -59,3 +59,4 @@ Thumbs.db
 # Local scratch artifacts (screenshots, exports, debug dumps)
 tmp/*
 !tmp/.gitkeep
+.clawdhub/
