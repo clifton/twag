@@ -7,7 +7,7 @@ from typing import Any
 
 from fastapi import APIRouter, Query, Request
 
-from ...db import get_connection, get_feed_tweets, get_tweet_by_id, parse_time_range
+from ...db import get_connection, get_feed_tweets, get_tweet_by_id, get_tweets_by_ids, parse_time_range
 from ...media import parse_media_items
 from ..tweet_utils import (
     decode_html_entities,
@@ -78,6 +78,54 @@ def _build_quote_embed(
     return embed
 
 
+def _build_quote_embed_from_cache(
+    cache: dict[str, Any],
+    quote_id: str | None,
+    *,
+    depth: int = 0,
+    seen: set[str] | None = None,
+) -> dict[str, Any] | None:
+    """Build a quote embed from a pre-fetched cache dict instead of querying DB."""
+    if not quote_id:
+        return None
+    if depth >= MAX_QUOTE_DEPTH:
+        return None
+
+    visited = seen or set()
+    if quote_id in visited:
+        return None
+    visited.add(quote_id)
+
+    row = cache.get(quote_id)
+    if not row:
+        return None
+
+    embed = quote_embed_from_row(row)
+
+    content = row["content"] or ""
+    links_json = []
+    if row["links_json"]:
+        try:
+            decoded = json.loads(row["links_json"])
+            if isinstance(decoded, list):
+                links_json = [item for item in decoded if isinstance(item, dict)]
+        except json.JSONDecodeError:
+            links_json = []
+    normalized = normalize_links_for_display(
+        tweet_id=row["id"],
+        text=content,
+        links=links_json,
+        has_media=bool(row["has_media"]),
+    )
+    nested_quote_id = row["quote_tweet_id"] or _inline_quote_id_from_links(row["id"], normalized.inline_tweet_links)
+    if nested_quote_id and nested_quote_id != row["id"]:
+        nested_embed = _build_quote_embed_from_cache(cache, nested_quote_id, depth=depth + 1, seen=visited)
+        if nested_embed:
+            embed["quote_embed"] = nested_embed
+
+    return embed
+
+
 @router.get("/tweets")
 async def list_tweets(
     request: Request,
@@ -137,8 +185,10 @@ async def list_tweets(
             offset=offset,
         )
 
-        # Enrich tweets with quote embeds and display content
-        tweets_data = []
+        # Phase 1: Normalize links and collect all quote IDs needed
+        tweet_normalized: list[tuple[Any, Any, str | None, list[dict]]] = []
+        quote_ids_needed: set[str] = set()
+
         for t in tweets:
             content_raw = t.content or ""
             normalized = normalize_links_for_display(
@@ -149,7 +199,6 @@ async def list_tweets(
             )
             inline_links = normalized.inline_tweet_links
 
-            # Determine quote tweet
             inline_quote_id = None
             if not t.has_quote:
                 inline_quote_id = _inline_quote_id_from_links(t.id, inline_links)
@@ -157,10 +206,56 @@ async def list_tweets(
             quote_id = t.quote_tweet_id or inline_quote_id
             if quote_id == t.id:
                 quote_id = None
-            quote_embed = _build_quote_embed(conn, quote_id)
+
+            if quote_id:
+                quote_ids_needed.add(quote_id)
+
+            for link in inline_links:
+                tid = link.get("id")
+                if tid and tid != t.id and tid != quote_id:
+                    quote_ids_needed.add(tid)
+
+            tweet_normalized.append((t, normalized, quote_id, inline_links))
+
+        # Phase 2: Batch fetch with depth expansion
+        quote_cache: dict[str, Any] = {}
+        ids_to_fetch = quote_ids_needed
+        for _depth in range(MAX_QUOTE_DEPTH):
+            if not ids_to_fetch:
+                break
+            unfetched = ids_to_fetch - set(quote_cache.keys())
+            if not unfetched:
+                break
+            fetched = get_tweets_by_ids(conn, unfetched)
+            quote_cache.update(fetched)
+
+            # Discover nested quote IDs from fetched rows
+            next_ids: set[str] = set()
+            for row in fetched.values():
+                nested_id = row["quote_tweet_id"]
+                if nested_id and nested_id not in quote_cache:
+                    next_ids.add(nested_id)
+                # Also check inline links in fetched rows
+                if row["links_json"]:
+                    try:
+                        decoded = json.loads(row["links_json"])
+                        if isinstance(decoded, list):
+                            for item in decoded:
+                                if isinstance(item, dict):
+                                    tid = item.get("id")
+                                    if tid and tid != row["id"] and tid not in quote_cache:
+                                        next_ids.add(tid)
+                    except json.JSONDecodeError:
+                        pass
+            ids_to_fetch = next_ids
+
+        # Phase 3: Build response from cache
+        tweets_data = []
+        for t, normalized, quote_id, inline_links in tweet_normalized:
+            content_raw = t.content or ""
+            quote_embed = _build_quote_embed_from_cache(quote_cache, quote_id)
             inline_quote_embeds: list[dict[str, Any]] = []
 
-            # Additional inline linked tweet embeds.
             reference_links: list[dict[str, str]] = []
             for link in inline_links:
                 tid = link.get("id")
@@ -169,7 +264,7 @@ async def list_tweets(
                     continue
                 if quote_id and tid == quote_id:
                     continue
-                embed = _build_quote_embed(conn, tid)
+                embed = _build_quote_embed_from_cache(quote_cache, tid)
                 if embed:
                     inline_quote_embeds.append(embed)
                 else:

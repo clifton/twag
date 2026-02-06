@@ -271,6 +271,14 @@ CREATE INDEX IF NOT EXISTS idx_tweets_score ON tweets(relevance_score DESC);
 CREATE INDEX IF NOT EXISTS idx_tweets_unprocessed ON tweets(processed_at) WHERE processed_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_accounts_tier ON accounts(tier, weight DESC);
 
+-- Feed query and filter indexes
+CREATE INDEX IF NOT EXISTS idx_tweets_processed_score ON tweets(processed_at, relevance_score DESC, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tweets_author ON tweets(author_handle);
+CREATE INDEX IF NOT EXISTS idx_tweets_signal_tier ON tweets(signal_tier);
+CREATE INDEX IF NOT EXISTS idx_tweets_bookmarked ON tweets(bookmarked) WHERE bookmarked = 1;
+CREATE INDEX IF NOT EXISTS idx_tweets_quote ON tweets(quote_tweet_id) WHERE quote_tweet_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_fetch_log_endpoint ON fetch_log(endpoint, executed_at DESC);
+
 -- User reactions for feedback loop
 CREATE TABLE IF NOT EXISTS reactions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -451,6 +459,19 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         seeded = seed_prompts(conn)
         if seeded > 0:
             conn.commit()
+
+    # Ensure performance indexes exist on existing databases
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tweets_processed_score "
+        "ON tweets(processed_at, relevance_score DESC, created_at DESC)"
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_tweets_author ON tweets(author_handle)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_tweets_signal_tier ON tweets(signal_tier)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_tweets_bookmarked ON tweets(bookmarked) WHERE bookmarked = 1")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tweets_quote ON tweets(quote_tweet_id) WHERE quote_tweet_id IS NOT NULL"
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_fetch_log_endpoint ON fetch_log(endpoint, executed_at DESC)")
 
 
 def _init_fts(conn: sqlite3.Connection) -> None:
@@ -2537,3 +2558,28 @@ def get_tweet_by_id(conn: sqlite3.Connection, tweet_id: str) -> sqlite3.Row | No
     """Get a single tweet by ID."""
     cursor = conn.execute("SELECT * FROM tweets WHERE id = ?", (tweet_id,))
     return cursor.fetchone()
+
+
+def get_tweets_by_ids(conn: sqlite3.Connection, tweet_ids: set[str]) -> dict[str, sqlite3.Row]:
+    """Batch-fetch tweets by IDs. Returns {id: Row} dict.
+
+    Handles SQLite's 999-parameter limit by chunking.
+    """
+    if not tweet_ids:
+        return {}
+
+    result: dict[str, sqlite3.Row] = {}
+    id_list = list(tweet_ids)
+    chunk_size = 999
+
+    for i in range(0, len(id_list), chunk_size):
+        chunk = id_list[i : i + chunk_size]
+        placeholders = ",".join("?" * len(chunk))
+        cursor = conn.execute(
+            f"SELECT * FROM tweets WHERE id IN ({placeholders})",
+            chunk,
+        )
+        for row in cursor.fetchall():
+            result[row["id"]] = row
+
+    return result
