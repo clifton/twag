@@ -1390,6 +1390,7 @@ def reprocess_today_quoted(
                 WHERE processed_at IS NOT NULL
                   AND has_quote = 1
                   AND quote_tweet_id IS NOT NULL
+                  AND quote_reprocessed_at IS NULL
                   AND date(created_at) = ?
                   AND relevance_score >= ?
                 ORDER BY created_at DESC
@@ -1434,6 +1435,14 @@ def reprocess_today_quoted(
             media_min_score=config["scoring"].get("min_score_for_media", 3),
             progress_cb=progress_cb,
             status_cb=status_cb,
+        )
+
+        # Mark all reprocessed tweets so they aren't reprocessed again
+        now = datetime.now().isoformat()
+        tweet_ids = [row["id"] for row in rows]
+        conn.executemany(
+            "UPDATE tweets SET quote_reprocessed_at = ? WHERE id = ?",
+            [(now, tid) for tid in tweet_ids],
         )
 
         conn.commit()
