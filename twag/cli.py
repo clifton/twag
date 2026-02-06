@@ -617,8 +617,12 @@ def fetch(
 @click.option("--dry-run", is_flag=True, help="Show what would be processed")
 @click.option("--model", "-m", help="Override triage model")
 @click.option("--notify/--no-notify", default=True, help="Send Telegram alerts")
-@click.option("--reprocess-quotes/--no-reprocess-quotes", default=True, help="Reprocess today's quoted tweets")
-@click.option("--reprocess-min-score", type=float, default=None, help="Min score for reprocessing quoted tweets")
+@click.option(
+    "--reprocess-quotes/--no-reprocess-quotes",
+    default=True,
+    help="Reprocess today's dependency tweets (quotes/replies)",
+)
+@click.option("--reprocess-min-score", type=float, default=None, help="Min score for reprocessing dependency tweets")
 def process(
     status_id_or_url: str | None,
     limit: int,
@@ -708,7 +712,7 @@ def process(
                             )
 
     if target_tweet_id and reprocess_quotes:
-        click.echo("Skipping quote reprocessing for single-status mode.")
+        click.echo("Skipping dependency reprocessing for single-status mode.")
         reprocess_quotes = False
 
     if reprocess_quotes:
@@ -724,8 +728,10 @@ def process(
                 """
                 SELECT * FROM tweets
                 WHERE processed_at IS NOT NULL
-                  AND has_quote = 1
-                  AND quote_tweet_id IS NOT NULL
+                  AND (
+                    (has_quote = 1 AND quote_tweet_id IS NOT NULL)
+                    OR in_reply_to_tweet_id IS NOT NULL
+                  )
                   AND quote_reprocessed_at IS NULL
                   AND date(created_at) = ?
                   AND relevance_score >= ?
@@ -736,10 +742,10 @@ def process(
             )
             quote_rows = cursor.fetchall()
 
-        click.echo("Reprocessing today's quoted tweets...")
+        click.echo("Reprocessing today's dependency tweets...")
         if quote_rows:
-            with click.progressbar(length=len(quote_rows), label="Reprocessing quoted") as bar:
-                status_cb, progress_cb, _ = _make_progress_callbacks(bar, len(quote_rows), "Reprocessing quoted")
+            with click.progressbar(length=len(quote_rows), label="Reprocessing dependencies") as bar:
+                status_cb, progress_cb, _ = _make_progress_callbacks(bar, len(quote_rows), "Reprocessing dependencies")
 
                 reprocessed = reprocess_today_quoted(
                     limit=reprocess_limit,
@@ -754,9 +760,9 @@ def process(
             reprocessed = []
 
         if reprocessed:
-            click.echo(f"Reprocessed {len(reprocessed)} quoted tweets.")
+            click.echo(f"Reprocessed {len(reprocessed)} dependency tweets.")
         else:
-            click.echo("No quoted tweets to reprocess.")
+            click.echo("No dependency tweets to reprocess.")
 
 
 # ============================================================================

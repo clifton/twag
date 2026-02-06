@@ -127,6 +127,167 @@ def _expand_single_tweet_links(row: sqlite3.Row | dict[str, Any]) -> tuple[str, 
     return tweet_id, expand_links_in_place(link_items)
 
 
+def _row_get(row: sqlite3.Row | dict[str, Any], key: str, default: Any = None) -> Any:
+    if isinstance(row, sqlite3.Row):
+        try:
+            return row[key]
+        except (IndexError, KeyError):
+            return default
+    return row.get(key, default)
+
+
+def _extract_inline_linked_tweet_ids_from_links_json(
+    links_json: str | None, *, skip_id: str | None = None
+) -> list[str]:
+    if not links_json:
+        return []
+    try:
+        decoded = json.loads(links_json)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(decoded, list):
+        return []
+
+    ids: list[str] = []
+    seen: set[str] = set()
+    for link in decoded:
+        if not isinstance(link, dict):
+            continue
+        expanded = str(link.get("expanded_url") or link.get("expandedUrl") or "").strip()
+        raw = str(link.get("url") or "").strip()
+        linked_id = parse_tweet_status_id(expanded) or parse_tweet_status_id(raw)
+        if not linked_id:
+            continue
+        if skip_id and linked_id == skip_id:
+            continue
+        if linked_id in seen:
+            continue
+        seen.add(linked_id)
+        ids.append(linked_id)
+        if len(ids) >= _MAX_INLINE_LINK_FETCHES:
+            break
+    return ids
+
+
+def _extract_dependency_ids_from_row(row: sqlite3.Row | dict[str, Any]) -> list[str]:
+    """Return direct dependency tweet IDs for a row."""
+    tweet_id = str(_row_get(row, "id", "") or "").strip() or None
+
+    ordered: list[str] = []
+    seen: set[str] = set()
+
+    def _add(candidate: str | None) -> None:
+        if not candidate:
+            return
+        value = str(candidate).strip()
+        if not value:
+            return
+        if tweet_id and value == tweet_id:
+            return
+        if value in seen:
+            return
+        seen.add(value)
+        ordered.append(value)
+
+    _add(_row_get(row, "quote_tweet_id"))
+    _add(_row_get(row, "in_reply_to_tweet_id"))
+    for linked_id in _extract_inline_linked_tweet_ids_from_links_json(_row_get(row, "links_json"), skip_id=tweet_id):
+        _add(linked_id)
+    return ordered
+
+
+def _expand_links_for_rows(
+    conn: sqlite3.Connection,
+    rows: list[sqlite3.Row] | list[dict[str, Any]],
+    *,
+    max_workers: int,
+    quote_depth: int,
+    status_cb: Callable[[str], None] | None = None,
+) -> list[sqlite3.Row | dict[str, Any]]:
+    """Expand link entities for rows and dependency rows, then refresh source rows."""
+    if not rows:
+        return rows
+
+    source_ids: list[str] = []
+    for row in rows:
+        tweet_id = str(_row_get(row, "id", "") or "").strip()
+        if tweet_id:
+            source_ids.append(tweet_id)
+    if not source_ids:
+        return rows
+
+    source_id_set = set(source_ids)
+    row_cache = get_tweets_by_ids(conn, source_id_set)
+    all_ids = set(row_cache.keys())
+    frontier = {
+        dep_id
+        for row in row_cache.values()
+        for dep_id in _extract_dependency_ids_from_row(row)
+        if dep_id not in all_ids
+    }
+
+    for _ in range(max(0, quote_depth)):
+        if not frontier:
+            break
+        fetched = get_tweets_by_ids(conn, frontier)
+        if not fetched:
+            break
+        row_cache.update(fetched)
+        all_ids.update(fetched.keys())
+        frontier = {
+            dep_id
+            for row in fetched.values()
+            for dep_id in _extract_dependency_ids_from_row(row)
+            if dep_id not in all_ids
+        }
+
+    rows_for_link_expansion = [
+        row for row in row_cache.values() if row["has_link"] and row["links_json"] and not row["links_expanded_at"]
+    ]
+    if rows_for_link_expansion:
+        if status_cb:
+            status_cb(f"Expanding links for {len(rows_for_link_expansion)} tweets")
+
+        row_by_id = {str(row["id"]): row for row in rows_for_link_expansion}
+        expanded_at = datetime.now(timezone.utc).isoformat()
+
+        if max_workers > 1:
+            with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                futures = {
+                    pool.submit(_expand_single_tweet_links, row): str(row["id"]) for row in rows_for_link_expansion
+                }
+                for future in as_completed(futures):
+                    tweet_id = futures[future]
+                    original_row = row_by_id[tweet_id]
+                    try:
+                        _, expanded_links = future.result()
+                    except Exception:
+                        expanded_links = None
+                    links_payload: list[dict[str, Any]] | str | None = (
+                        expanded_links if expanded_links is not None else original_row["links_json"]
+                    )
+                    update_tweet_links_expanded(conn, tweet_id, links_payload, expanded_at)
+        else:
+            for row in rows_for_link_expansion:
+                tweet_id = str(row["id"])
+                try:
+                    _, expanded_links = _expand_single_tweet_links(row)
+                except Exception:
+                    expanded_links = None
+                links_payload = expanded_links if expanded_links is not None else row["links_json"]
+                update_tweet_links_expanded(conn, tweet_id, links_payload, expanded_at)
+
+    refreshed_source = get_tweets_by_ids(conn, source_id_set)
+    refreshed_rows: list[sqlite3.Row | dict[str, Any]] = []
+    for row in rows:
+        tweet_id = str(_row_get(row, "id", "") or "").strip()
+        if tweet_id and tweet_id in refreshed_source:
+            refreshed_rows.append(refreshed_source[tweet_id])
+        else:
+            refreshed_rows.append(row)
+    return refreshed_rows
+
+
 def _fetch_quote_chain(
     conn: sqlite3.Connection,
     tweet: Tweet,
@@ -144,6 +305,31 @@ def _fetch_quote_chain(
     return _fetch_quote_by_id(
         conn,
         tweet.quote_tweet_id,
+        source=source,
+        remaining_depth=max_depth,
+        delay=delay,
+        seen=seen,
+        status_cb=status_cb,
+    )
+
+
+def _fetch_reply_chain(
+    conn: sqlite3.Connection,
+    tweet: Tweet,
+    *,
+    source: str,
+    max_depth: int,
+    delay: float,
+    seen: set[str],
+    status_cb: Callable[[str], None] | None = None,
+) -> int:
+    if max_depth <= 0:
+        return 0
+    if not tweet.in_reply_to_tweet_id:
+        return 0
+    return _fetch_quote_by_id(
+        conn,
+        tweet.in_reply_to_tweet_id,
         source=source,
         remaining_depth=max_depth,
         delay=delay,
@@ -234,7 +420,7 @@ def _fetch_quote_by_id(
         time.sleep(delay)
 
     if status_cb:
-        status_cb(f"Fetching quoted tweet {quote_id}")
+        status_cb(f"Fetching dependency tweet {quote_id}")
 
     quoted = read_tweet(quote_id)
     if not quoted or not quoted.id:
@@ -250,6 +436,8 @@ def _fetch_quote_by_id(
         source=source,
         has_quote=quoted.has_quote,
         quote_tweet_id=quoted.quote_tweet_id,
+        in_reply_to_tweet_id=quoted.in_reply_to_tweet_id,
+        conversation_id=quoted.conversation_id,
         has_media=quoted.has_media,
         media_items=quoted.media_items,
         has_link=quoted.has_link,
@@ -280,6 +468,16 @@ def _fetch_quote_by_id(
             seen=seen,
             status_cb=status_cb,
         )
+    if quoted.in_reply_to_tweet_id:
+        total += _fetch_quote_by_id(
+            conn,
+            quoted.in_reply_to_tweet_id,
+            source="reply_parent",
+            remaining_depth=remaining_depth - 1,
+            delay=delay,
+            seen=seen,
+            status_cb=status_cb,
+        )
     return total
 
 
@@ -299,7 +497,7 @@ def _ensure_quote_row(
         time.sleep(delay)
 
     if status_cb:
-        status_cb(f"Fetching quoted tweet {quote_id}")
+        status_cb(f"Fetching dependency tweet {quote_id}")
 
     quoted = read_tweet(quote_id)
     if not quoted or not quoted.id:
@@ -312,9 +510,11 @@ def _ensure_quote_row(
         author_name=quoted.author_name,
         content=quoted.content,
         created_at=quoted.created_at,
-        source="quote",
+        source="dependency",
         has_quote=quoted.has_quote,
         quote_tweet_id=quoted.quote_tweet_id,
+        in_reply_to_tweet_id=quoted.in_reply_to_tweet_id,
+        conversation_id=quoted.conversation_id,
         has_media=quoted.has_media,
         media_items=quoted.media_items,
         has_link=quoted.has_link,
@@ -337,7 +537,7 @@ def _ensure_quote_row(
     return get_tweet_by_id(conn, quoted.id)
 
 
-def _expand_unprocessed_with_quotes(
+def _expand_unprocessed_with_dependencies(
     conn: sqlite3.Connection,
     rows: list[sqlite3.Row],
     *,
@@ -352,7 +552,7 @@ def _expand_unprocessed_with_quotes(
 
     expanded: list[sqlite3.Row] = list(rows)
     process_ids: set[str] = {row["id"] for row in rows}
-    seen_quote_ids: set[str] = set()
+    seen_dependency_ids: set[str] = set()
 
     queue: deque[tuple[sqlite3.Row, int]] = deque((row, 0) for row in rows)
 
@@ -360,27 +560,24 @@ def _expand_unprocessed_with_quotes(
         row, depth = queue.popleft()
         if depth >= max_depth:
             continue
-        if not row["has_quote"] or not row["quote_tweet_id"]:
-            continue
+        for dep_id in _extract_dependency_ids_from_row(row):
+            if dep_id in seen_dependency_ids:
+                continue
+            seen_dependency_ids.add(dep_id)
 
-        quote_id = row["quote_tweet_id"]
-        if not quote_id or quote_id in seen_quote_ids:
-            continue
-        seen_quote_ids.add(quote_id)
+            dep_row = get_tweet_by_id(conn, dep_id)
+            if not dep_row and fetch_missing:
+                dep_row = _ensure_quote_row(conn, dep_id, delay=delay, status_cb=status_cb)
+            if not dep_row:
+                continue
 
-        quote_row = get_tweet_by_id(conn, quote_id)
-        if not quote_row and fetch_missing:
-            quote_row = _ensure_quote_row(conn, quote_id, delay=delay, status_cb=status_cb)
-        if not quote_row:
-            continue
+            queue.append((dep_row, depth + 1))
 
-        queue.append((quote_row, depth + 1))
-
-        if quote_row["processed_at"] is None and quote_id not in process_ids:
-            process_ids.add(quote_id)
-            expanded.append(quote_row)
-            if total_cb:
-                total_cb(len(expanded))
+            if dep_row["processed_at"] is None and dep_id not in process_ids:
+                process_ids.add(dep_id)
+                expanded.append(dep_row)
+                if total_cb:
+                    total_cb(len(expanded))
 
     return expanded
 
@@ -424,6 +621,8 @@ def store_fetched_tweets(
                 source=source,
                 has_quote=tweet.has_quote,
                 quote_tweet_id=tweet.quote_tweet_id,
+                in_reply_to_tweet_id=tweet.in_reply_to_tweet_id,
+                conversation_id=tweet.conversation_id,
                 has_media=tweet.has_media,
                 media_items=tweet.media_items,
                 has_link=tweet.has_link,
@@ -449,6 +648,15 @@ def store_fetched_tweets(
                         conn,
                         tweet,
                         source="quote",
+                        max_depth=quote_depth,
+                        delay=quote_delay,
+                        seen=seen_quotes,
+                        status_cb=status_cb,
+                    )
+                    _fetch_reply_chain(
+                        conn,
+                        tweet,
+                        source="reply_parent",
                         max_depth=quote_depth,
                         delay=quote_delay,
                         seen=seen_quotes,
@@ -515,6 +723,8 @@ def store_bookmarked_tweets(
                 source="bookmarks",
                 has_quote=tweet.has_quote,
                 quote_tweet_id=tweet.quote_tweet_id,
+                in_reply_to_tweet_id=tweet.in_reply_to_tweet_id,
+                conversation_id=tweet.conversation_id,
                 has_media=tweet.has_media,
                 media_items=tweet.media_items,
                 has_link=tweet.has_link,
@@ -543,6 +753,15 @@ def store_bookmarked_tweets(
                     conn,
                     tweet,
                     source="quote",
+                    max_depth=quote_depth,
+                    delay=quote_delay,
+                    seen=seen_quotes,
+                    status_cb=status_cb,
+                )
+                _fetch_reply_chain(
+                    conn,
+                    tweet,
+                    source="reply_parent",
                     max_depth=quote_depth,
                     delay=quote_delay,
                     seen=seen_quotes,
@@ -828,15 +1047,6 @@ def process_unprocessed(
     force_refresh: bool = False,
 ) -> list[TriageResult]:
     """Process tweets that haven't been scored yet."""
-
-    def _row_get(row: sqlite3.Row | dict[str, Any], key: str, default: Any = None) -> Any:
-        if isinstance(row, sqlite3.Row):
-            try:
-                return row[key]
-            except (IndexError, KeyError):
-                return default
-        return row.get(key, default)
-
     config = load_config()
     batch_size = config["scoring"]["batch_size"]
     high_threshold = config["scoring"]["high_signal_threshold"]
@@ -856,8 +1066,8 @@ def process_unprocessed(
 
         if quote_depth > 0:
             if status_cb:
-                status_cb("Expanding quoted tweets")
-            unprocessed = _expand_unprocessed_with_quotes(
+                status_cb("Expanding dependency tweets")
+            unprocessed = _expand_unprocessed_with_dependencies(
                 conn,
                 unprocessed,
                 max_depth=quote_depth,
@@ -868,48 +1078,13 @@ def process_unprocessed(
             )
 
         if not dry_run:
-            rows_for_link_expansion = [
-                row
-                for row in unprocessed
-                if _row_get(row, "has_link") and _row_get(row, "links_json") and not _row_get(row, "links_expanded_at")
-            ]
-            if rows_for_link_expansion:
-                if status_cb:
-                    status_cb(f"Expanding links for {len(rows_for_link_expansion)} tweets")
-
-                row_by_id = {str(_row_get(row, "id")): row for row in rows_for_link_expansion}
-                expanded_at = datetime.now(timezone.utc).isoformat()
-
-                if url_expansion_workers > 1:
-                    with ThreadPoolExecutor(max_workers=url_expansion_workers) as pool:
-                        futures = {
-                            pool.submit(_expand_single_tweet_links, row): str(_row_get(row, "id"))
-                            for row in rows_for_link_expansion
-                        }
-                        for future in as_completed(futures):
-                            tweet_id = futures[future]
-                            original_row = row_by_id[tweet_id]
-                            try:
-                                _, expanded_links = future.result()
-                            except Exception:
-                                expanded_links = None
-                            links_payload: list[dict[str, Any]] | str | None = (
-                                expanded_links if expanded_links is not None else _row_get(original_row, "links_json")
-                            )
-                            update_tweet_links_expanded(conn, tweet_id, links_payload, expanded_at)
-                else:
-                    for row in rows_for_link_expansion:
-                        tweet_id = str(_row_get(row, "id"))
-                        try:
-                            _, expanded_links = _expand_single_tweet_links(row)
-                        except Exception:
-                            expanded_links = None
-                        links_payload = expanded_links if expanded_links is not None else _row_get(row, "links_json")
-                        update_tweet_links_expanded(conn, tweet_id, links_payload, expanded_at)
-
-                conn.commit()
-                refreshed = get_tweets_by_ids(conn, {str(row["id"]) for row in unprocessed})
-                unprocessed = [refreshed.get(str(row["id"]), row) for row in unprocessed]
+            unprocessed = _expand_links_for_rows(
+                conn,
+                unprocessed,
+                max_workers=url_expansion_workers,
+                quote_depth=max(1, quote_depth),
+                status_cb=status_cb,
+            )
 
         if total_cb:
             total_cb(len(unprocessed))
@@ -1451,11 +1626,16 @@ def reprocess_today_quoted(
     progress_cb: Callable[[int], None] | None = None,
     status_cb: Callable[[str], None] | None = None,
 ) -> list[TriageResult]:
-    """Reprocess today's already-processed tweets that include quotes."""
+    """Reprocess today's already-processed tweets with dependency context."""
     config = load_config()
     batch_size = config["scoring"]["batch_size"]
     high_threshold = config["scoring"]["high_signal_threshold"]
     min_score = min_score if min_score is not None else config["scoring"].get("min_score_for_reprocess", 3)
+    quote_depth = config.get("fetch", {}).get("quote_depth", 0)
+    url_expansion_workers = _normalized_worker_count(
+        config.get("processing", {}).get("max_concurrency_url_expansion", 15),
+        15,
+    )
 
     today = datetime.now().strftime("%Y-%m-%d")
 
@@ -1465,8 +1645,10 @@ def reprocess_today_quoted(
                 """
                 SELECT * FROM tweets
                 WHERE processed_at IS NOT NULL
-                  AND has_quote = 1
-                  AND quote_tweet_id IS NOT NULL
+                  AND (
+                    (has_quote = 1 AND quote_tweet_id IS NOT NULL)
+                    OR in_reply_to_tweet_id IS NOT NULL
+                  )
                   AND quote_reprocessed_at IS NULL
                   AND date(created_at) = ?
                   AND relevance_score >= ?
@@ -1495,6 +1677,14 @@ def reprocess_today_quoted(
                 )
                 for row in rows
             ]
+
+        rows = _expand_links_for_rows(
+            conn,
+            rows,
+            max_workers=url_expansion_workers,
+            quote_depth=max(1, quote_depth),
+            status_cb=status_cb,
+        )
 
         tier1_accounts = get_accounts(conn, tier=1)
         tier1_handles = {a["handle"].lower() for a in tier1_accounts}

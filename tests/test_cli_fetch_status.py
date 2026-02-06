@@ -15,6 +15,8 @@ def _sample_tweet() -> Tweet:
         created_at=None,
         has_quote=False,
         quote_tweet_id=None,
+        in_reply_to_tweet_id=None,
+        conversation_id=None,
         has_media=False,
         media_items=[],
         has_link=True,

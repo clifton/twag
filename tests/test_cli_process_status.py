@@ -57,7 +57,7 @@ def test_process_status_id_fast_path(monkeypatch):
     assert result.exit_code == 0
     assert "Processing status 2019488673935552978..." in result.output
     assert "No unprocessed tweets found." in result.output
-    assert "Skipping quote reprocessing for single-status mode." in result.output
+    assert "Skipping dependency reprocessing for single-status mode." in result.output
     assert calls["limit"] == 250
     assert isinstance(calls["rows"], list)
     assert len(calls["rows"]) == 1

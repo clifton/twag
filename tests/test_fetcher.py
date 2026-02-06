@@ -184,6 +184,20 @@ class TestTweetFromBirdJson:
         assert tweet.has_quote is True
         assert tweet.quote_tweet_id == "789"
 
+    def test_parse_with_reply_and_conversation_ids(self):
+        """Parse reply parent and conversation metadata."""
+        data = {
+            "id": "123",
+            "author": {"username": "replier"},
+            "text": "Replying in thread",
+            "in_reply_to_status_id_str": "111",
+            "conversation_id_str": "999",
+        }
+        tweet = Tweet.from_bird_json(data)
+
+        assert tweet.in_reply_to_tweet_id == "111"
+        assert tweet.conversation_id == "999"
+
     def test_parse_with_media(self, media_tweet_data):
         """Parse tweet with media attachments."""
         tweet = Tweet.from_bird_json(media_tweet_data)
@@ -652,6 +666,8 @@ class TestFetchFunctions:
             created_at=None,
             has_quote=False,
             quote_tweet_id=None,
+            in_reply_to_tweet_id=None,
+            conversation_id=None,
             has_media=False,
             media_items=[],
             has_link=False,

@@ -180,6 +180,8 @@ CREATE TABLE IF NOT EXISTS tweets (
     -- Expansion tracking
     has_quote INTEGER DEFAULT 0,
     quote_tweet_id TEXT,
+    in_reply_to_tweet_id TEXT,
+    conversation_id TEXT,
     has_media INTEGER DEFAULT 0,
     media_analysis TEXT,
     media_items TEXT,
@@ -446,6 +448,12 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
     if "links_json" not in tweet_columns:
         conn.execute("ALTER TABLE tweets ADD COLUMN links_json TEXT")
 
+    if "in_reply_to_tweet_id" not in tweet_columns:
+        conn.execute("ALTER TABLE tweets ADD COLUMN in_reply_to_tweet_id TEXT")
+
+    if "conversation_id" not in tweet_columns:
+        conn.execute("ALTER TABLE tweets ADD COLUMN conversation_id TEXT")
+
     if "links_expanded_at" not in tweet_columns:
         conn.execute("ALTER TABLE tweets ADD COLUMN links_expanded_at TIMESTAMP")
 
@@ -479,6 +487,10 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_tweets_bookmarked ON tweets(bookmarked) WHERE bookmarked = 1")
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_tweets_quote ON tweets(quote_tweet_id) WHERE quote_tweet_id IS NOT NULL"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tweets_reply "
+        "ON tweets(in_reply_to_tweet_id) WHERE in_reply_to_tweet_id IS NOT NULL"
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_fetch_log_endpoint ON fetch_log(endpoint, executed_at DESC)")
 
@@ -559,6 +571,8 @@ def insert_tweet(
     source: str = "home",
     has_quote: bool = False,
     quote_tweet_id: str | None = None,
+    in_reply_to_tweet_id: str | None = None,
+    conversation_id: str | None = None,
     has_media: bool = False,
     media_items: list[dict[str, Any]] | None = None,
     has_link: bool = False,
@@ -581,12 +595,12 @@ def insert_tweet(
             """
             INSERT INTO tweets (
                 id, author_handle, author_name, content, created_at, source,
-                has_quote, quote_tweet_id, has_media, media_items, has_link,
+                has_quote, quote_tweet_id, in_reply_to_tweet_id, conversation_id, has_media, media_items, has_link,
                 links_json,
                 is_x_article, article_title, article_preview, article_text,
                 is_retweet, retweeted_by_handle, retweeted_by_name, original_tweet_id,
                 original_author_handle, original_author_name, original_content
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 tweet_id,
@@ -597,6 +611,8 @@ def insert_tweet(
                 source,
                 int(has_quote),
                 quote_tweet_id,
+                in_reply_to_tweet_id,
+                conversation_id,
                 int(has_media),
                 json.dumps(media_items) if media_items else None,
                 int(has_link),
@@ -624,6 +640,8 @@ def insert_tweet(
             created_at=created_at,
             has_quote=has_quote,
             quote_tweet_id=quote_tweet_id,
+            in_reply_to_tweet_id=in_reply_to_tweet_id,
+            conversation_id=conversation_id,
             has_media=has_media,
             media_items=media_items,
             has_link=has_link,
@@ -687,6 +705,8 @@ def _merge_duplicate_tweet_payload(
     created_at: datetime | None,
     has_quote: bool,
     quote_tweet_id: str | None,
+    in_reply_to_tweet_id: str | None,
+    conversation_id: str | None,
     has_media: bool,
     media_items: list[dict[str, Any]] | None,
     has_link: bool,
@@ -700,7 +720,7 @@ def _merge_duplicate_tweet_payload(
     row = conn.execute(
         """
         SELECT author_name, content, created_at, has_quote, quote_tweet_id, has_media, media_items,
-               links_json,
+               in_reply_to_tweet_id, conversation_id, links_json,
                has_link, is_x_article, article_title, article_preview, article_text
         FROM tweets
         WHERE id = ?
@@ -736,6 +756,14 @@ def _merge_duplicate_tweet_payload(
     if quote_tweet_id and not row["quote_tweet_id"]:
         updates.append("quote_tweet_id = ?")
         params.append(quote_tweet_id)
+
+    if in_reply_to_tweet_id and not row["in_reply_to_tweet_id"]:
+        updates.append("in_reply_to_tweet_id = ?")
+        params.append(in_reply_to_tweet_id)
+
+    if conversation_id and not row["conversation_id"]:
+        updates.append("conversation_id = ?")
+        params.append(conversation_id)
 
     merged_media = _merge_media_items(row["media_items"], media_items)
     if merged_media is not None:

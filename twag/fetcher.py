@@ -45,6 +45,8 @@ class Tweet:
     created_at: datetime | None
     has_quote: bool
     quote_tweet_id: str | None
+    in_reply_to_tweet_id: str | None
+    conversation_id: str | None
     has_media: bool
     media_items: list[dict[str, Any]]
     has_link: bool
@@ -97,6 +99,30 @@ class Tweet:
             has_quote = True
             quoted = data.get("quotedTweet") or data.get("quoted_status", {})
             quote_tweet_id = str(quoted.get("id") or quoted.get("id_str", ""))
+
+        legacy = data.get("legacy", {}) if isinstance(data.get("legacy"), dict) else {}
+        in_reply_to_tweet_id = str(
+            data.get("in_reply_to_status_id_str")
+            or data.get("in_reply_to_status_id")
+            or data.get("inReplyToStatusId")
+            or data.get("inReplyToStatusIdStr")
+            or legacy.get("in_reply_to_status_id_str")
+            or legacy.get("in_reply_to_status_id")
+            or ""
+        ).strip()
+        if not in_reply_to_tweet_id:
+            in_reply_to_tweet_id = None
+
+        conversation_id = str(
+            data.get("conversation_id_str")
+            or data.get("conversationIdStr")
+            or data.get("conversation_id")
+            or legacy.get("conversation_id_str")
+            or legacy.get("conversation_id")
+            or ""
+        ).strip()
+        if not conversation_id:
+            conversation_id = None
 
         # Media
         media_items = _extract_media_items(data)
@@ -163,6 +189,8 @@ class Tweet:
             created_at=created_at,
             has_quote=has_quote,
             quote_tweet_id=quote_tweet_id,
+            in_reply_to_tweet_id=in_reply_to_tweet_id,
+            conversation_id=conversation_id,
             has_media=has_media,
             media_items=media_items,
             has_link=has_link,
