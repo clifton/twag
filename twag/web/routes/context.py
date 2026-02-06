@@ -2,6 +2,7 @@
 
 import asyncio
 import re
+import shlex
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -175,10 +176,10 @@ async def toggle_command(
 
 
 def _substitute_variables(template: str, variables: dict[str, str]) -> str:
-    """Substitute {var} placeholders in template with values."""
+    """Substitute {var} placeholders in template with shell-escaped values."""
     result = template
     for key, value in variables.items():
-        result = result.replace(f"{{{key}}}", value)
+        result = result.replace(f"{{{key}}}", shlex.quote(value))
     return result
 
 
@@ -223,10 +224,11 @@ def _extract_tweet_variables(tweet_row) -> dict[str, str]:
 
 
 async def _run_command(command: str, timeout: float = 30.0) -> tuple[str, str, int]:
-    """Run a shell command and return (stdout, stderr, returncode)."""
+    """Run a command and return (stdout, stderr, returncode)."""
     try:
-        proc = await asyncio.create_subprocess_shell(
-            command,
+        args = shlex.split(command)
+        proc = await asyncio.create_subprocess_exec(
+            *args,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )

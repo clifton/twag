@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -27,6 +28,14 @@ def create_app() -> FastAPI:
     )
 
     app.state.db_path = get_database_path()
+
+    # CORS: restrict to localhost origins
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     # Initialize database
     init_db(app.state.db_path)
@@ -56,9 +65,10 @@ def create_app() -> FastAPI:
         @app.get("/{full_path:path}", response_class=HTMLResponse)
         async def spa_catch_all(request: Request, full_path: str):
             """Serve SPA index.html for all non-API routes."""
-            file_path = FRONTEND_DIST / full_path
-            if full_path and file_path.is_file():
-                return FileResponse(file_path)
+            if full_path:
+                resolved = (FRONTEND_DIST / full_path).resolve()
+                if resolved.is_relative_to(FRONTEND_DIST) and resolved.is_file():
+                    return FileResponse(resolved)
             return FileResponse(FRONTEND_DIST / "index.html")
 
     return app

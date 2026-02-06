@@ -43,6 +43,10 @@ htmlcov/
 # Local config (keep default config.json in repo)
 config.local.json
 
+# Environment files (API keys, secrets)
+.env
+.env.*
+
 # Frontend
 twag/web/frontend/node_modules/
 twag/web/frontend/dist/
