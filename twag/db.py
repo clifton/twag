@@ -4,6 +4,7 @@ import json
 import re
 import shutil
 import sqlite3
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -371,11 +372,19 @@ def init_db(db_path: Path | None = None) -> None:
 
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with get_connection(db_path) as conn:
-        conn.executescript(SCHEMA)
-        # Migrations for existing databases
-        _run_migrations(conn)
-        conn.commit()
+    max_attempts = 3
+    for attempt in range(max_attempts):
+        try:
+            with get_connection(db_path) as conn:
+                conn.executescript(SCHEMA)
+                _run_migrations(conn)
+                conn.commit()
+            return
+        except sqlite3.OperationalError as e:
+            if "database is locked" in str(e) and attempt < max_attempts - 1:
+                time.sleep(1)
+                continue
+            raise
 
 
 def _run_migrations(conn: sqlite3.Connection) -> None:
