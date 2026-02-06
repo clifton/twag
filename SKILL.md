@@ -8,72 +8,155 @@ read_when:
   - Managing followed Twitter accounts
   - Finding tweets about specific tickers or topics
 homepage: https://github.com/clifton/twag
-metadata: {"clawdbot":{"emoji":"📊","requires":{"bins":["twag","bird"],"env":["GEMINI_API_KEY","AUTH_TOKEN","CT0"]},"install":[{"id":"pip","kind":"pip","package":"twag","bins":["twag"],"label":"Install twag (pip)"}]}}
-allowed-tools: Bash(twag:*)
+metadata:
+  openclaw:
+    emoji: "📊"
+    requires:
+      bins: ["twag", "bird"]
+      env: ["GEMINI_API_KEY", "AUTH_TOKEN", "CT0"]
+    install:
+      - id: pip
+        kind: pip
+        package: twag
+        bins: ["twag"]
+        label: "Install twag (pip)"
+      - id: bird-npm
+        kind: node
+        package: "@steipete/bird"
+        bins: ["bird"]
+        label: "Install bird CLI (npm)"
+      - id: bird-brew
+        kind: brew
+        formula: "steipete/tap/bird"
+        bins: ["bird"]
+        label: "Install bird CLI (brew)"
+        os: ["darwin"]
+allowed-tools: Bash(twag:*), Bash(bird:*)
 ---
 
-# Twitter Aggregator (twag)
+# twag — Twitter/X Market Signal Aggregator
 
 ## Installation
 
-### pip (recommended)
+### Step 1: Install bird CLI (Twitter access)
+
+bird is required for Twitter/X API access. Install via npm:
+
+```bash
+npm install -g @steipete/bird
+```
+
+Or on macOS via Homebrew:
+
+```bash
+brew install steipete/tap/bird
+```
+
+Verify: `bird --version`
+
+### Step 2: Configure Twitter auth
+
+bird uses cookie-based auth. The user must provide two cookies from their browser:
+
+- `AUTH_TOKEN` — The `auth_token` cookie from x.com
+- `CT0` — The `ct0` cookie from x.com
+
+Set as environment variables:
+
+```bash
+export AUTH_TOKEN="..."
+export CT0="..."
+```
+
+Or add to `~/.env` (twag sources this automatically).
+
+Verify auth: `bird whoami`
+
+### Step 3: Install twag
 
 ```bash
 pip install twag
-npm install -g @anthropics/bird
+```
+
+Or from source:
+
+```bash
+git clone https://github.com/clifton/twag.git
+cd twag && pip install -e .
+```
+
+### Step 4: Initialize and verify
+
+```bash
 twag init
 twag doctor
 ```
 
-### From Source
+### Step 5: Set LLM API key
 
 ```bash
-git clone https://github.com/clifton/twag.git
-cd twag
-pip install -e .
-twag init
+export GEMINI_API_KEY="..."  # Required
+export ANTHROPIC_API_KEY="..."  # Optional, for enrichment
 ```
 
-## Automation Setup
-
-After installing twag, check [{baseDir}/SUGGESTED_CRON_SCHEDULE.md]({baseDir}/SUGGESTED_CRON_SCHEDULE.md) for recommended automation:
-
-1. **Data collection** - systemd timer (Linux) or launchd (macOS) running every 15 minutes
-2. **Telegram digests** - OpenClaw cron jobs for morning, bi-hourly, and weekend summaries
-
-Prompt the user to configure these based on their needs. Key questions:
-- Do they want automated data collection? (Recommended)
-- Do they want Telegram digest notifications?
-- What timezone are they in?
-
-## Quick start
+## Quick Reference
 
 ```bash
-twag fetch && twag process && twag digest   # Full cycle
-twag stats --today                          # Check what's new
-twag search "market" --today -s 7           # Search high-signal tweets
+# Full pipeline
+twag fetch && twag process && twag digest
+
+# Search high-signal tweets
+twag search "market" --today -s 7
+
+# Check stats
+twag stats --today
 ```
 
-## Core workflow
+## Common Workflows
 
-1. **Fetch**: `twag fetch` - Pull tweets from timeline and tier-1 accounts
-2. **Process**: `twag process` - Score tweets with LLM (0-10), categorize, enrich
-3. **Digest**: `twag digest` - Generate markdown summary of high-signal content
+### Morning market check
+
+```bash
+twag fetch && twag process
+twag search "market" --today -s 7
+twag digest --stdout
+```
+
+### Track specific topic
+
+```bash
+twag search "fed rate" -c fed_policy --today
+twag search "powell" -a NickTimiraos --time 7d
+```
+
+### Monitor ticker
+
+```bash
+twag search "earnings" --ticker NVDA --today
+twag search "AAPL" -s 6 --time 7d
+```
+
+### Analyze single tweet
+
+```bash
+twag analyze https://x.com/user/status/123456789
+twag analyze 123456789 --reprocess  # Force re-analyze
+```
 
 ## Commands
 
 ### Search (most common)
 
 ```bash
-twag search "inflation fed"              # Full-text search
-twag search "rate hike" -c fed_policy    # Filter by category
-twag search "NVDA" -a zerohedge          # Filter by author
-twag search "earnings" --ticker AAPL     # Filter by ticker
-twag search "breaking" --today -s 8      # High-signal since market close
-twag search "fed" --time 7d              # Last 7 days
-twag search "macro" --bookmarks          # Bookmarked only
-twag search "fed" --format full          # Digest-style output
-twag search "fed" --format json          # JSON output
+twag search "query"                  # Full-text search
+twag search "query" -c fed_policy    # Filter by category
+twag search "query" -a handle        # Filter by author
+twag search "query" --ticker AAPL    # Filter by ticker
+twag search "query" --today          # Since last market close
+twag search "query" --time 7d        # Last N days
+twag search "query" -s 7             # Min score threshold
+twag search "query" --format full    # Digest-style output
+twag search "query" --format json    # JSON output
 ```
 
 **Query syntax:**
@@ -82,31 +165,26 @@ twag search "fed" --format json          # JSON output
 - Boolean: `inflation AND fed`, `fed NOT fomc`
 - Prefix: `infla*` (wildcard)
 
-**Time filters:**
-- `--today`: Since previous 4pm ET market close
-- `--time 7d`: Last 7 days
-- `--since 2026-01-15`: From specific date
-
 ### Fetch & Process
 
 ```bash
-twag fetch                    # Home timeline + tier-1 accounts
+twag fetch                    # Home + tier-1 + bookmarks
 twag fetch --no-tier1         # Home only
-twag fetch -u @NickTimiraos   # Specific user
-twag fetch --source search -q "Fed Powell"  # Search tweets
+twag fetch -u @handle         # Specific user
+twag fetch --source search -q "query"  # Search tweets
 
-twag process                  # Score unprocessed tweets
-twag process -n 100           # Limit batch size
-twag process --dry-run        # Preview only
-twag process --no-notify      # Skip Telegram alerts
+twag process                  # Score unprocessed
+twag process -n 100           # Limit batch
+twag process --dry-run        # Preview
+twag process --no-notify      # Skip alerts
 ```
 
 ### Digest
 
 ```bash
-twag digest                   # Generate today's digest
-twag digest -d 2026-01-29     # Specific date
+twag digest                   # Today's digest (saves to file)
 twag digest --stdout          # Output to terminal
+twag digest -d 2026-01-29     # Specific date
 twag digest --min-score 6     # Custom threshold
 ```
 
@@ -119,110 +197,118 @@ twag accounts add @handle     # Add account
 twag accounts add @handle -t 1  # Add as tier-1
 twag accounts promote @handle # Promote to tier-1
 twag accounts mute @handle    # Mute account
-twag accounts boost @handle --amount 10  # Boost weight
+twag accounts boost @handle --amount 10
 twag accounts decay           # Apply daily decay
-twag accounts import          # Import from following.txt
 ```
 
 ### Stats & Maintenance
 
 ```bash
-twag stats                    # All-time stats
-twag stats --today            # Today's stats
-twag stats -d 2026-01-29      # Specific date
-
+twag stats                    # All-time
+twag stats --today            # Today
 twag prune --days 14          # Delete old tweets
-twag prune --days 14 --dry-run  # Preview prune
-twag export --days 7          # Export recent data
+twag export --days 7          # Export recent
 ```
 
 ### Database
 
 ```bash
-twag db path                  # Show database location
-twag db shell                 # Open SQLite shell
+twag db path                  # Show location
+twag db shell                 # SQLite shell
 twag db rebuild-fts           # Rebuild search index
+twag db dump                  # Backup
+twag db restore backup.sql    # Restore
 ```
 
-### Web Interface
+### Web UI
 
 ```bash
-twag web                      # Start web UI (default: localhost:5000)
+twag web                      # Start (localhost:5173)
+twag web --host 127.0.0.1     # Localhost only
 twag web --port 8080          # Custom port
 ```
 
-### Configuration
+### Config
 
 ```bash
-twag config show              # Show current config
-twag config path              # Show config file path
-twag config set llm.triage_model gemini-3-flash-preview
-twag config set scoring.alert_threshold 9
+twag config show              # Show config
+twag config path              # Show path
+twag config set key value     # Update setting
 ```
 
-## Examples
+## Scoring Tiers
 
-### Morning market check
-
-```bash
-twag fetch && twag process
-twag search "market" --today -s 7
-twag digest --stdout
-```
-
-### Track Fed commentary
-
-```bash
-twag search "fed rate" -c fed_policy --today
-twag search "powell" -a NickTimiraos --time 7d
-```
-
-### Monitor specific ticker
-
-```bash
-twag search "earnings guidance" --ticker NVDA --today
-twag search "AAPL" -s 6 --time 7d
-```
-
-### Find high-signal breaking news
-
-```bash
-twag search "breaking" --today -s 8
-```
+| Score | Level | Behavior |
+|-------|-------|----------|
+| 8-10 | High signal | Telegram alert |
+| 6-7 | Market relevant | In digests |
+| 4-5 | News/context | Searchable |
+| 0-3 | Noise | Filtered out |
 
 ## Categories
 
 `fed_policy`, `inflation`, `job_market`, `macro_data`, `earnings`, `equities`, `rates_fx`, `credit`, `banks`, `consumer_spending`, `commodities`, `energy`, `geopolitical`, `tech_business`, `ai_advancement`, `crypto`
 
-## Configuration
-
-Config file: `~/.config/twag/config.json`
-
-Key settings:
-- `llm.triage_model`: Model for scoring (default: gemini-3-flash-preview)
-- `scoring.alert_threshold`: Score threshold for Telegram alerts (default: 8)
-- `paths.data_dir`: Custom data directory
-
 ## Environment Variables
 
-**Required:**
-- `GEMINI_API_KEY` - Google Gemini API key for triage/vision
-- `AUTH_TOKEN` - Twitter auth token (from browser cookies)
-- `CT0` - Twitter CT0 token (from browser cookies)
+| Variable | Required | Purpose |
+|----------|----------|---------|
+| `AUTH_TOKEN` | Yes | Twitter auth cookie |
+| `CT0` | Yes | Twitter ct0 cookie |
+| `GEMINI_API_KEY` | Yes | LLM triage |
+| `ANTHROPIC_API_KEY` | No | Enrichment |
+| `TELEGRAM_BOT_TOKEN` | No | Alerts |
+| `TELEGRAM_CHAT_ID` | No | Alert destination |
 
-**Optional:**
-- `ANTHROPIC_API_KEY` - For enrichment (higher-quality summaries)
-- `TELEGRAM_BOT_TOKEN` - For real-time alerts
-- `TELEGRAM_CHAT_ID` - Telegram chat for alerts
-- `TWAG_DATA_DIR` - Override data directory
+## Telegram Digest Format
 
-## Notes
+When sending digests to Telegram, follow [{baseDir}/TELEGRAM_DIGEST_FORMAT.md]({baseDir}/TELEGRAM_DIGEST_FORMAT.md):
 
-- Uses `bird` CLI for Twitter API access
-- Scores range 0-10: 7+ is high signal, 8+ triggers alerts
-- `--today` means since previous 4pm ET market close
-- Data stored in `~/.local/share/twag/` by default
+- Group tweets by theme (don't list chronologically)
+- Use `**BOLD CAPS**` for section headers (no markdown `###`)
+- Use `•` for bullet points
+- Citations: `[🔗](url)` for links, `[📊](url)` for charts
+- Condense multiple tweets on same topic into bullets
+- Extract key facts and numbers
 
-## Reporting Issues
+## Automation
 
-https://github.com/clifton/twag/issues
+See [{baseDir}/SUGGESTED_CRON_SCHEDULE.md]({baseDir}/SUGGESTED_CRON_SCHEDULE.md) for:
+
+- systemd/launchd timers for data collection (every 15 min)
+- OpenClaw cron jobs for Telegram digest delivery
+
+## Troubleshooting
+
+### bird not found
+
+```bash
+npm install -g @steipete/bird
+```
+
+### Auth errors (401)
+
+```bash
+# Check cookies are set
+bird whoami
+
+# If expired, get fresh cookies from x.com
+```
+
+### Query ID errors (404)
+
+```bash
+bird query-ids --fresh
+```
+
+### Database issues
+
+```bash
+twag db rebuild-fts
+```
+
+## Links
+
+- **twag:** https://github.com/clifton/twag
+- **bird:** https://github.com/steipete/bird
+- **OpenClaw:** https://github.com/openclaw/openclaw
