@@ -195,6 +195,7 @@ CREATE TABLE IF NOT EXISTS tweets (
     article_action_items_json TEXT,
     article_top_visual_json TEXT,
     article_processed_at TIMESTAMP,
+    links_expanded_at TIMESTAMP,
     quote_reprocessed_at TIMESTAMP,
     is_retweet INTEGER DEFAULT 0,
     retweeted_by_handle TEXT,
@@ -444,6 +445,9 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
 
     if "links_json" not in tweet_columns:
         conn.execute("ALTER TABLE tweets ADD COLUMN links_json TEXT")
+
+    if "links_expanded_at" not in tweet_columns:
+        conn.execute("ALTER TABLE tweets ADD COLUMN links_expanded_at TIMESTAMP")
 
     if "quote_reprocessed_at" not in tweet_columns:
         conn.execute("ALTER TABLE tweets ADD COLUMN quote_reprocessed_at TIMESTAMP")
@@ -768,6 +772,7 @@ def _merge_duplicate_tweet_payload(
         if len(merged_links) > existing_link_len:
             updates.append("links_json = ?")
             params.append(json.dumps(merged_links))
+            updates.append("links_expanded_at = NULL")
 
     if is_x_article and not row["is_x_article"]:
         updates.append("is_x_article = 1")
@@ -952,6 +957,28 @@ def update_tweet_enrichment(
             f"UPDATE tweets SET {', '.join(updates)} WHERE id = ?",
             params,
         )
+
+
+def update_tweet_links_expanded(
+    conn: sqlite3.Connection,
+    tweet_id: str,
+    links_json: list[dict[str, Any]] | str | None,
+    expanded_at: str,
+) -> None:
+    """Persist normalized links payload and expansion timestamp."""
+    if isinstance(links_json, str) or links_json is None:
+        payload = links_json
+    else:
+        payload = json.dumps(links_json)
+    conn.execute(
+        """
+        UPDATE tweets SET
+            links_json = ?,
+            links_expanded_at = ?
+        WHERE id = ?
+        """,
+        (payload, expanded_at, tweet_id),
+    )
 
 
 def update_tweet_article(

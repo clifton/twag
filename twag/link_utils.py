@@ -118,7 +118,37 @@ def _expand_short_url(url: str) -> str:
     return cleaned
 
 
-def _normalize_structured_links(text: str, links: list[dict]) -> list[dict[str, str]]:
+def expand_links_in_place(links: list[dict]) -> list[dict]:
+    """Expand short URLs in structured links and return updated copies."""
+    expanded: list[dict] = []
+    short_url_expansions = 0
+
+    for item in links:
+        if not isinstance(item, dict):
+            continue
+        updated = dict(item)
+        raw_url = clean_url_candidate(str(updated.get("url") or ""))
+        expanded_url = clean_url_candidate(str(updated.get("expanded_url") or updated.get("expandedUrl") or ""))
+        resolved = expanded_url or raw_url
+        if resolved and _is_shortener_url(resolved) and short_url_expansions < _MAX_SHORT_URL_EXPANSIONS:
+            resolved = _expand_short_url(resolved)
+            short_url_expansions += 1
+
+        if raw_url:
+            updated["url"] = raw_url
+        if resolved:
+            updated["expanded_url"] = resolved
+            if not (updated.get("display_url") or updated.get("displayUrl")):
+                updated["display_url"] = _display_url_for(resolved)
+
+        expanded.append(updated)
+
+    return expanded
+
+
+def _normalize_structured_links(
+    text: str, links: list[dict], *, already_expanded: bool = False
+) -> list[dict[str, str]]:
     normalized: list[dict[str, str]] = []
     seen_keys: set[tuple[str, str]] = set()
     short_url_expansions = 0
@@ -130,7 +160,12 @@ def _normalize_structured_links(text: str, links: list[dict]) -> list[dict[str, 
         expanded_url = clean_url_candidate(str(item.get("expanded_url") or item.get("expandedUrl") or ""))
         display_url = str(item.get("display_url") or item.get("displayUrl") or "").strip()
         resolved = expanded_url or raw_url
-        if resolved and _is_shortener_url(resolved) and short_url_expansions < _MAX_SHORT_URL_EXPANSIONS:
+        if (
+            not already_expanded
+            and resolved
+            and _is_shortener_url(resolved)
+            and short_url_expansions < _MAX_SHORT_URL_EXPANSIONS
+        ):
             resolved = _expand_short_url(resolved)
             short_url_expansions += 1
         if not resolved:
@@ -152,7 +187,7 @@ def _normalize_structured_links(text: str, links: list[dict]) -> list[dict[str, 
         if raw in known_urls:
             continue
         resolved = raw
-        if _is_shortener_url(raw) and short_url_expansions < _MAX_SHORT_URL_EXPANSIONS:
+        if not already_expanded and _is_shortener_url(raw) and short_url_expansions < _MAX_SHORT_URL_EXPANSIONS:
             resolved = _expand_short_url(raw)
             short_url_expansions += 1
         normalized.append({"url": raw, "expanded_url": resolved, "display_url": _display_url_for(resolved)})
@@ -205,6 +240,7 @@ def normalize_tweet_links(
     text: str | None,
     links: list[dict] | None,
     has_media: bool = False,
+    already_expanded: bool = False,
 ) -> LinkNormalizationResult:
     """
     Normalize links for display and embedding rules.
@@ -215,7 +251,7 @@ def normalize_tweet_links(
     - Non-status links are returned as external links.
     """
     raw_text = text or ""
-    normalized_links = _normalize_structured_links(raw_text, links or [])
+    normalized_links = _normalize_structured_links(raw_text, links or [], already_expanded=already_expanded)
 
     urls_to_remove: set[str] = set()
     external_replacements: dict[str, str] = {}
