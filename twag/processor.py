@@ -59,6 +59,15 @@ _SIGNAL_TIER_RANK = {
 _MAX_INLINE_LINK_FETCHES = 4
 
 
+def _normalized_worker_count(value: Any, fallback: int) -> int:
+    """Return a positive worker count, falling back on invalid inputs."""
+    try:
+        workers = int(value)
+    except (TypeError, ValueError):
+        workers = fallback
+    return workers if workers > 0 else fallback
+
+
 def _prefer_stronger_signal_tier(existing: str | None, candidate: str | None) -> str | None:
     """Return the stronger signal tier, defaulting to existing when equal/unknown."""
     if not existing and not candidate:
@@ -902,8 +911,12 @@ def _triage_rows(
 ) -> list[TriageResult]:
     """Run triage on provided rows and persist results."""
     config = load_config()
-    max_text_workers = config.get("llm", {}).get("max_concurrency_text", 5)
-    max_vision_workers = config.get("llm", {}).get("max_concurrency_vision", 3)
+    max_text_workers = _normalized_worker_count(config.get("llm", {}).get("max_concurrency_text", 5), 5)
+    max_triage_workers = _normalized_worker_count(
+        config.get("llm", {}).get("max_concurrency_triage", max_text_workers),
+        max_text_workers,
+    )
+    max_vision_workers = _normalized_worker_count(config.get("llm", {}).get("max_concurrency_vision", 3), 3)
     vision_model = config["llm"].get("vision_model")
     vision_provider = config["llm"].get("vision_provider")
     analysis_min_score = config.get("scoring", {}).get("min_score_for_analysis", 3)
@@ -935,6 +948,7 @@ def _triage_rows(
     article_candidates: set[str] = set()
     enrich_candidates: set[str] = set()
 
+    triage_pool = ThreadPoolExecutor(max_workers=max_triage_workers) if max_triage_workers > 1 else None
     text_pool = ThreadPoolExecutor(max_workers=max_text_workers) if max_text_workers and max_text_workers > 1 else None
     vision_pool = (
         ThreadPoolExecutor(max_workers=max_vision_workers) if max_vision_workers and max_vision_workers > 1 else None
@@ -1084,14 +1098,14 @@ def _triage_rows(
                     progress_cb(1)
 
     try:
-        if text_pool:
+        if triage_pool:
             batch_futures: dict[Any, tuple[int, int]] = {}
             for i in range(0, total, batch_size):
                 batch_index = (i // batch_size) + 1
                 if status_cb:
                     status_cb(f"Queue batch {batch_index}/{total_batches}")
                 batch = tweets_for_triage[i : i + batch_size]
-                future = text_pool.submit(triage_tweets_batch, batch, triage_model, None)
+                future = triage_pool.submit(triage_tweets_batch, batch, triage_model, None)
                 batch_futures[future] = (batch_index, len(batch))
 
             for future in as_completed(batch_futures):
@@ -1341,6 +1355,8 @@ def _triage_rows(
                     pass
                 _complete_task(tweet_id)
     finally:
+        if triage_pool:
+            triage_pool.shutdown(wait=True)
         if text_pool:
             text_pool.shutdown(wait=True)
         if vision_pool:
@@ -1432,7 +1448,7 @@ def enrich_high_signal(
     """Enrich high-signal tweets with deeper analysis."""
     config = load_config()
     high_threshold = config["scoring"]["high_signal_threshold"]
-    max_text_workers = config.get("llm", {}).get("max_concurrency_text", 8)
+    max_text_workers = _normalized_worker_count(config.get("llm", {}).get("max_concurrency_text", 8), 8)
 
     with get_connection() as conn:
         # Get high-signal tweets that need enrichment
@@ -1456,6 +1472,16 @@ def enrich_high_signal(
         if not tweets:
             return []
 
+        author_handles = {tweet["author_handle"] for tweet in tweets}
+        account_categories: dict[str, str | None] = {}
+        if author_handles:
+            placeholders = ",".join("?" for _ in author_handles)
+            acct_cursor = conn.execute(
+                f"SELECT handle, category FROM accounts WHERE handle IN ({placeholders})",
+                tuple(author_handles),
+            )
+            account_categories = {row["handle"]: row["category"] for row in acct_cursor.fetchall()}
+
         results: list[EnrichmentResult] = []
         futures = {}
         text_pool = (
@@ -1466,21 +1492,18 @@ def enrich_high_signal(
             for tweet in tweets:
                 quoted_text = ""
                 if tweet["has_quote"] and tweet["quote_tweet_id"]:
-                    # Try to fetch quoted tweet
-                    quoted = read_tweet(tweet["quote_tweet_id"])
-                    if quoted:
-                        quoted_text = f"@{quoted.author_handle}: {quoted.content}"
+                    quoted_row = get_tweet_by_id(conn, tweet["quote_tweet_id"])
+                    if quoted_row:
+                        quoted_text = f"@{quoted_row['author_handle']}: {quoted_row['content']}"
+                    else:
+                        quoted = read_tweet(tweet["quote_tweet_id"])
+                        if quoted:
+                            quoted_text = f"@{quoted.author_handle}: {quoted.content}"
 
                 media_items = ensure_media_analysis(conn, tweet)
                 media_context = build_media_context(media_items) if media_items else (tweet["media_analysis"] or "")
 
-                # Get account category
-                acct_cursor = conn.execute(
-                    "SELECT category FROM accounts WHERE handle = ?",
-                    (tweet["author_handle"],),
-                )
-                acct_row = acct_cursor.fetchone()
-                author_category = acct_row["category"] if acct_row else "unknown"
+                author_category = account_categories.get(tweet["author_handle"]) or "unknown"
 
                 if text_pool:
                     future = text_pool.submit(

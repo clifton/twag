@@ -17,6 +17,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "enrichment_provider": "anthropic",
         "vision_model": "gemini-3-flash-preview",
         "vision_provider": "gemini",
+        "max_concurrency_triage": 4,
         "max_concurrency_text": 8,
         "max_concurrency_vision": 4,
         "retry_max_attempts": 4,
