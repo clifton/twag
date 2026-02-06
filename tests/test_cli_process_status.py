@@ -8,7 +8,7 @@ from twag.cli import cli
 
 
 @contextmanager
-def _fake_connection():
+def _fake_connection(readonly=False):
     yield object()
 
 

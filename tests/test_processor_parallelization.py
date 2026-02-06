@@ -136,7 +136,7 @@ def test_enrich_high_signal_prefers_local_quote_row(monkeypatch, tmp_path) -> No
         )
         conn.commit()
 
-    monkeypatch.setattr(processor_mod, "get_connection", lambda: get_connection(db_path))
+    monkeypatch.setattr(processor_mod, "get_connection", lambda readonly=False: get_connection(db_path))
     monkeypatch.setattr(
         processor_mod,
         "load_config",
