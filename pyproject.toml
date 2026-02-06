@@ -1,10 +1,10 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
 name = "twag"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Twitter aggregator for market-relevant signals"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -48,6 +48,12 @@ twag = "twag.cli:cli"
 Homepage = "https://github.com/clifton/twag"
 Repository = "https://github.com/clifton/twag"
 Issues = "https://github.com/clifton/twag/issues"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "twag/_version.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["twag"]

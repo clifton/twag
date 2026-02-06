@@ -21,6 +21,9 @@ wheels/
 .installed.cfg
 *.egg
 
+# hatch-vcs generated version file
+twag/_version.py
+
 # Virtual environments
 .venv/
 venv/

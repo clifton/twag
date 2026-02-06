@@ -6,66 +6,58 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   release:
-    name: Create Release
+    name: Tag, Build & Publish
     runs-on: ubuntu-latest
-    # Only run if the commit isn't from the release workflow itself
     if: "!contains(github.event.head_commit.message, '[skip release]')"
+    environment:
+      name: pypi
+      url: https://pypi.org/project/twag/
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Get version from pyproject.toml
-        id: version
+      - name: Compute next version
+        id: next
         run: |
-          VERSION=$(grep -m1 'version = ' pyproject.toml | cut -d'"' -f2)
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-
-      - name: Check if tag exists
-        id: check_tag
-        run: |
-          if git rev-parse "v${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
-            echo "exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "exists=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Get next patch version
-        id: next_version
-        if: steps.check_tag.outputs.exists == 'true'
-        run: |
-          # Get latest tag matching this minor version
-          CURRENT="${{ steps.version.outputs.version }}"
-          MAJOR=$(echo $CURRENT | cut -d. -f1)
-          MINOR=$(echo $CURRENT | cut -d. -f2)
-          
-          # Find highest patch for this major.minor
-          LATEST=$(git tag -l "v${MAJOR}.${MINOR}.*" | sort -V | tail -1)
+          # Find the latest v* tag (sorted by version)
+          LATEST=$(git tag -l 'v*' | sort -V | tail -1)
           if [ -z "$LATEST" ]; then
-            PATCH=0
+            NEXT="v0.1.0"
           else
-            PATCH=$(echo $LATEST | cut -d. -f3)
-            PATCH=$((PATCH + 1))
+            MAJOR=$(echo "$LATEST" | sed 's/^v//' | cut -d. -f1)
+            MINOR=$(echo "$LATEST" | sed 's/^v//' | cut -d. -f2)
+            PATCH=$(echo "$LATEST" | sed 's/^v//' | cut -d. -f3)
+            NEXT="v${MAJOR}.${MINOR}.$((PATCH + 1))"
           fi
-          
-          echo "version=${MAJOR}.${MINOR}.${PATCH}" >> $GITHUB_OUTPUT
+          echo "tag=$NEXT" >> "$GITHUB_OUTPUT"
+          echo "Next version: $NEXT"
 
-      - name: Determine release version
-        id: release_version
+      - name: Create and push tag
         run: |
-          if [ "${{ steps.check_tag.outputs.exists }}" == "true" ]; then
-            echo "version=${{ steps.next_version.outputs.version }}" >> $GITHUB_OUTPUT
-          else
-            echo "version=${{ steps.version.outputs.version }}" >> $GITHUB_OUTPUT
-          fi
+          git tag "${{ steps.next.outputs.tag }}"
+          git push origin "${{ steps.next.outputs.tag }}"
 
-      - name: Create Release
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Build package
+        run: uv build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
+
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.release_version.outputs.version }}
-          name: v${{ steps.release_version.outputs.version }}
+          tag_name: ${{ steps.next.outputs.tag }}
+          name: ${{ steps.next.outputs.tag }}
           generate_release_notes: true
           make_latest: true
