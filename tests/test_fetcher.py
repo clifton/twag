@@ -800,29 +800,13 @@ class TestReadTweet:
         assert "read" in args
         assert "https://x.com/user/status/12345" in args
 
-    def test_read_tweet_falls_back_from_truncated_json_full(self, mock_run_bird):
-        """Fallback to --json when --json-full cannot be parsed, preserving recovered media."""
-        truncated_full = (
-            '{"id":"123","author":{"username":"single"},"text":"Single tweet","_raw":{"article":{"article_results":'
-            '{"result":{"media_entities":[{"media_info":{"original_img_url":"https:\\/\\/pbs.twimg.com\\/media\\/'
-            'HAXmiH6acAEiywu.jpg"}}]}}}}'
-        )
-        fallback_json = {
-            "id": "123",
-            "author": {"username": "single"},
-            "text": "Single tweet",
-            "article": {"title": "Deep Dive", "previewText": "Preview"},
-        }
-        mock_run_bird.side_effect = [
-            (truncated_full, "", 0),
-            (json.dumps(fallback_json), "", 0),
-        ]
+    def test_read_tweet_unparseable_returns_none(self, mock_run_bird):
+        """Return None when --json-full output cannot be parsed into a tweet."""
+        mock_run_bird.return_value = ("not valid json", "", 0)
 
         tweet = read_tweet("123")
 
-        assert tweet is not None
-        assert tweet.is_x_article is True
-        assert any(item["url"] == "https://pbs.twimg.com/media/HAXmiH6acAEiywu.jpg" for item in tweet.media_items)
+        assert tweet is None
 
 
 # ============================================================================

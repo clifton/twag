@@ -2,6 +2,7 @@
 
 import json
 import logging
+import random
 import subprocess
 import tempfile
 import threading
@@ -10,13 +11,18 @@ from typing import Any
 
 from ..auth import get_auth_env
 from ..config import load_config
-from .extractors import Tweet, _extract_media_items_from_json_blob, _looks_truncated_text, _needs_retweet_hydration
+from .extractors import Tweet, _looks_truncated_text, _needs_retweet_hydration
 
 log = logging.getLogger(__name__)
 
 _BIRD_RATE_LOCK = threading.Lock()
 _BIRD_LAST_CALL = 0.0
 _MAX_RETWEET_HYDRATIONS = 12
+
+
+def _is_rate_limited(stderr: str) -> bool:
+    """Check if bird CLI stderr indicates a 429 rate limit."""
+    return "429" in stderr or "Rate limit" in stderr or "rate limit" in stderr
 
 
 def _rate_limit_bird() -> None:
@@ -34,23 +40,8 @@ def _rate_limit_bird() -> None:
         _BIRD_LAST_CALL = time.monotonic()
 
 
-def run_bird(args: list[str], timeout: int = 60) -> tuple[str, str, int]:
-    """Run bird CLI command, returning (stdout, stderr, returncode)."""
-    _rate_limit_bird()
-    env = get_auth_env()
-
-    # Build command with auth if available
-    cmd = ["bird", *args]
-
-    # Add auth flags if we have the tokens
-    auth_token = env.get("AUTH_TOKEN")
-    ct0 = env.get("CT0")
-
-    if auth_token and "--auth-token" not in args:
-        cmd.extend(["--auth-token", auth_token])
-    if ct0 and "--ct0" not in args:
-        cmd.extend(["--ct0", ct0])
-
+def _run_bird_once(cmd: list[str], env: dict[str, str], args: list[str], timeout: int) -> tuple[str, str, int]:
+    """Execute a single bird CLI subprocess call."""
     try:
         with tempfile.TemporaryFile(mode="w+") as tmp:
             result = subprocess.run(
@@ -78,6 +69,55 @@ def run_bird(args: list[str], timeout: int = 60) -> tuple[str, str, int]:
     except FileNotFoundError:
         log.error("bird CLI not found on PATH")
         return "", "bird CLI not found", 1
+
+
+def run_bird(args: list[str], timeout: int = 60) -> tuple[str, str, int]:
+    """Run bird CLI command with retry on rate limit, returning (stdout, stderr, returncode)."""
+    _rate_limit_bird()
+    env = get_auth_env()
+
+    # Build command with auth if available
+    cmd = ["bird", *args]
+
+    # Add auth flags if we have the tokens
+    auth_token = env.get("AUTH_TOKEN")
+    ct0 = env.get("CT0")
+
+    if auth_token and "--auth-token" not in args:
+        cmd.extend(["--auth-token", auth_token])
+    if ct0 and "--ct0" not in args:
+        cmd.extend(["--ct0", ct0])
+
+    config = load_config()
+    bird_cfg = config.get("bird", {})
+    max_attempts = bird_cfg.get("retry_max_attempts", 4)
+    base_seconds = bird_cfg.get("retry_base_seconds", 15.0)
+    max_seconds = bird_cfg.get("retry_max_seconds", 120.0)
+
+    for attempt in range(max_attempts):
+        stdout, stderr, returncode = _run_bird_once(cmd, env, args, timeout)
+
+        if returncode == 0 or not _is_rate_limited(stderr):
+            return stdout, stderr, returncode
+
+        if attempt + 1 >= max_attempts:
+            log.error("bird %s rate-limited after %d attempts, giving up", args[0] if args else "?", max_attempts)
+            return stdout, stderr, returncode
+
+        delay = min(base_seconds * (2**attempt), max_seconds)
+        jitter = random.uniform(0, delay * 0.25)
+        wait = delay + jitter
+        log.warning(
+            "bird %s rate-limited (attempt %d/%d), retrying in %.0fs",
+            args[0] if args else "?",
+            attempt + 1,
+            max_attempts,
+            wait,
+        )
+        time.sleep(wait)
+        _rate_limit_bird()
+
+    return stdout, stderr, returncode
 
 
 def _parse_bird_output(stdout: str) -> list[Tweet]:
@@ -225,19 +265,7 @@ def fetch_bookmarks(count: int = 100) -> list[Tweet]:
 
 def read_tweet(tweet_url_or_id: str) -> Tweet | None:
     """Read a single tweet by URL or ID."""
-    # Prefer --json-full for richer article payloads (body/media). Some long payloads
-    # can be truncated by bird; in that case fall back to --json and merge media hints.
     stdout, stderr, code = run_bird(["read", tweet_url_or_id, "--json-full"])
-    recovered_media: list[dict[str, Any]] = []
-    if code == 0:
-        tweets = _parse_bird_output(stdout)
-        if tweets:
-            return tweets[0]
-        recovered_media = _extract_media_items_from_json_blob(stdout)
-    else:
-        log.warning("bird read --json-full failed for %s (exit %d): %s", tweet_url_or_id, code, stderr.strip())
-
-    stdout, stderr, code = run_bird(["read", tweet_url_or_id, "--json"])
 
     if code != 0:
         log.error("bird read failed for %s (exit %d): %s", tweet_url_or_id, code, stderr.strip())
@@ -248,15 +276,7 @@ def read_tweet(tweet_url_or_id: str) -> Tweet | None:
         log.warning("bird read returned output for %s but 0 parseable tweets", tweet_url_or_id)
         return None
 
-    tweet = tweets[0]
-    if recovered_media:
-        existing_urls = {item.get("url") for item in tweet.media_items}
-        for item in recovered_media:
-            if item["url"] not in existing_urls:
-                tweet.media_items.append(item)
-        tweet.has_media = bool(tweet.media_items)
-
-    return tweet
+    return tweets[0]
 
 
 def get_tweet_url(tweet_id: str, author_handle: str = "i") -> str:
