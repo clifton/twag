@@ -43,7 +43,7 @@ def render_digest(
     if min_score is None:
         min_score = config["scoring"]["min_score_for_digest"]
 
-    with get_connection(readonly=True) as conn:
+    with get_connection() as conn:
         tweets = get_tweets_for_digest(conn, date=date, min_score=min_score)
 
         if not tweets:

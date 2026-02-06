@@ -83,7 +83,7 @@ def test_render_digest_uses_labeled_article_sections(monkeypatch, tmp_path):
         )
         conn.commit()
 
-    monkeypatch.setattr("twag.renderer.get_connection", lambda readonly=False: get_connection(db_path))
+    monkeypatch.setattr("twag.renderer.get_connection", lambda: get_connection(db_path))
     output_path = tmp_path / "digest.md"
     content = render_digest(date=digest_date, min_score=5.0, output_path=output_path)
 
