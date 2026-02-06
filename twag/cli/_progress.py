@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from rich.progress import BarColumn, Progress, SpinnerColumn, TaskID, TextColumn, TimeElapsedColumn
+from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TaskID, TextColumn, TimeElapsedColumn
 
 
 class ProgressReporter(Protocol):
@@ -27,32 +27,24 @@ class RichProgressReporter:
         self._count = 0
         self._total = 0
 
+    def _description(self) -> str:
+        return f"{self._label:<25s}"
+
     def update_status(self, message: str) -> None:
         self._label = message
-        self._progress.update(
-            self._task_id,
-            description=f"{self._label} ({self._count}/{self._total})",
-        )
+        self._progress.update(self._task_id, description=self._description())
 
     def advance(self, step: int = 1) -> None:
         if step < 0:
             step = 0
         self._count = min(self._total, self._count + step)
-        self._progress.update(
-            self._task_id,
-            advance=step,
-            description=f"{self._label} ({self._count}/{self._total})",
-        )
+        self._progress.update(self._task_id, advance=step, description=self._description())
 
     def set_total(self, total: int) -> None:
         if total < self._count:
             total = self._count
         self._total = total
-        self._progress.update(
-            self._task_id,
-            total=total,
-            description=f"{self._label} ({self._count}/{self._total})",
-        )
+        self._progress.update(self._task_id, total=total, description=self._description())
 
 
 class NullProgressReporter:
@@ -73,7 +65,8 @@ def create_progress() -> Progress:
     return Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
+        BarColumn(bar_width=30),
+        MofNCompleteColumn(),
         TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
         TimeElapsedColumn(),
     )

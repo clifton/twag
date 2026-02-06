@@ -60,7 +60,7 @@ def process(
 
     if unprocessed_rows:
         with create_progress() as progress:
-            task_id = progress.add_task(f"Processing tweets (0/{len(unprocessed_rows)})", total=len(unprocessed_rows))
+            task_id = progress.add_task("Processing tweets", total=len(unprocessed_rows))
             reporter = RichProgressReporter(progress, task_id, "Processing tweets")
             reporter.set_total(len(unprocessed_rows))
             status_cb, progress_cb, total_cb = make_callbacks(reporter)
@@ -148,7 +148,7 @@ def process(
         console.print("Reprocessing today's dependency tweets...")
         if quote_rows:
             with create_progress() as progress:
-                task_id = progress.add_task(f"Reprocessing dependencies (0/{len(quote_rows)})", total=len(quote_rows))
+                task_id = progress.add_task("Reprocessing dependencies", total=len(quote_rows))
                 reporter = RichProgressReporter(progress, task_id, "Reprocessing dependencies")
                 reporter.set_total(len(quote_rows))
                 status_cb, progress_cb, _ = make_callbacks(reporter)

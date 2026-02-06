@@ -47,7 +47,7 @@ def fetch(
             raise click.ClickException(f"Status not found or unreadable: {normalized}")
 
         with create_progress() as progress:
-            task_id = progress.add_task("Storing status (0/1)", total=1)
+            task_id = progress.add_task("Storing status", total=1)
             reporter = RichProgressReporter(progress, task_id, "Storing status")
             reporter.set_total(1)
             status_cb, progress_cb, _ = make_callbacks(reporter)
@@ -81,7 +81,7 @@ def fetch(
             fetched, new = 0, 0
         else:
             with create_progress() as progress:
-                task_id = progress.add_task(f"Storing tweets (0/{len(tweets)})", total=len(tweets))
+                task_id = progress.add_task("Storing tweets", total=len(tweets))
                 reporter = RichProgressReporter(progress, task_id, "Storing tweets")
                 reporter.set_total(len(tweets))
                 status_cb, progress_cb, _ = make_callbacks(reporter)
@@ -104,7 +104,7 @@ def fetch(
                     console.print("Bookmarks: 0 fetched, 0 new")
                 else:
                     with create_progress() as progress:
-                        task_id = progress.add_task(f"Storing bookmarks (0/{len(bm_tweets)})", total=len(bm_tweets))
+                        task_id = progress.add_task("Storing bookmarks", total=len(bm_tweets))
                         reporter = RichProgressReporter(progress, task_id, "Storing bookmarks")
                         reporter.set_total(len(bm_tweets))
                         status_cb, progress_cb, _ = make_callbacks(reporter)
@@ -158,10 +158,10 @@ def fetch(
                         if account_tweets:
                             with create_progress() as progress:
                                 task_id = progress.add_task(
-                                    f"Storing @{account['handle']} (0/{len(account_tweets)})",
+                                    f"  @{account['handle']}",
                                     total=len(account_tweets),
                                 )
-                                reporter = RichProgressReporter(progress, task_id, f"Storing @{account['handle']}")
+                                reporter = RichProgressReporter(progress, task_id, f"  @{account['handle']}")
                                 reporter.set_total(len(account_tweets))
                                 status_cb, progress_cb, _ = make_callbacks(reporter)
 
