@@ -144,7 +144,12 @@ def _render_tweet(conn: sqlite3.Connection, tweet: sqlite3.Row, compact: bool = 
                 links = [item for item in decoded if isinstance(item, dict)]
         except json.JSONDecodeError:
             links = []
-    normalized_links = normalize_tweet_links(tweet_id=tweet["id"], text=tweet["content"], links=links)
+    normalized_links = normalize_tweet_links(
+        tweet_id=tweet["id"],
+        text=tweet["content"],
+        links=links,
+        has_media=bool(_value(tweet, "has_media", False)),
+    )
     inline_tweet_links = normalized_links.inline_tweet_links
     external_links = normalized_links.external_links
 

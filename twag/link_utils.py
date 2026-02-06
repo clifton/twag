@@ -17,7 +17,12 @@ _STATUS_URL_RE = re.compile(
 )
 _SHORTENER_DOMAINS = {"t.co"}
 _MAX_SHORT_URL_EXPANSIONS = 2
-_MAX_NETWORK_EXPANSION_ATTEMPTS = 12
+_SHORT_URL_HEAD_TIMEOUT_SECONDS = 1.0
+_SHORT_URL_GET_TIMEOUT_SECONDS = 1.5
+# Guardrail for worst-case API request latency when entities are missing and we
+# need network-based t.co expansion. Kept high enough to avoid degrading
+# quality across normal sessions.
+_MAX_NETWORK_EXPANSION_ATTEMPTS = 512
 _network_expansion_attempts = 0
 _network_expansion_lock = Lock()
 
@@ -96,16 +101,20 @@ def _expand_short_url(url: str) -> str:
         if _network_expansion_attempts >= _MAX_NETWORK_EXPANSION_ATTEMPTS:
             return cleaned
         _network_expansion_attempts += 1
-
-    headers = {"User-Agent": "twag/1.0"}
-    try:
-        request = Request(cleaned, method="HEAD", headers=headers)
-        with urlopen(request, timeout=0.35) as response:
-            resolved = clean_url_candidate(response.geturl() or cleaned)
-            if resolved:
-                return resolved
-    except Exception:
-        pass
+    headers = {"User-Agent": "twag/1.0 (+https://github.com/clifton/twag)"}
+    attempts = (
+        ("HEAD", _SHORT_URL_HEAD_TIMEOUT_SECONDS),
+        ("GET", _SHORT_URL_GET_TIMEOUT_SECONDS),
+    )
+    for method, timeout in attempts:
+        try:
+            request = Request(cleaned, method=method, headers=headers)
+            with urlopen(request, timeout=timeout) as response:
+                resolved = clean_url_candidate(response.geturl() or cleaned)
+                if resolved:
+                    return resolved
+        except Exception:
+            continue
     return cleaned
 
 
@@ -195,6 +204,7 @@ def normalize_tweet_links(
     tweet_id: str,
     text: str | None,
     links: list[dict] | None,
+    has_media: bool = False,
 ) -> LinkNormalizationResult:
     """
     Normalize links for display and embedding rules.
@@ -214,11 +224,42 @@ def normalize_tweet_links(
 
     seen_inline_ids: set[str] = set()
     seen_external_urls: set[str] = set()
+    unresolved_short_links: list[tuple[str, str]] = []
+
+    for link in normalized_links:
+        raw_url = link["url"]
+        expanded_url = link["expanded_url"]
+        resolved = expanded_url or raw_url
+        if resolved and _is_shortener_url(resolved):
+            unresolved_short_links.append((raw_url, expanded_url))
+
+    # Trailing unresolved t.co links are often self/media pointers that should
+    # not render in digests/UI. For non-media tweets, apply this only when at
+    # least one link in the post already resolved to a non-short URL.
+    has_resolved_non_short = any(
+        bool(
+            (item.get("expanded_url") or item.get("url"))
+            and not _is_shortener_url(item.get("expanded_url") or item.get("url"))
+        )
+        for item in normalized_links
+    )
+    should_prune_trailing_unresolved = has_media or has_resolved_non_short
+    if should_prune_trailing_unresolved and unresolved_short_links:
+        unresolved_values = {value for pair in unresolved_short_links for value in pair if value}
+        ordered_urls = extract_urls_from_text(raw_text)
+        trailing = ordered_urls[-1] if ordered_urls else ""
+        if trailing and trailing in unresolved_values:
+            for short_raw, short_expanded in unresolved_short_links:
+                if trailing in (short_raw, short_expanded):
+                    urls_to_remove.add(short_raw)
+                    urls_to_remove.add(short_expanded)
 
     for link in normalized_links:
         raw_url = link["url"]
         expanded_url = link["expanded_url"]
         display_url = link["display_url"]
+        if raw_url in urls_to_remove or expanded_url in urls_to_remove:
+            continue
         status_id = parse_tweet_status_id(expanded_url) or parse_tweet_status_id(raw_url)
         if status_id:
             urls_to_remove.add(raw_url)

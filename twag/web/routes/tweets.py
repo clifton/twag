@@ -63,7 +63,12 @@ def _build_quote_embed(
                 links_json = [item for item in decoded if isinstance(item, dict)]
         except json.JSONDecodeError:
             links_json = []
-    normalized = normalize_links_for_display(tweet_id=row["id"], text=content, links=links_json)
+    normalized = normalize_links_for_display(
+        tweet_id=row["id"],
+        text=content,
+        links=links_json,
+        has_media=bool(row["has_media"]),
+    )
     nested_quote_id = row["quote_tweet_id"] or _inline_quote_id_from_links(row["id"], normalized.inline_tweet_links)
     if nested_quote_id and nested_quote_id != row["id"]:
         nested_embed = _build_quote_embed(conn, nested_quote_id, depth=depth + 1, seen=visited)
@@ -136,7 +141,12 @@ async def list_tweets(
         tweets_data = []
         for t in tweets:
             content_raw = t.content or ""
-            normalized = normalize_links_for_display(tweet_id=t.id, text=content_raw, links=t.links)
+            normalized = normalize_links_for_display(
+                tweet_id=t.id,
+                text=content_raw,
+                links=t.links,
+                has_media=bool(t.has_media),
+            )
             inline_links = normalized.inline_tweet_links
 
             # Determine quote tweet
@@ -197,6 +207,7 @@ async def list_tweets(
                     tweet_id=display_tweet_id,
                     text=display_content,
                     links=t.links,
+                    has_media=bool(t.has_media),
                 ).display_text
 
             content = decode_html_entities(t.content)

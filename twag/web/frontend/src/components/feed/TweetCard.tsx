@@ -14,19 +14,6 @@ interface TweetCardProps {
   tweet: Tweet;
 }
 
-function compactLinkLabel(rawLabel: string, fallbackUrl: string): string {
-  const label = (rawLabel || fallbackUrl || "").trim();
-  if (label.length <= 64) return label;
-  try {
-    const parsed = new URL(fallbackUrl);
-    const path = parsed.pathname && parsed.pathname !== "/" ? parsed.pathname : "";
-    const shortPath = path.length > 22 ? `${path.slice(0, 22)}…` : path;
-    return `${parsed.hostname}${shortPath}`;
-  } catch {
-    return `${label.slice(0, 61)}…`;
-  }
-}
-
 function hasVisualSignal(items: MediaItem[] | null | undefined): boolean {
   if (!items?.length) return false;
   return items.some(
@@ -162,22 +149,6 @@ export function TweetCard({ tweet }: TweetCardProps) {
         <p className="mt-2 text-xs text-zinc-300 leading-snug">
           {tweet.link_summary}
         </p>
-      )}
-
-      {tweet.external_links && tweet.external_links.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
-          {tweet.external_links.slice(0, 3).map((link) => (
-            <a
-              key={`${tweet.id}-ext-${link.url}`}
-              href={link.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[11px] text-cyan-300/85 hover:text-cyan-200 transition-colors underline decoration-cyan-700/40 underline-offset-2"
-            >
-              {compactLinkLabel(link.display_url || "", link.url)}
-            </a>
-          ))}
-        </div>
       )}
 
       {/* X article summary */}

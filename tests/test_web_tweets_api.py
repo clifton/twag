@@ -298,3 +298,66 @@ def test_list_tweets_builds_multiple_inline_quote_embeds(monkeypatch, tmp_path):
 
     assert tweet["quote_embed"]["id"] == "2101"
     assert [q["id"] for q in tweet["inline_quote_embeds"]] == ["2202"]
+
+
+def test_list_tweets_drops_unresolved_short_media_link(monkeypatch, tmp_path):
+    db_path = tmp_path / "twag_api_media_short_link.db"
+    monkeypatch.setattr("twag.web.app.get_database_path", lambda: db_path)
+    app = create_app()
+
+    with get_connection(db_path) as conn:
+        _insert_processed_tweet(
+            conn,
+            tweet_id="3001",
+            author_handle="media_user",
+            content="Chart update https://t.co/only",
+            has_media=True,
+        )
+        conn.commit()
+
+    client = TestClient(app)
+    response = client.get("/api/tweets", params={"author": "media_user", "since": "30d"})
+    assert response.status_code == 200
+    tweet = response.json()["tweets"][0]
+
+    assert tweet["display_content"] == "Chart update"
+    assert tweet["external_links"] == []
+
+
+def test_list_tweets_drops_trailing_unresolved_short_link_when_other_link_resolves(monkeypatch, tmp_path):
+    db_path = tmp_path / "twag_api_short_link_mix.db"
+    monkeypatch.setattr("twag.web.app.get_database_path", lambda: db_path)
+    app = create_app()
+
+    with get_connection(db_path) as conn:
+        _insert_processed_tweet(
+            conn,
+            tweet_id="3101",
+            author_handle="mixed_user",
+            content="LLM for voice interactions without ASR stage https://t.co/ext https://t.co/self",
+            links=[
+                {
+                    "url": "https://t.co/ext",
+                    "expanded_url": "https://github.com/fixie-ai/ultravox",
+                    "display_url": "github.com/fixie-ai/ultravox",
+                }
+            ],
+            has_media=False,
+        )
+        conn.commit()
+
+    client = TestClient(app)
+    response = client.get("/api/tweets", params={"author": "mixed_user", "since": "30d"})
+    assert response.status_code == 200
+    tweet = response.json()["tweets"][0]
+
+    assert (
+        tweet["display_content"] == "LLM for voice interactions without ASR stage https://github.com/fixie-ai/ultravox"
+    )
+    assert tweet["external_links"] == [
+        {
+            "url": "https://github.com/fixie-ai/ultravox",
+            "display_url": "github.com/fixie-ai/ultravox",
+            "domain": "github.com",
+        }
+    ]
