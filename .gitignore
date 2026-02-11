@@ -63,3 +63,6 @@ Thumbs.db
 tmp/*
 !tmp/.gitkeep
 .clawdhub/
+
+# Nightshift plan artifacts (keep out of version control)
+.nightshift-plan
