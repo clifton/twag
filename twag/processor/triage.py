@@ -238,8 +238,10 @@ def _select_article_top_visual(
             continue
 
         kind = (item.get("kind") or "").strip().lower()
-        chart = item.get("chart") if isinstance(item.get("chart"), dict) else {}
-        table = item.get("table") if isinstance(item.get("table"), dict) else {}
+        raw_chart = item.get("chart")
+        raw_table = item.get("table")
+        chart = raw_chart if isinstance(raw_chart, dict) else {}
+        table = raw_table if isinstance(raw_table, dict) else {}
 
         chart_text = " ".join(
             [

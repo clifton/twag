@@ -48,10 +48,12 @@ def _infer_kind(item: dict[str, Any]) -> str:
 
 def _extract_takeaway(item: dict[str, Any], kind: str) -> str:
     if kind == "chart":
-        chart = item.get("chart") if isinstance(item.get("chart"), dict) else {}
+        raw_chart = item.get("chart")
+        chart = raw_chart if isinstance(raw_chart, dict) else {}
         return str(chart.get("insight") or chart.get("implication") or chart.get("description") or "").strip()
     if kind == "table":
-        table = item.get("table") if isinstance(item.get("table"), dict) else {}
+        raw_table = item.get("table")
+        table = raw_table if isinstance(raw_table, dict) else {}
         return str(table.get("summary") or table.get("description") or "").strip()
     if kind in {"document", "screenshot"}:
         return str(item.get("prose_summary") or item.get("short_description") or "").strip()

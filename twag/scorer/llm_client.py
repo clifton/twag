@@ -23,6 +23,15 @@ def get_gemini_client():
     return genai.Client(api_key=get_api_key("GEMINI_API_KEY"))
 
 
+def _extract_anthropic_text(content_blocks: list[Any]) -> str:
+    """Return first textual content block from Anthropic response."""
+    for block in content_blocks:
+        text = getattr(block, "text", None)
+        if isinstance(text, str) and text.strip():
+            return text
+    return ""
+
+
 def _call_anthropic(model: str, prompt: str, max_tokens: int = 2048) -> str:
     """Call Anthropic API and return text response."""
     client = get_anthropic_client()
@@ -31,7 +40,7 @@ def _call_anthropic(model: str, prompt: str, max_tokens: int = 2048) -> str:
         max_tokens=max_tokens,
         messages=[{"role": "user", "content": prompt}],
     )
-    return response.content[0].text
+    return _extract_anthropic_text(response.content)
 
 
 def _call_gemini(model: str, prompt: str, max_tokens: int = 2048, reasoning: str | None = None) -> str:
@@ -80,7 +89,7 @@ def _call_anthropic_vision(model: str, image_url: str, prompt: str, max_tokens: 
             }
         ],
     )
-    return response.content[0].text
+    return _extract_anthropic_text(response.content)
 
 
 def _call_gemini_vision(model: str, image_url: str, prompt: str, max_tokens: int = 1024) -> str:

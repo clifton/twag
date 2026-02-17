@@ -300,7 +300,8 @@ def _needs_retweet_hydration(tweet: Tweet) -> bool:
 
 def _extract_article(data: dict[str, Any]) -> tuple[bool, str | None, str | None, str | None]:
     """Extract X native article payload fields from bird JSON."""
-    top_article = data.get("article") if isinstance(data.get("article"), dict) else {}
+    raw_top_article = data.get("article")
+    top_article = raw_top_article if isinstance(raw_top_article, dict) else {}
     raw_article = (
         data.get("_raw", {}).get("article", {}).get("article_results", {}).get("result", {})
         if isinstance(data.get("_raw"), dict)
@@ -393,7 +394,8 @@ def _extract_media_items(data: dict[str, Any]) -> list[dict[str, Any]]:
 
     cover_media = raw_article_result.get("cover_media") if isinstance(raw_article_result, dict) else {}
     if isinstance(cover_media, dict):
-        cover_info = cover_media.get("media_info") if isinstance(cover_media.get("media_info"), dict) else {}
+        raw_cover_info = cover_media.get("media_info")
+        cover_info = raw_cover_info if isinstance(raw_cover_info, dict) else {}
         cover_url = cover_info.get("original_img_url")
         if cover_url:
             candidates.append(

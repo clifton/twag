@@ -1,7 +1,6 @@
 """Tests for processor parallelization and enrichment throughput helpers."""
 
 import threading
-import time
 from datetime import datetime, timezone
 
 import twag.processor.pipeline as pipeline_mod
@@ -9,9 +8,16 @@ import twag.processor.triage as triage_mod
 from twag.db import get_connection, init_db, insert_tweet, update_tweet_processing
 from twag.scorer import EnrichmentResult, TriageResult
 
+# Fixed timestamp for deterministic test data.
+_FIXED_TS = datetime(2025, 1, 1, tzinfo=timezone.utc)
+
 
 def test_triage_overlap_with_summaries_using_dedicated_pool(monkeypatch, tmp_path) -> None:
-    """Summary tasks should run before all triage batches fully complete."""
+    """Summary tasks should start before all triage batches finish.
+
+    Uses event-based synchronization instead of wall-clock timing to avoid
+    flakiness under CPU contention (CI, heavy load).
+    """
     db_path = tmp_path / "triage_parallel.db"
     init_db(db_path)
 
@@ -22,7 +28,7 @@ def test_triage_overlap_with_summaries_using_dedicated_pool(monkeypatch, tmp_pat
                 tweet_id=f"tweet-{idx}",
                 author_handle=f"acct{idx}",
                 content=f"Long content {idx} " + ("x" * 700),
-                created_at=datetime.now(timezone.utc),
+                created_at=_FIXED_TS,
                 source="test",
             )
             assert inserted is True
@@ -48,18 +54,19 @@ def test_triage_overlap_with_summaries_using_dedicated_pool(monkeypatch, tmp_pat
             },
         )
 
-        events: dict[str, float] = {}
-        summary_starts: list[float] = []
-        lock = threading.Lock()
+        # Event-based synchronization: track whether a summary was submitted
+        # before triage batch 2 completed.
+        summary_started = threading.Event()
+        triage_2_done = threading.Event()
+        summary_before_triage_2 = threading.Event()
 
         def _fake_triage_tweets_batch(batch, model=None, provider=None):
             tweet_id = batch[0]["id"]
             batch_no = 1 if tweet_id == "tweet-1" else 2
-            with lock:
-                events[f"triage_{batch_no}_start"] = time.perf_counter()
-            time.sleep(0.04 if batch_no == 1 else 0.18)
-            with lock:
-                events[f"triage_{batch_no}_end"] = time.perf_counter()
+            if batch_no == 2:
+                # Block batch 2 briefly so the summary task can start first.
+                summary_started.wait(timeout=5)
+                triage_2_done.set()
             return [
                 TriageResult(
                     tweet_id=item["id"],
@@ -71,9 +78,9 @@ def test_triage_overlap_with_summaries_using_dedicated_pool(monkeypatch, tmp_pat
             ]
 
         def _fake_summarize_tweet(tweet_text, handle, model=None, provider=None):
-            with lock:
-                summary_starts.append(time.perf_counter())
-            time.sleep(0.03)
+            summary_started.set()
+            if not triage_2_done.is_set():
+                summary_before_triage_2.set()
             return f"summary for @{handle}"
 
         monkeypatch.setattr(triage_mod, "triage_tweets_batch", _fake_triage_tweets_batch)
@@ -93,9 +100,8 @@ def test_triage_overlap_with_summaries_using_dedicated_pool(monkeypatch, tmp_pat
         )
 
         assert len(results) == 2
-        assert summary_starts
-        assert "triage_2_end" in events
-        assert summary_starts[0] < events["triage_2_end"]
+        assert summary_started.is_set(), "summarize_tweet was never called"
+        assert summary_before_triage_2.is_set(), "summary should have started before triage batch 2 completed"
 
 
 def test_enrich_high_signal_prefers_local_quote_row(monkeypatch, tmp_path) -> None:
@@ -109,7 +115,7 @@ def test_enrich_high_signal_prefers_local_quote_row(monkeypatch, tmp_path) -> No
             tweet_id="quote-1",
             author_handle="quotedacct",
             content="Quoted local context",
-            created_at=datetime.now(timezone.utc),
+            created_at=_FIXED_TS,
             source="test",
         )
         assert inserted_quote is True
@@ -119,7 +125,7 @@ def test_enrich_high_signal_prefers_local_quote_row(monkeypatch, tmp_path) -> No
             tweet_id="main-1",
             author_handle="mainacct",
             content="Main tweet content",
-            created_at=datetime.now(timezone.utc),
+            created_at=_FIXED_TS,
             source="test",
             has_quote=True,
             quote_tweet_id="quote-1",
