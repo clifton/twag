@@ -4,7 +4,7 @@
 
 ```bash
 # Read the daily digest file
-cat memory/twitter-feed/YYYY-MM-DD.md
+cat ~/.local/share/twag/digests/YYYY-MM-DD.md
 ```
 
 ## Raw Output Structure
