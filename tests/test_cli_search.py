@@ -1,5 +1,6 @@
 """CLI tests for search/browse behavior."""
 
+import json
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
@@ -264,3 +265,118 @@ def test_feed_tweet_to_search_result_conversion():
     assert sr.categories == ft.categories
     assert sr.tickers == ft.tickers
     assert sr.rank == 0.0
+
+
+def test_browse_json_includes_feed_fields(monkeypatch):
+    """Browse mode JSON should include has_media, has_link, url, and other FeedTweet fields."""
+    import twag.cli.search as cli_mod
+
+    def _fake_get_feed_tweets(conn, **kwargs):
+        return [_make_feed_tweet(has_media=True, has_link=True)]
+
+    monkeypatch.setattr(cli_mod, "get_connection", _fake_connection)
+    monkeypatch.setattr(cli_mod, "get_feed_tweets", _fake_get_feed_tweets)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["search", "-f", "json"])
+
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert len(data) == 1
+    entry = data[0]
+    assert entry["has_media"] is True
+    assert entry["has_link"] is True
+    assert entry["url"] == "https://x.com/feeduser/status/456"
+    assert entry["has_quote"] is False
+    assert entry["is_x_article"] is False
+    assert entry["is_retweet"] is False
+    # Core fields present
+    assert entry["relevance_score"] == 9.0
+    assert entry["categories"] == ["equities"]
+
+
+def test_browse_json_includes_media_analysis(monkeypatch):
+    """Browse mode JSON should include media_analysis when present."""
+    import twag.cli.search as cli_mod
+
+    def _fake_get_feed_tweets(conn, **kwargs):
+        return [_make_feed_tweet(has_media=True, media_analysis="Chart shows uptrend")]
+
+    monkeypatch.setattr(cli_mod, "get_connection", _fake_connection)
+    monkeypatch.setattr(cli_mod, "get_feed_tweets", _fake_get_feed_tweets)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["search", "-f", "json"])
+
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert data[0]["media_analysis"] == "Chart shows uptrend"
+
+
+def test_browse_json_omits_absent_optional_fields(monkeypatch):
+    """Browse mode JSON should omit optional fields when not present."""
+    import twag.cli.search as cli_mod
+
+    def _fake_get_feed_tweets(conn, **kwargs):
+        return [_make_feed_tweet()]
+
+    monkeypatch.setattr(cli_mod, "get_connection", _fake_connection)
+    monkeypatch.setattr(cli_mod, "get_feed_tweets", _fake_get_feed_tweets)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["search", "-f", "json"])
+
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    entry = data[0]
+    assert "media_analysis" not in entry
+    assert "link_summary" not in entry
+    assert "article_summary" not in entry
+    assert "retweeted_by" not in entry
+    assert "original_author" not in entry
+
+
+def test_fts_search_json_unchanged(monkeypatch):
+    """FTS search JSON should still use SearchResult format (has rank, no has_media)."""
+    import twag.cli.search as cli_mod
+
+    def _fake_search_tweets(conn, query, **kwargs):
+        return [_make_search_result()]
+
+    monkeypatch.setattr(cli_mod, "get_connection", _fake_connection)
+    monkeypatch.setattr(cli_mod, "search_tweets", _fake_search_tweets)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["search", "inflation", "-f", "json"])
+
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    entry = data[0]
+    assert "rank" in entry
+    assert "has_media" not in entry
+    assert entry["url"] == "https://x.com/testuser/status/123"
+
+
+def test_browse_json_article_fields(monkeypatch):
+    """Browse mode JSON should include article_summary for X Articles."""
+    import twag.cli.search as cli_mod
+
+    def _fake_get_feed_tweets(conn, **kwargs):
+        return [
+            _make_feed_tweet(
+                is_x_article=True,
+                article_summary_short="Key takeaways from the report",
+            )
+        ]
+
+    monkeypatch.setattr(cli_mod, "get_connection", _fake_connection)
+    monkeypatch.setattr(cli_mod, "get_feed_tweets", _fake_get_feed_tweets)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["search", "-f", "json"])
+
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    entry = data[0]
+    assert entry["is_x_article"] is True
+    assert entry["article_summary"] == "Key takeaways from the report"

@@ -1,41 +1,65 @@
 # Twitter Digest Format for Telegram
 
-## Command to Generate Raw Digest
+## Command
 
 ```bash
-# Read the daily digest file
-cat memory/twitter-feed/YYYY-MM-DD.md
+twag search --time 2h -s 6 -f json -n 50
 ```
 
-## Raw Output Structure
+Adjust `--time` for the lookback window (e.g., `10h` for overnight, `42h` for weekend).
 
-The digest file contains entries like:
+## JSON Input
 
-```markdown
-### @DeItaone (03:45 AM)
+Each entry in the JSON array looks like:
 
-*SPOT GOLD FALLS 5%, ADDING TO BIGGEST PLUNGE IN OVER A DECADE
-
-💡 **Insight:** Spot Gold suffers biggest one-day plunge in over a decade, down 5%.
-
-📊 **Tickers:** GC=F, GLD
-
-🏷️ **Categories:** Commodities
-
-📊 **Chart Analysis:**
-> [chart description if present]
-
-[View tweet](https://x.com/DeItaone/status/2018168852144701668)
+```json
+{
+  "id": "2018168852144701668",
+  "url": "https://x.com/DeItaone/status/2018168852144701668",
+  "author_handle": "DeItaone",
+  "author_name": "DeItaone",
+  "created_at": "2026-02-02T03:45:00+00:00",
+  "relevance_score": 9.2,
+  "categories": ["commodities"],
+  "signal_tier": "critical",
+  "tickers": ["GC=F", "GLD"],
+  "bookmarked": false,
+  "summary": "Spot Gold suffers biggest one-day plunge in over a decade, down 5%.",
+  "content": "*SPOT GOLD FALLS 5%, ADDING TO BIGGEST PLUNGE IN OVER A DECADE",
+  "has_media": false,
+  "has_link": false,
+  "has_quote": false,
+  "is_x_article": false,
+  "is_retweet": false,
+  "media_analysis": "Chart shows gold price collapse with volume spike"
+}
 ```
 
-## Telegram Formatting Rules
+Key fields for formatting:
+- **`has_media`** — use `[📊](url)` when `true`, `[🔗](url)` when `false`
+- **`categories`** — helps group tweets by theme
+- **`tickers`** — mention when relevant
+- **`summary`** — use as the basis for bullet text
+- **`media_analysis`** — incorporate chart context when present
 
-1. **No markdown tables** - use bullet lists
-2. **No ### headers** - use **BOLD CAPS** for section headers
-3. **Citations** - use `[🔗](url)` for link icons, `[📊](url)` if tweet has a chart
-4. **Bullet points** - use `•` character
+## Transformation Rules
 
-## Final Telegram Message Format
+1. **Group by theme** — Don't list tweets chronologically; group by topic (Fed, metals, earnings, etc.)
+2. **Condense** — Multiple tweets on same topic become bullet points under one header
+3. **Extract key facts** — Pull out the numbers and key claims
+4. **Add context** — Note who said what when attribution matters (e.g., "BofA:", "Timiraos:")
+5. **Chart emoji** — Use `[📊](url)` when `has_media: true`
+6. **Link emoji** — Use `[🔗](url)` when `has_media: false`
+7. **Skip noise** — Omit low-signal tweets, RTs without added value
+
+## Formatting Rules
+
+1. **No markdown tables** — use bullet lists
+2. **No ### headers** — use **BOLD CAPS** for section headers
+3. **Citations** — use `[🔗](url)` or `[📊](url)` inline at the end of each bullet
+4. **Bullet points** — use `•` character
+
+## Example Output
 
 ```
 **WARSH FED CHAIR NOMINATION**
@@ -77,16 +101,6 @@ The digest file contains entries like:
 • China CXMT selling RAM at $138 vs global $300-400 (bearish MU) [🔗](https://x.com/Pirat_Nation/status/2018158180187226128)
 • S. Korea halted program trading sell orders in KOSPI [🔗](https://x.com/zerohedge/status/2018176244911632696)
 ```
-
-## Key Transformation Rules
-
-1. **Group by theme** - Don't list tweets chronologically; group by topic (Fed, metals, earnings, etc.)
-2. **Condense** - Multiple tweets on same topic become bullet points under one header
-3. **Extract key facts** - Pull out the numbers and key claims
-4. **Add context** - Note who said what when attribution matters (e.g., "BofA:", "Timiraos:")
-5. **Chart emoji** - Use `[📊](url)` when the tweet contains a chart image
-6. **Link emoji** - Use `[🔗](url)` for regular citations
-7. **Skip noise** - Omit low-signal tweets, RTs without added value
 
 ## Example Date
 

@@ -154,6 +154,15 @@ def search(
                 order_by=feed_order,
                 limit=limit,
             )
+
+        if not feed_results:
+            console.print("No results found.")
+            return
+
+        if fmt == "json":
+            _output_feed_json(feed_results)
+            return
+
         results = [_feed_tweet_to_search_result(ft) for ft in feed_results]
 
     if not results:
@@ -184,6 +193,43 @@ def _feed_tweet_to_search_result(ft: FeedTweet) -> SearchResult:
         bookmarked=ft.bookmarked,
         rank=0.0,
     )
+
+
+def _output_feed_json(feed_tweets: list[FeedTweet]):
+    """Output feed tweets as rich JSON for agent/digest consumption."""
+    output = []
+    for ft in feed_tweets:
+        entry = {
+            "id": ft.id,
+            "url": f"https://x.com/{ft.author_handle}/status/{ft.id}",
+            "author_handle": ft.author_handle,
+            "author_name": ft.author_name,
+            "created_at": ft.created_at.isoformat() if ft.created_at else None,
+            "relevance_score": ft.relevance_score,
+            "categories": ft.categories,
+            "signal_tier": ft.signal_tier,
+            "tickers": ft.tickers,
+            "bookmarked": ft.bookmarked,
+            "summary": ft.summary,
+            "content": ft.content,
+            "has_media": ft.has_media,
+            "has_link": ft.has_link,
+            "has_quote": ft.has_quote,
+            "is_x_article": ft.is_x_article,
+            "is_retweet": ft.is_retweet,
+        }
+        # Conditionally include optional fields (keeps JSON compact)
+        if ft.media_analysis:
+            entry["media_analysis"] = ft.media_analysis
+        if ft.link_summary:
+            entry["link_summary"] = ft.link_summary
+        if ft.is_x_article and ft.article_summary_short:
+            entry["article_summary"] = ft.article_summary_short
+        if ft.is_retweet and ft.retweeted_by_handle:
+            entry["retweeted_by"] = ft.retweeted_by_handle
+            entry["original_author"] = ft.original_author_handle
+        output.append(entry)
+    click.echo(json.dumps(output, indent=2))
 
 
 def _output_brief(results):
