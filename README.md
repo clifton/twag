@@ -216,6 +216,15 @@ twag search "market" --min-score 7          # High-signal only
 - Boolean: `inflation AND fed`, `fed NOT fomc`
 - Prefix: `infla*` (wildcard)
 
+### Analyze Commands
+
+```bash
+twag analyze 1234567890123456789              # Analyze by ID
+twag analyze https://x.com/user/status/123    # Analyze by URL
+twag analyze 1234567890123456789 --reprocess  # Force re-analyze
+twag analyze 1234567890123456789 -m gemini-2.0-flash  # Override model
+```
+
 ### Digest Commands
 
 ```bash
@@ -257,9 +266,12 @@ twag export --days 7            # Export recent data
 ```bash
 twag db path                    # Show database location
 twag db shell                   # Open SQLite shell
+twag db init                    # Initialize/reset database
 twag db rebuild-fts             # Rebuild search index
-twag db dump                    # Backup database
+twag db dump                    # Backup database (auto-named file)
+twag db dump --stdout           # Backup to stdout
 twag db restore backup.sql      # Restore from backup
+twag db restore backup.sql --force  # Restore without confirmation
 ```
 
 ### Web Interface
@@ -301,14 +313,15 @@ Tweets are scored 0-10:
 
 | Score | Signal Level | Behavior |
 |-------|--------------|----------|
-| 8-10 | High signal | Telegram alert (if configured) |
-| 6-7 | Market relevant | Included in digests |
-| 4-5 | News/context | Searchable, not in digests |
-| 0-3 | Noise | Stored but filtered out |
+| 8-10 | Alert | Telegram alert (if configured) |
+| 7 | High signal | Enriched, included in digests |
+| 5-6 | Market relevant | Included in digests |
+| 3-4 | News/context | Searchable, not in digests |
+| 0-2 | Noise | Stored but filtered out |
 
 ### Categories
 
-`fed_policy`, `inflation`, `job_market`, `macro_data`, `earnings`, `equities`, `rates_fx`, `credit`, `banks`, `consumer_spending`, `commodities`, `energy`, `geopolitical`, `tech_business`, `ai_advancement`, `crypto`
+`fed_policy`, `inflation`, `job_market`, `macro_data`, `earnings`, `equities`, `rates_fx`, `credit`, `banks`, `consumer_spending`, `capex`, `commodities`, `energy`, `metals_mining`, `geopolitical`, `sanctions`, `tech_business`, `ai_advancement`, `crypto`, `noise`
 
 ## Automation
 

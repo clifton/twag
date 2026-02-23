@@ -196,9 +196,11 @@ twag accounts list -t 1       # Tier-1 only
 twag accounts add @handle     # Add account
 twag accounts add @handle -t 1  # Add as tier-1
 twag accounts promote @handle # Promote to tier-1
+twag accounts demote @handle  # Demote to tier-2
 twag accounts mute @handle    # Mute account
 twag accounts boost @handle --amount 10
 twag accounts decay           # Apply daily decay
+twag accounts import          # Import from following.txt
 ```
 
 ### Stats & Maintenance
@@ -215,9 +217,12 @@ twag export --days 7          # Export recent
 ```bash
 twag db path                  # Show location
 twag db shell                 # SQLite shell
+twag db init                  # Initialize/reset database
 twag db rebuild-fts           # Rebuild search index
 twag db dump                  # Backup
+twag db dump --stdout         # Backup to stdout
 twag db restore backup.sql    # Restore
+twag db restore backup.sql --force  # Restore without confirmation
 ```
 
 ### Web UI
@@ -240,14 +245,15 @@ twag config set key value     # Update setting
 
 | Score | Level | Behavior |
 |-------|-------|----------|
-| 8-10 | High signal | Telegram alert |
-| 6-7 | Market relevant | In digests |
-| 4-5 | News/context | Searchable |
-| 0-3 | Noise | Filtered out |
+| 8-10 | Alert | Telegram alert |
+| 7 | High signal | Enriched, in digests |
+| 5-6 | Market relevant | In digests |
+| 3-4 | News/context | Searchable |
+| 0-2 | Noise | Filtered out |
 
 ## Categories
 
-`fed_policy`, `inflation`, `job_market`, `macro_data`, `earnings`, `equities`, `rates_fx`, `credit`, `banks`, `consumer_spending`, `commodities`, `energy`, `geopolitical`, `tech_business`, `ai_advancement`, `crypto`
+`fed_policy`, `inflation`, `job_market`, `macro_data`, `earnings`, `equities`, `rates_fx`, `credit`, `banks`, `consumer_spending`, `capex`, `commodities`, `energy`, `metals_mining`, `geopolitical`, `sanctions`, `tech_business`, `ai_advancement`, `crypto`, `noise`
 
 ## Environment Variables
 

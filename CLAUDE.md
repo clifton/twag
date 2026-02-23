@@ -20,15 +20,20 @@ FETCH → PROCESS → DIGEST
 **Core packages:**
 - `twag/models/` — Pydantic data models (tweet, scoring, media, links, config, API)
 - `twag/auth.py` — Shared credential and env-file parsing
-- `twag/db/` — SQLite database layer (schema, connections, CRUD, search, maintenance)
+- `twag/config.py` — Runtime config (paths, defaults, following file)
+- `twag/db/` — SQLite database layer (schema, connections, CRUD, search, maintenance, accounts, narratives, reactions, time utils)
 - `twag/fetcher/` — bird CLI integration + tweet parsing/extraction
 - `twag/scorer/` — LLM scoring, prompts, and client management
 - `twag/processor/` — Pipeline orchestration (storage, dependencies, triage, pipeline)
 - `twag/cli/` — Rich-enhanced Click CLI commands
+- `twag/notifier.py` — Telegram alert delivery
 - `twag/renderer.py` — Markdown digest generation
+- `twag/tables.py` — Rich table formatting for CLI output
+- `twag/media.py` — Media handling utilities
 - `twag/link_utils.py` — URL expansion and embed classification
 - `twag/article_visuals.py` — Visual selection for X Articles
-- `twag/web/` — FastAPI backend
+- `twag/article_sections.py` — Article section extraction
+- `twag/web/` — FastAPI backend (app, tweet_utils, routes: tweets, context, prompts, reactions)
 - `twag/web/frontend/` — React feed UI
 
 ## Key Files
