@@ -13,8 +13,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "llm": {
         "triage_model": "gemini-3-flash-preview",
         "triage_provider": "gemini",
-        "enrichment_model": "claude-opus-4-5-20251101",
-        "enrichment_provider": "anthropic",
+        "enrichment_model": "gemini-3.1-pro-preview",
+        "enrichment_provider": "gemini",
         "vision_model": "gemini-3-flash-preview",
         "vision_provider": "gemini",
         "max_concurrency_triage": 6,
