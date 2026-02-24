@@ -2,7 +2,9 @@
 
 import json
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import datetime, timezone
+from typing import Any
 
 from click.testing import CliRunner
 
@@ -15,8 +17,8 @@ def _fake_connection(readonly=False):
     yield object()
 
 
-def _make_search_result(**overrides):
-    defaults = dict(
+def _make_search_result(**overrides: Any) -> SearchResult:
+    default = SearchResult(
         id="123",
         author_handle="testuser",
         author_name="Test User",
@@ -30,12 +32,11 @@ def _make_search_result(**overrides):
         bookmarked=False,
         rank=-5.0,
     )
-    defaults.update(overrides)
-    return SearchResult(**defaults)
+    return replace(default, **overrides)
 
 
-def _make_feed_tweet(**overrides):
-    defaults = dict(
+def _make_feed_tweet(**overrides: Any) -> FeedTweet:
+    default = FeedTweet(
         id="456",
         author_handle="feeduser",
         author_name="Feed User",
@@ -74,8 +75,7 @@ def _make_feed_tweet(**overrides):
         original_content=None,
         reactions=[],
     )
-    defaults.update(overrides)
-    return FeedTweet(**defaults)
+    return replace(default, **overrides)
 
 
 def test_search_with_query_calls_search_tweets(monkeypatch):
