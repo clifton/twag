@@ -152,10 +152,10 @@ Add to your OpenClaw cron configuration:
       "sessionTarget": "isolated",
       "payload": {
         "kind": "agentTurn",
-        "message": "Generate an overnight tweet digest. Run: twag search --time 10h -s 6 -f full. Group tweets by theme, condense into bullets, format per TELEGRAM_DIGEST_FORMAT.md. Use [🔗](url) for citations, [📊](url) for charts. If nothing notable, reply NO_REPLY."
+        "message": "Generate an overnight tweet digest. Run: twag search --time 10h -s 6 -f json -n 50\n\nIf no results or nothing notable, reply NO_REPLY.\nOtherwise, format as a Telegram digest per TELEGRAM_DIGEST_FORMAT.md."
       },
       "delivery": {
-        "mode": "announce",
+        "mode": "direct",
         "channel": "telegram",
         "to": "YOUR_CHAT_ID"
       },
@@ -171,10 +171,10 @@ Add to your OpenClaw cron configuration:
       "sessionTarget": "isolated",
       "payload": {
         "kind": "agentTurn",
-        "message": "Generate a 2-hour tweet digest. Run: twag search --time 2h -s 6 -f full. Group by theme, condense into bullets, format per TELEGRAM_DIGEST_FORMAT.md. Use [🔗](url) for citations, [📊](url) for charts. If nothing notable, reply NO_REPLY."
+        "message": "Generate a 2-hour tweet digest. Run: twag search --time 2h -s 6 -f json -n 50\n\nIf no results or nothing notable, reply NO_REPLY.\nOtherwise, format as a Telegram digest per TELEGRAM_DIGEST_FORMAT.md."
       },
       "delivery": {
-        "mode": "announce",
+        "mode": "direct",
         "channel": "telegram",
         "to": "YOUR_CHAT_ID"
       },
@@ -190,10 +190,10 @@ Add to your OpenClaw cron configuration:
       "sessionTarget": "isolated",
       "payload": {
         "kind": "agentTurn",
-        "message": "Generate a weekend tweet digest covering Friday night through Sunday afternoon. Run: twag search --time 42h -s 6 -f full. Group tweets by theme, condense into bullets, format per TELEGRAM_DIGEST_FORMAT.md. Use [🔗](url) for citations, [📊](url) for charts. If nothing notable, reply NO_REPLY."
+        "message": "Generate a weekend tweet digest (Friday night through Sunday afternoon). Run: twag search --time 42h -s 6 -f json -n 50\n\nIf no results or nothing notable, reply NO_REPLY.\nOtherwise, format as a Telegram digest per TELEGRAM_DIGEST_FORMAT.md."
       },
       "delivery": {
-        "mode": "announce",
+        "mode": "direct",
         "channel": "telegram",
         "to": "YOUR_CHAT_ID"
       },
@@ -209,10 +209,10 @@ Add to your OpenClaw cron configuration:
       "sessionTarget": "isolated",
       "payload": {
         "kind": "agentTurn",
-        "message": "Generate a Sunday evening tweet digest for pre-market prep. Run: twag search --time 6h -s 6 -f full. Group by theme, condense into bullets, format per TELEGRAM_DIGEST_FORMAT.md. Use [🔗](url) for citations, [📊](url) for charts. If nothing notable, reply NO_REPLY."
+        "message": "Generate a Sunday evening pre-market digest. Run: twag search --time 6h -s 6 -f json -n 50\n\nIf no results or nothing notable, reply NO_REPLY.\nOtherwise, format as a Telegram digest per TELEGRAM_DIGEST_FORMAT.md."
       },
       "delivery": {
-        "mode": "announce",
+        "mode": "direct",
         "channel": "telegram",
         "to": "YOUR_CHAT_ID"
       },
@@ -221,6 +221,10 @@ Add to your OpenClaw cron configuration:
   ]
 }
 ```
+
+> **Note:** `"direct"` delivery sends the agent's formatted output directly to Telegram,
+> preserving inline markdown links (`[🔗](url)`, `[📊](url)`). Use `"announce"` instead
+> if you want the receiving agent to reformulate the digest in its own voice.
 
 ### Schedule Summary
 
@@ -285,7 +289,7 @@ twag stats --today
 
 ```bash
 twag fetch --no-tier1 && twag process --limit 10
-twag search "market" --today
+twag search --today -s 6
 ```
 
 ## Troubleshooting

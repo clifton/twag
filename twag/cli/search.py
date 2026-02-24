@@ -4,12 +4,20 @@ import json
 
 import rich_click as click
 
-from ..db import get_connection, parse_time_range, query_suggests_equity_context, search_tweets
+from ..db import (
+    FeedTweet,
+    SearchResult,
+    get_connection,
+    get_feed_tweets,
+    parse_time_range,
+    query_suggests_equity_context,
+    search_tweets,
+)
 from ._console import console
 
 
 @click.command()
-@click.argument("query")
+@click.argument("query", required=False, default=None)
 @click.option("--category", "-c", help="Filter by category (fed_policy, equities, etc.)")
 @click.option("--author", "-a", help="Filter by author handle")
 @click.option("--min-score", "-s", type=float, help="Minimum relevance score")
@@ -25,14 +33,14 @@ from ._console import console
     "--order",
     "-o",
     type=click.Choice(["rank", "score", "time"]),
-    default="rank",
-    help="Sort order: rank (relevance), score, time",
+    default=None,
+    help="Sort order: rank (BM25, requires query), score, time",
 )
 @click.option(
     "--format", "-f", "fmt", type=click.Choice(["brief", "full", "json"]), default="brief", help="Output format"
 )
 def search(
-    query: str,
+    query: str | None,
     category: str | None,
     author: str | None,
     min_score: float | None,
@@ -44,11 +52,15 @@ def search(
     today: bool,
     time_range: str | None,
     limit: int,
-    order: str,
+    order: str | None,
     fmt: str,
 ):
     """
-    Search tweets using full-text search.
+    Search or browse tweets.
+
+    \b
+    With QUERY: full-text search using FTS5 (default order: BM25 rank).
+    Without QUERY: browse recent processed tweets (default order: score).
 
     \b
     QUERY SYNTAX:
@@ -64,6 +76,8 @@ def search(
       twag search "fed rate" -c fed_policy -s 7
       twag search "NVDA" -a zerohedge --time 7d
       twag search "earnings" --ticker AAPL
+      twag search -c fed_policy -s 7 --time 7d
+      twag search --today -s 8
     """
     # Parse since/until if provided as strings
     since_dt = None
@@ -82,27 +96,74 @@ def search(
     if today:
         time_range = "today"
 
-    # Auto-detect equity context for smart defaults (only if no time specified)
-    if not time_range and since_dt is None and query_suggests_equity_context(query):
-        click.echo("(auto-detected equity context, defaulting to --today)", err=True)
-        time_range = "today"
+    # Parse time_range into datetimes for browse mode
+    if time_range and not query:
+        parsed_since, parsed_until = parse_time_range(time_range)
+        if parsed_since and since_dt is None:
+            since_dt = parsed_since
+        if parsed_until and until_dt is None:
+            until_dt = parsed_until
 
-    with get_connection(readonly=True) as conn:
-        results = search_tweets(
-            conn,
-            query,
-            category=category,
-            author=author,
-            min_score=min_score,
-            signal_tier=tier,
-            ticker=ticker,
-            bookmarked_only=bookmarks,
-            since=since_dt,
-            until=until_dt,
-            time_range=time_range,
-            limit=limit,
-            order_by=order,
-        )
+    if query:
+        # FTS search mode
+        effective_order = order or "rank"
+
+        # Auto-detect equity context for smart defaults (only if no time specified)
+        if not time_range and since_dt is None and query_suggests_equity_context(query):
+            click.echo("(auto-detected equity context, defaulting to --today)", err=True)
+            time_range = "today"
+
+        with get_connection(readonly=True) as conn:
+            results = search_tweets(
+                conn,
+                query,
+                category=category,
+                author=author,
+                min_score=min_score,
+                signal_tier=tier,
+                ticker=ticker,
+                bookmarked_only=bookmarks,
+                since=since_dt,
+                until=until_dt,
+                time_range=time_range,
+                limit=limit,
+                order_by=effective_order,
+            )
+    else:
+        # Browse mode — no FTS query
+        if order == "rank":
+            click.echo("Warning: --order rank requires a search query; falling back to score.", err=True)
+            effective_order = "score"
+        else:
+            effective_order = order or "score"
+
+        # Map CLI order names to get_feed_tweets order names
+        feed_order = "latest" if effective_order == "time" else "relevance"
+
+        with get_connection(readonly=True) as conn:
+            feed_results = get_feed_tweets(
+                conn,
+                category=category,
+                ticker=ticker,
+                min_score=min_score,
+                signal_tier=tier,
+                author=author,
+                bookmarked_only=bookmarks,
+                since=since_dt,
+                until=until_dt,
+                order_by=feed_order,
+                limit=limit,
+            )
+
+        if not feed_results:
+            console.print("No results found.")
+            return
+
+        if fmt == "json":
+            _output_feed_json(feed_results)
+            return
+
+        results = [_feed_tweet_to_search_result(ft) for ft in feed_results]
 
     if not results:
         console.print("No results found.")
@@ -114,6 +175,61 @@ def search(
         _output_full(results)
     else:
         _output_brief(results)
+
+
+def _feed_tweet_to_search_result(ft: FeedTweet) -> SearchResult:
+    """Convert a FeedTweet to a SearchResult for unified output."""
+    return SearchResult(
+        id=ft.id,
+        author_handle=ft.author_handle,
+        author_name=ft.author_name,
+        content=ft.content,
+        summary=ft.summary,
+        created_at=ft.created_at,
+        relevance_score=ft.relevance_score,
+        categories=ft.categories,
+        signal_tier=ft.signal_tier,
+        tickers=ft.tickers,
+        bookmarked=ft.bookmarked,
+        rank=0.0,
+    )
+
+
+def _output_feed_json(feed_tweets: list[FeedTweet]):
+    """Output feed tweets as rich JSON for agent/digest consumption."""
+    output = []
+    for ft in feed_tweets:
+        entry = {
+            "id": ft.id,
+            "url": f"https://x.com/{ft.author_handle}/status/{ft.id}",
+            "author_handle": ft.author_handle,
+            "author_name": ft.author_name,
+            "created_at": ft.created_at.isoformat() if ft.created_at else None,
+            "relevance_score": ft.relevance_score,
+            "categories": ft.categories,
+            "signal_tier": ft.signal_tier,
+            "tickers": ft.tickers,
+            "bookmarked": ft.bookmarked,
+            "summary": ft.summary,
+            "content": ft.content,
+            "has_media": ft.has_media,
+            "has_link": ft.has_link,
+            "has_quote": ft.has_quote,
+            "is_x_article": ft.is_x_article,
+            "is_retweet": ft.is_retweet,
+        }
+        # Conditionally include optional fields (keeps JSON compact)
+        if ft.media_analysis:
+            entry["media_analysis"] = ft.media_analysis
+        if ft.link_summary:
+            entry["link_summary"] = ft.link_summary
+        if ft.is_x_article and ft.article_summary_short:
+            entry["article_summary"] = ft.article_summary_short
+        if ft.is_retweet and ft.retweeted_by_handle:
+            entry["retweeted_by"] = ft.retweeted_by_handle
+            entry["original_author"] = ft.original_author_handle
+        output.append(entry)
+    click.echo(json.dumps(output, indent=2))
 
 
 def _output_brief(results):

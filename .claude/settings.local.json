@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:docs.openclaw.ai)",
+      "WebSearch"
+    ],
+    "additionalDirectories": [
+      "/home/clifton/.openclaw",
+      "/home/clifton/clawd"
+    ]
+  }
+}

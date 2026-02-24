@@ -105,8 +105,11 @@ export ANTHROPIC_API_KEY="..."  # Optional, for enrichment
 # Full pipeline
 twag fetch && twag process && twag digest
 
-# Search high-signal tweets
-twag search "market" --today -s 7
+# Browse high-signal tweets
+twag search --today -s 7
+
+# Rich JSON for digest/agent consumption
+twag search --time 2h -s 6 -f json -n 50
 
 # Check stats
 twag stats --today
@@ -118,7 +121,7 @@ twag stats --today
 
 ```bash
 twag fetch && twag process
-twag search "market" --today -s 7
+twag search --today -s 7
 twag digest --stdout
 ```
 
@@ -148,7 +151,13 @@ twag analyze 123456789 --reprocess  # Force re-analyze
 ### Search (most common)
 
 ```bash
-twag search "query"                  # Full-text search
+# Browse mode (no query) — uses rich FeedTweet data
+twag search --today -s 7             # High-signal tweets since market close
+twag search --time 2h -s 6 -f json -n 50  # Rich JSON for digests
+twag search -c fed_policy --time 7d  # Browse by category
+
+# Full-text search mode
+twag search "query"                  # FTS5 search
 twag search "query" -c fed_policy    # Filter by category
 twag search "query" -a handle        # Filter by author
 twag search "query" --ticker AAPL    # Filter by ticker
@@ -270,12 +279,14 @@ twag config set key value     # Update setting
 
 When sending digests to Telegram, follow [{baseDir}/TELEGRAM_DIGEST_FORMAT.md]({baseDir}/TELEGRAM_DIGEST_FORMAT.md):
 
+- Use `twag search --time Xh -s 6 -f json -n 50` for structured input
 - Group tweets by theme (don't list chronologically)
 - Use `**BOLD CAPS**` for section headers (no markdown `###`)
 - Use `•` for bullet points
-- Citations: `[🔗](url)` for links, `[📊](url)` for charts
+- Citations: `[📊](url)` when `has_media: true`, `[🔗](url)` otherwise
 - Condense multiple tweets on same topic into bullets
 - Extract key facts and numbers
+- Use `delivery.mode: "direct"` in cron jobs to preserve `[🔗](url)` and `[📊](url)` links
 
 ## Automation
 
