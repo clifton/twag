@@ -10,8 +10,8 @@ class LLMConfig(BaseModel):
 
     triage_model: str = "gemini-3-flash-preview"
     triage_provider: str = "gemini"
-    enrichment_model: str = "claude-opus-4-5-20251101"
-    enrichment_provider: str = "anthropic"
+    enrichment_model: str = "gemini-3.1-pro-preview"
+    enrichment_provider: str = "gemini"
     enrichment_reasoning: str | None = None
     vision_model: str = "gemini-3-flash-preview"
     vision_provider: str = "gemini"
