@@ -286,6 +286,7 @@ When sending digests to Telegram, follow [{baseDir}/TELEGRAM_DIGEST_FORMAT.md]({
 - Citations: `[📊](url)` when `has_media: true`, `[🔗](url)` otherwise
 - Condense multiple tweets on same topic into bullets
 - Extract key facts and numbers
+- Use `delivery.mode: "direct"` in cron jobs to preserve `[🔗](url)` and `[📊](url)` links
 
 ## Automation
 
