@@ -283,7 +283,7 @@ def _looks_truncated_text(text: str | None) -> bool:
     if not text:
         return False
     stripped = text.rstrip()
-    return bool(stripped) and (stripped.endswith("\u2026") or stripped.endswith("..."))
+    return bool(stripped) and stripped.endswith(("\u2026", "..."))
 
 
 def _merge_duplicate_retweet_metadata(

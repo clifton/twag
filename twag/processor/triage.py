@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import json
 import re
-import sqlite3
-from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import sqlite3
+    from collections.abc import Callable
 
 from ..config import load_config
 from ..db import (

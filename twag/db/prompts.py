@@ -193,15 +193,15 @@ def upsert_prompt(
             (template, new_version, datetime.now(timezone.utc).isoformat(), updated_by, name),
         )
         return new_version
-    else:
-        conn.execute(
-            """
-            INSERT INTO prompts (name, template, version, updated_at, updated_by)
-            VALUES (?, ?, 1, ?, ?)
-            """,
-            (name, template, datetime.now(timezone.utc).isoformat(), updated_by),
-        )
-        return 1
+
+    conn.execute(
+        """
+        INSERT INTO prompts (name, template, version, updated_at, updated_by)
+        VALUES (?, ?, 1, ?, ?)
+        """,
+        (name, template, datetime.now(timezone.utc).isoformat(), updated_by),
+    )
+    return 1
 
 
 def get_prompt_history(conn: sqlite3.Connection, name: str, limit: int = 10) -> list[dict[str, Any]]:

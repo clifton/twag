@@ -23,8 +23,7 @@ def is_quiet_hours() -> bool:
     # Handle overnight quiet hours (e.g., 23:00 to 08:00)
     if start > end:
         return hour >= start or hour < end
-    else:
-        return start <= hour < end
+    return start <= hour < end
 
 
 def get_recent_alert_count() -> int:
