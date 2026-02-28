@@ -10,7 +10,6 @@ from ._console import console
 @click.group()
 def narratives():
     """Manage emerging narratives."""
-    pass
 
 
 @narratives.command("list")

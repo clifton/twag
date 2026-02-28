@@ -14,7 +14,6 @@ from ._console import console
 @click.group()
 def db():
     """Database operations."""
-    pass
 
 
 @db.command("path")

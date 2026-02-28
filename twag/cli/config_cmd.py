@@ -12,7 +12,6 @@ from ._console import console
 @click.group()
 def config():
     """Manage configuration."""
-    pass
 
 
 @config.command("show")
