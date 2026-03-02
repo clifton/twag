@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import json
 import re
-import sqlite3
-from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import sqlite3
+    from collections.abc import Callable
 
 from ..config import load_config
 from ..db import (
@@ -668,9 +670,8 @@ def _triage_rows(
 
             if task_count:
                 pending_tasks[result.tweet_id] = task_count
-            else:
-                if progress_cb:
-                    progress_cb(1)
+            elif progress_cb:
+                progress_cb(1)
 
             # Submit enrichment and article immediately (after pending_tasks is set)
             if needs_analysis:

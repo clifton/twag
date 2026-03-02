@@ -7,10 +7,12 @@ import logging
 import sqlite3
 import time
 from collections import deque
-from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from ..db import (
     get_tweet_by_id,

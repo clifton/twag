@@ -51,6 +51,7 @@ def _run_bird_once(cmd: list[str], env: dict[str, str], args: list[str], timeout
                 text=True,
                 timeout=timeout,
                 env=env,
+                check=False,
             )
             tmp.seek(0)
             stdout = tmp.read()
