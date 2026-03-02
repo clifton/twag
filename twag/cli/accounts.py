@@ -21,7 +21,6 @@ from ._console import console
 @click.group()
 def accounts():
     """Manage tracked accounts."""
-    pass
 
 
 @accounts.command("list")

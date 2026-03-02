@@ -14,7 +14,6 @@ from ._console import console
 @click.group()
 def db():
     """Database operations."""
-    pass
 
 
 @db.command("path")
@@ -29,7 +28,7 @@ def db_shell():
     import subprocess
 
     db_file = get_database_path()
-    subprocess.run(["sqlite3", str(db_file)])
+    subprocess.run(["sqlite3", str(db_file)], check=False)
 
 
 @db.command("init")

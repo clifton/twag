@@ -355,9 +355,7 @@ def _extract_media_items(data: dict[str, Any]) -> list[dict[str, Any]]:
 
     def _extend(value: Any) -> None:
         if isinstance(value, list):
-            for item in value:
-                if isinstance(item, dict):
-                    candidates.append(item)
+            candidates.extend(item for item in value if isinstance(item, dict))
 
     _extend(data.get("extended_entities", {}).get("media"))
     _extend(data.get("entities", {}).get("media"))
@@ -437,9 +435,7 @@ def _extract_links(data: dict[str, Any], content: str) -> list[dict[str, str]]:
 
     def _extend(value: Any) -> None:
         if isinstance(value, list):
-            for item in value:
-                if isinstance(item, dict):
-                    candidates.append(item)
+            candidates.extend(item for item in value if isinstance(item, dict))
 
     _extend(data.get("urls"))
     _extend(data.get("entities", {}).get("urls"))

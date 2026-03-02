@@ -280,23 +280,22 @@ def _output_full(results):
 
 def _output_json(results):
     """Output search results as JSON."""
-    output = []
-    for r in results:
-        output.append(
-            {
-                "id": r.id,
-                "author_handle": r.author_handle,
-                "author_name": r.author_name,
-                "content": r.content,
-                "summary": r.summary,
-                "created_at": r.created_at.isoformat() if r.created_at else None,
-                "relevance_score": r.relevance_score,
-                "categories": r.categories,
-                "signal_tier": r.signal_tier,
-                "tickers": r.tickers,
-                "bookmarked": r.bookmarked,
-                "rank": r.rank,
-                "url": f"https://x.com/{r.author_handle}/status/{r.id}",
-            }
-        )
+    output = [
+        {
+            "id": r.id,
+            "author_handle": r.author_handle,
+            "author_name": r.author_name,
+            "content": r.content,
+            "summary": r.summary,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "relevance_score": r.relevance_score,
+            "categories": r.categories,
+            "signal_tier": r.signal_tier,
+            "tickers": r.tickers,
+            "bookmarked": r.bookmarked,
+            "rank": r.rank,
+            "url": f"https://x.com/{r.author_handle}/status/{r.id}",
+        }
+        for r in results
+    ]
     click.echo(json.dumps(output, indent=2))

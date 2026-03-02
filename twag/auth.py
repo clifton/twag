@@ -22,8 +22,7 @@ def load_env_file(path: Path | None = None) -> dict[str, str]:
             line = line.strip()
             if not line or line.startswith("#") or "=" not in line:
                 continue
-            if line.startswith("export "):
-                line = line[7:]
+            line = line.removeprefix("export ")
             key, value = line.split("=", 1)
             value = value.strip("\"'")
             env[key] = value

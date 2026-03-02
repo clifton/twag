@@ -138,7 +138,7 @@ def _merge_media_items(
             by_url[url] = dict(item)
 
     merged = list(by_url.values())
-    return merged if merged else None
+    return merged or None
 
 
 def _merge_duplicate_tweet_payload(
@@ -283,7 +283,7 @@ def _looks_truncated_text(text: str | None) -> bool:
     if not text:
         return False
     stripped = text.rstrip()
-    return bool(stripped) and (stripped.endswith("\u2026") or stripped.endswith("..."))
+    return bool(stripped) and stripped.endswith(("\u2026", "..."))
 
 
 def _merge_duplicate_retweet_metadata(

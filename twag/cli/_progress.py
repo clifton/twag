@@ -35,14 +35,12 @@ class RichProgressReporter:
         self._progress.update(self._task_id, description=self._description())
 
     def advance(self, step: int = 1) -> None:
-        if step < 0:
-            step = 0
+        step = max(step, 0)
         self._count = min(self._total, self._count + step)
         self._progress.update(self._task_id, advance=step, description=self._description())
 
     def set_total(self, total: int) -> None:
-        if total < self._count:
-            total = self._count
+        total = max(total, self._count)
         self._total = total
         self._progress.update(self._task_id, total=total, description=self._description())
 

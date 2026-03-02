@@ -31,7 +31,6 @@ from .analyze import _print_status_analysis as _print_status_analysis
 @click.version_option(version=__version__)
 def cli():
     """Twitter aggregator for market-relevant signals."""
-    pass
 
 
 # Register commands
