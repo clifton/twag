@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# pre-commit hook — run linters on staged files
+# Symlinked from .git/hooks/pre-commit
+
+set -euo pipefail
+
+# Collect staged Python files
+STAGED_PY=$(git diff --cached --name-only --diff-filter=ACM -- '*.py' || true)
+
+if [ -z "$STAGED_PY" ]; then
+    exit 0
+fi
+
+pids=()
+names=("ruff format" "ruff check")
+failed=0
+
+# shellcheck disable=SC2086
+uv run ruff format --check $STAGED_PY &
+pids+=($!)
+
+# shellcheck disable=SC2086
+uv run ruff check $STAGED_PY &
+pids+=($!)
+
+for i in "${!pids[@]}"; do
+    if ! wait "${pids[$i]}"; then
+        echo "FAILED: ${names[$i]}"
+        failed=1
+    fi
+done
+
+if [ "$failed" -ne 0 ]; then
+    exit 1
+fi

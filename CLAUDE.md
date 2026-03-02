@@ -164,4 +164,7 @@ If command behavior changes, update `README.md` and `SKILL.md` in the same PR.
 - Keep commits focused and atomic
 - Run formatting/lint/tests before committing
 - Don't commit temporary artifacts unless explicitly requested
-- Write descriptive commit messages
+- Use **Conventional Commits** format: `<type>[(<scope>)][!]: <subject>`
+- Allowed type prefixes: `feat`, `fix`, `docs`, `chore`, `refactor`, `perf`, `test`, `ci`, `build`, `security`
+- A `commit-msg` git hook enforces this automatically (symlinked from `scripts/hooks/`)
+- A `pre-commit` git hook runs `ruff format --check` and `ruff check` on staged Python files

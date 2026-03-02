@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# commit-msg hook — enforce Conventional Commits format
+# Symlinked from .git/hooks/commit-msg
+
+set -euo pipefail
+
+MSG_FILE="$1"
+MSG=$(head -1 "$MSG_FILE")
+
+# Skip merge, revert, fixup, and squash commits
+SKIP_PATTERN='^(Merge |Revert |fixup! |squash! )'
+if [[ "$MSG" =~ $SKIP_PATTERN ]]; then
+    exit 0
+fi
+
+# Allowed Conventional Commit types
+TYPES="feat|fix|docs|chore|refactor|perf|test|ci|build|security"
+
+# Pattern: type[(scope)][!]: subject
+# - type is required, from TYPES list
+# - scope is optional, in parentheses
+# - ! for breaking changes is optional
+# - colon + space + non-empty subject is required
+PATTERN="^($TYPES)(\([a-zA-Z0-9_-]+\))?!?: .+"
+
+if ! [[ "$MSG" =~ $PATTERN ]]; then
+    echo "ERROR: Commit message does not follow Conventional Commits format."
+    echo ""
+    echo "  Expected: <type>[(<scope>)][!]: <subject>"
+    echo ""
+    echo "  Allowed types: feat, fix, docs, chore, refactor, perf, test, ci, build, security"
+    echo ""
+    echo "  Examples:"
+    echo "    feat: add user authentication"
+    echo "    fix(parser): handle empty input"
+    echo "    docs: update API reference"
+    echo "    chore!: drop Python 3.9 support"
+    echo ""
+    echo "  Your message: $MSG"
+    exit 1
+fi
