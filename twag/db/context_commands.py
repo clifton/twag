@@ -67,7 +67,7 @@ def get_all_context_commands(conn: sqlite3.Connection, enabled_only: bool = Fals
                 description=row["description"],
                 enabled=bool(row["enabled"]),
                 created_at=created_at,
-            )
+            ),
         )
     return results
 

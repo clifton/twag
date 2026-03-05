@@ -24,7 +24,7 @@ def test_normalize_tweet_links_expands_short_urls_without_structured_links(monke
             "url": "https://github.com/aliasvault/aliasvault",
             "display_url": "github.com/aliasvault/aliasvault",
             "domain": "github.com",
-        }
+        },
     ]
 
 
@@ -66,7 +66,7 @@ def test_normalize_tweet_links_keeps_expanded_external_and_drops_unresolved_self
             "url": "https://github.com/aliasvault/aliasvault",
             "display_url": "github.com/aliasvault/aliasvault",
             "domain": "github.com",
-        }
+        },
     ]
 
 
@@ -87,7 +87,7 @@ def test_normalize_tweet_links_drops_only_trailing_unresolved_short_link_for_med
             "url": "https://t.co/JBlilG6yJ3",
             "display_url": "t.co/JBlilG6yJ3",
             "domain": "t.co",
-        }
+        },
     ]
 
 
@@ -112,7 +112,7 @@ def test_normalize_tweet_links_drops_trailing_unresolved_short_link_when_other_l
             "url": "https://github.com/fixie-ai/ultravox",
             "display_url": "github.com/fixie-ai/ultravox",
             "domain": "github.com",
-        }
+        },
     ]
 
 
@@ -130,7 +130,7 @@ def test_expand_links_in_place_limits_short_url_expansions(monkeypatch):
             {"url": "https://t.co/one"},
             {"url": "https://t.co/two"},
             {"url": "https://t.co/three"},
-        ]
+        ],
     )
 
     assert len(seen) == 2
@@ -153,7 +153,7 @@ def test_normalize_tweet_links_already_expanded_skips_network_expansion(monkeypa
                 "url": "https://t.co/ext",
                 "expanded_url": "https://example.com/report",
                 "display_url": "example.com/report",
-            }
+            },
         ],
         already_expanded=True,
     )
@@ -164,5 +164,5 @@ def test_normalize_tweet_links_already_expanded_skips_network_expansion(monkeypa
             "url": "https://example.com/report",
             "display_url": "example.com/report",
             "domain": "example.com",
-        }
+        },
     ]

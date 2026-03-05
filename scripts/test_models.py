@@ -112,7 +112,7 @@ def main():
     print("\nConfigured models:")
     print(f"  Triage:     {config['llm']['triage_model']} ({config['llm'].get('triage_provider', 'anthropic')})")
     print(
-        f"  Enrichment: {config['llm']['enrichment_model']} ({config['llm'].get('enrichment_provider', 'anthropic')})"
+        f"  Enrichment: {config['llm']['enrichment_model']} ({config['llm'].get('enrichment_provider', 'anthropic')})",
     )
     print(f"  Vision:     {config['llm']['vision_model']} ({config['llm'].get('vision_provider', 'anthropic')})")
 

@@ -147,7 +147,10 @@ def expand_links_in_place(links: list[dict]) -> list[dict]:
 
 
 def _normalize_structured_links(
-    text: str, links: list[dict], *, already_expanded: bool = False
+    text: str,
+    links: list[dict],
+    *,
+    already_expanded: bool = False,
 ) -> list[dict[str, str]]:
     normalized: list[dict[str, str]] = []
     seen_keys: set[tuple[str, str]] = set()
@@ -179,7 +182,7 @@ def _normalize_structured_links(
                 "url": raw_url or resolved,
                 "expanded_url": resolved,
                 "display_url": display_url or _display_url_for(resolved),
-            }
+            },
         )
 
     known_urls = {item["url"] for item in normalized} | {item["expanded_url"] for item in normalized}
@@ -275,7 +278,7 @@ def normalize_tweet_links(
     has_resolved_non_short = any(
         bool(
             (item.get("expanded_url") or item.get("url"))
-            and not _is_shortener_url(item.get("expanded_url") or item.get("url"))  # ty: ignore[invalid-argument-type]
+            and not _is_shortener_url(item.get("expanded_url") or item.get("url")),  # ty: ignore[invalid-argument-type]
         )
         for item in normalized_links
     )
@@ -307,7 +310,7 @@ def normalize_tweet_links(
                 {
                     "id": status_id,
                     "url": expanded_url or raw_url,
-                }
+                },
             )
             continue
 
@@ -322,7 +325,7 @@ def normalize_tweet_links(
                 "url": resolved,
                 "display_url": display_url or _display_url_for(resolved),
                 "domain": _domain_for(resolved),
-            }
+            },
         )
 
     display_text = replace_urls_in_text(raw_text, external_replacements)

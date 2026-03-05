@@ -98,7 +98,7 @@ def test_render_digest_does_not_expand_short_urls_at_render_time(monkeypatch, tm
                     "url": "https://t.co/ext",
                     "expanded_url": "https://github.com/example/project",
                     "display_url": "github.com/example/project",
-                }
+                },
             ],
         )
         assert inserted is True

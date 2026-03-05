@@ -603,7 +603,7 @@ def get_processed_counts(conn: sqlite3.Connection) -> dict[str, int]:
             SUM(CASE WHEN processed_at >= datetime('now', '-7 days') THEN 1 ELSE 0 END) as last_7d
         FROM tweets
         WHERE processed_at IS NOT NULL
-        """
+        """,
     )
     row = cursor.fetchone()
     if row:
@@ -637,7 +637,7 @@ def get_bookmark_counts_by_author(conn: sqlite3.Connection) -> list[tuple[str, i
         WHERE bookmarked = 1
         GROUP BY author_handle
         ORDER BY bookmark_count DESC
-        """
+        """,
     )
     return [(row[0], row[1]) for row in cursor.fetchall()]
 

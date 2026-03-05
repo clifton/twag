@@ -190,7 +190,7 @@ def main() -> int:
         f" baseline_s={baseline_s:.4f}"
         f" optimized_s={optimized_s:.4f}"
         f" speedup={speedup:.3f}x"
-        f" min_required={args.min_speedup:.3f}x"
+        f" min_required={args.min_speedup:.3f}x",
     )
 
     if speedup < args.min_speedup:

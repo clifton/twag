@@ -51,7 +51,7 @@ async def list_prompts(request: Request) -> dict[str, Any]:
                 "updated_by": p.updated_by,
             }
             for p in prompts
-        ]
+        ],
     }
 
 
@@ -169,7 +169,7 @@ async def tune_prompt(request: Request, tune_req: TuneRequest) -> dict[str, Any]
             reason_text = f" (Reason: {reaction.reason})" if reaction.reason else ""
             examples.append(
                 f"- Score: {tweet['relevance_score']}, Categories: {categories}, "
-                f"Summary: {tweet['summary'][:100]}...{reason_text}"
+                f"Summary: {tweet['summary'][:100]}...{reason_text}",
             )
         return "\n".join(examples) if examples else "[none]"
 

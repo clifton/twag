@@ -83,7 +83,7 @@ class Tweet:
             or data.get("inReplyToStatusIdStr")
             or legacy.get("in_reply_to_status_id_str")
             or legacy.get("in_reply_to_status_id")
-            or ""
+            or "",
         ).strip()
         if not in_reply_to_tweet_id:
             in_reply_to_tweet_id = None
@@ -94,7 +94,7 @@ class Tweet:
             or data.get("conversation_id")
             or legacy.get("conversation_id_str")
             or legacy.get("conversation_id")
-            or ""
+            or "",
         ).strip()
         if not conversation_id:
             conversation_id = None
@@ -106,7 +106,7 @@ class Tweet:
             media_items
             or data.get("media")
             or data.get("entities", {}).get("media")
-            or data.get("extended_entities", {}).get("media")
+            or data.get("extended_entities", {}).get("media"),
         )
 
         # Links
@@ -387,7 +387,7 @@ def _extract_media_items(data: dict[str, Any]) -> list[dict[str, Any]]:
                     "type": "photo",
                     "source": "article",
                     "media_id": media.get("media_id"),
-                }
+                },
             )
 
     cover_media = raw_article_result.get("cover_media") if isinstance(raw_article_result, dict) else {}
@@ -402,7 +402,7 @@ def _extract_media_items(data: dict[str, Any]) -> list[dict[str, Any]]:
                     "type": "photo",
                     "source": "article_cover",
                     "media_id": cover_media.get("media_id"),
-                }
+                },
             )
 
     items: list[dict[str, Any]] = []
@@ -459,7 +459,7 @@ def _extract_links(data: dict[str, Any], content: str) -> list[dict[str, str]]:
                 "url": raw or resolved,
                 "expanded_url": resolved,
                 "display_url": display,
-            }
+            },
         )
 
     if not links:

@@ -41,7 +41,7 @@ def get_active_narratives(conn: sqlite3.Connection) -> list[sqlite3.Row]:
         SELECT * FROM narratives
         WHERE active = 1
         ORDER BY last_mentioned_at DESC
-        """
+        """,
     )
     return cursor.fetchall()
 
