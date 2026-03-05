@@ -72,7 +72,7 @@ line-length = 120
 exclude = ["twag/_version.py"]
 
 [tool.ruff.lint]
-select = ["E", "W", "F", "I", "UP", "B", "SIM", "RUF", "PIE", "RET505", "TC003", "PERF401", "PLR5501", "PLR1730", "FURB110", "FURB188", "PLW1510", "EXE001"]
+select = ["E", "W", "F", "I", "UP", "B", "SIM", "RUF", "PIE", "RET505", "TC003", "PERF401", "PLR5501", "PLR1730", "FURB110", "FURB188", "PLW1510", "EXE001", "COM812"]
 ignore = [
     "E501",    # line too long (handled by formatter)
     "SIM105",  # contextlib.suppress — less readable for multi-line try blocks

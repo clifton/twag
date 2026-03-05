@@ -52,7 +52,7 @@ def process(
             target_row = get_tweet_by_id(conn, target_tweet_id)
             if not target_row:
                 raise click.ClickException(
-                    f"Status not found in database: {target_tweet_id}. Fetch it first with `twag fetch {target_tweet_id}`."
+                    f"Status not found in database: {target_tweet_id}. Fetch it first with `twag fetch {target_tweet_id}`.",
                 )
             unprocessed_rows = [target_row]
         else:

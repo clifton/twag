@@ -86,7 +86,7 @@ def _call_anthropic_vision(model: str, image_url: str, prompt: str, max_tokens: 
                         "text": prompt,
                     },
                 ],
-            }
+            },
         ],
     )
     return _extract_anthropic_text(response.content)

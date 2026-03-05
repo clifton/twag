@@ -36,7 +36,7 @@ def _echo_wrapped(text: str, *, initial_indent: str = "", subsequent_indent: str
             subsequent_indent=subsequent_indent,
             break_long_words=False,
             break_on_hyphens=False,
-        )
+        ),
     )
 
 

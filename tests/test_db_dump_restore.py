@@ -51,7 +51,7 @@ class TestIsFilteredStatement:
     def test_insert_sqlite_master(self):
         assert _is_fts_statement(
             "INSERT INTO sqlite_master(type,name,tbl_name,rootpage,sql) "
-            "VALUES('table','tweets_fts','tweets_fts',0,'...');"
+            "VALUES('table','tweets_fts','tweets_fts',0,'...');",
         )
 
     def test_fts_table(self):

@@ -45,7 +45,7 @@ def test_insert_tweet_duplicate_backfills_retweet_metadata(tmp_path):
                 original_content
             FROM tweets
             WHERE id = 'rt-1'
-            """
+            """,
         ).fetchone()
 
     assert row is not None

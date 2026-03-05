@@ -271,7 +271,7 @@ def search_tweets(
                 tickers=tickers,
                 bookmarked=bool(row["bookmarked"]),
                 rank=row["rank"],
-            )
+            ),
         )
 
     return results
@@ -485,7 +485,7 @@ def get_feed_tweets(
                 original_author_name=row["original_author_name"],
                 original_content=row["original_content"],
                 reactions=reactions,
-            )
+            ),
         )
 
     return results

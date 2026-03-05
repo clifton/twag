@@ -151,7 +151,7 @@ def get_all_prompts(conn: sqlite3.Connection) -> list[Prompt]:
                 version=row["version"],
                 updated_at=updated_at,
                 updated_by=row["updated_by"],
-            )
+            ),
         )
     return results
 

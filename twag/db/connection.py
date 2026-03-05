@@ -136,17 +136,17 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
     # Ensure performance indexes exist on existing databases
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_tweets_processed_score "
-        "ON tweets(processed_at, relevance_score DESC, created_at DESC)"
+        "ON tweets(processed_at, relevance_score DESC, created_at DESC)",
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_tweets_author ON tweets(author_handle)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_tweets_signal_tier ON tweets(signal_tier)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_tweets_bookmarked ON tweets(bookmarked) WHERE bookmarked = 1")
     conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_tweets_quote ON tweets(quote_tweet_id) WHERE quote_tweet_id IS NOT NULL"
+        "CREATE INDEX IF NOT EXISTS idx_tweets_quote ON tweets(quote_tweet_id) WHERE quote_tweet_id IS NOT NULL",
     )
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_tweets_reply "
-        "ON tweets(in_reply_to_tweet_id) WHERE in_reply_to_tweet_id IS NOT NULL"
+        "ON tweets(in_reply_to_tweet_id) WHERE in_reply_to_tweet_id IS NOT NULL",
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_fetch_log_endpoint ON fetch_log(endpoint, executed_at DESC)")
 
