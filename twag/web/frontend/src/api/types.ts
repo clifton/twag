@@ -32,7 +32,7 @@ export interface Tweet {
   article_action_items: ArticleActionItem[];
   article_top_visual: ArticleTopVisual | null;
   article_processed_at: string | null;
-  reactions: string | null;
+  reactions: string[];
   is_retweet: boolean;
   retweeted_by_handle: string | null;
   retweeted_by_name: string | null;
