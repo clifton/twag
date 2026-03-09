@@ -62,6 +62,7 @@ packages = ["twag"]
 dev = [
     "pytest>=9.0.2",
     "pytest-cov>=6.0",
+    "pytest-xdist>=3.5",
     "ruff>=0.9",
     "ty",
 ]
@@ -87,7 +88,7 @@ known-first-party = ["twag"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q --tb=short"
+addopts = "-q --tb=short -n auto"
 
 [tool.coverage.run]
 source = ["twag"]
