@@ -254,8 +254,8 @@ SUGGESTED PROMPT:
             },
         }
 
-    except Exception as e:
-        return {"error": f"LLM call failed: {e!s}"}
+    except Exception:
+        return {"error": "LLM call failed: internal error"}
 
 
 @router.post("/prompts/{name}/apply-suggestion")

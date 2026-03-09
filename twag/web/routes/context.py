@@ -406,5 +406,5 @@ Return your analysis in a structured format."""
             "analysis": analysis,
         }
 
-    except Exception as e:
-        return {"error": f"Analysis failed: {e!s}"}
+    except Exception:
+        return {"error": "Analysis failed: internal error"}
