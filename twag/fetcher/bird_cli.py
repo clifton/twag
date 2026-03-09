@@ -77,17 +77,9 @@ def run_bird(args: list[str], timeout: int = 60) -> tuple[str, str, int]:
     _rate_limit_bird()
     env = get_auth_env()
 
-    # Build command with auth if available
+    # Build command — auth tokens are passed via env (AUTH_TOKEN, CT0)
+    # to avoid exposure in /proc/pid/cmdline
     cmd = ["bird", *args]
-
-    # Add auth flags if we have the tokens
-    auth_token = env.get("AUTH_TOKEN")
-    ct0 = env.get("CT0")
-
-    if auth_token and "--auth-token" not in args:
-        cmd.extend(["--auth-token", auth_token])
-    if ct0 and "--ct0" not in args:
-        cmd.extend(["--ct0", ct0])
 
     config = load_config()
     bird_cfg = config.get("bird", {})

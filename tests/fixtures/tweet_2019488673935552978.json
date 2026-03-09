@@ -7,10 +7,10 @@
   "likeCount": 13,
   "conversationId": "2019488673935552978",
   "author": {
-    "username": "undrvalue",
-    "name": "market participant"
+    "username": "synthuser42",
+    "name": "Synthetic Analyst"
   },
-  "authorId": "2007674507587399680",
+  "authorId": "9000000000000000001",
   "article": {
     "title": "Google's $180 Billion Bet: Is This the Top?",
     "previewText": "Google just guided $180 billion in capex for 2026. Nearly double their 2025 spend. The largest single-year infrastructure commitment in corporate history. \nI'm certainly not the foremost analyst on"
@@ -23,16 +23,16 @@
       "user_results": {
         "result": {
           "__typename": "User",
-          "id": "VXNlcjoyMDA3Njc0NTA3NTg3Mzk5Njgw",
-          "rest_id": "2007674507587399680",
+          "id": "VXNlcjo5MDAwMDAwMDAwMDAwMDAwMDAx",
+          "rest_id": "9000000000000000001",
           "affiliates_highlighted_label": {},
           "avatar": {
-            "image_url": "https://pbs.twimg.com/profile_images/2007696001998413825/yo6xkDTk_normal.jpg"
+            "image_url": "https://pbs.twimg.com/profile_images/0000000000000000000/placeholder_normal.jpg"
           },
           "core": {
             "created_at": "Sun Jan 04 04:44:43 +0000 2026",
-            "name": "market participant",
-            "screen_name": "undrvalue"
+            "name": "Synthetic Analyst",
+            "screen_name": "synthuser42"
           },
           "dm_permissions": {
             "can_dm": false
@@ -43,34 +43,32 @@
           "legacy": {
             "default_profile": true,
             "default_profile_image": false,
-            "description": "Semi-pro investor & analyst. Asymmetric stock picking. $10M+ AUM. Tech, consumer, value.",
+            "description": "Synthetic test account for fixture data.",
             "entities": {
               "description": {
                 "urls": []
               }
             },
             "fast_followers_count": 0,
-            "favourites_count": 501,
-            "followers_count": 1531,
-            "friends_count": 327,
+            "favourites_count": 100,
+            "followers_count": 500,
+            "friends_count": 100,
             "has_custom_timelines": false,
             "is_translator": false,
-            "listed_count": 33,
-            "media_count": 30,
-            "normal_followers_count": 1531,
-            "pinned_tweet_ids_str": [
-              "2010878894271004909"
-            ],
+            "listed_count": 5,
+            "media_count": 10,
+            "normal_followers_count": 500,
+            "pinned_tweet_ids_str": [],
             "possibly_sensitive": false,
-            "profile_banner_url": "https://pbs.twimg.com/profile_banners/2007674507587399680/1767506863",
+            "profile_banner_url": "https://pbs.twimg.com/profile_banners/9000000000000000001/0000000000",
             "profile_interstitial_type": "",
-            "statuses_count": 413,
+            "statuses_count": 50,
             "translator_type": "none",
             "want_retweets": true,
             "withheld_in_countries": []
           },
           "location": {
-            "location": "California"
+            "location": ""
           },
           "media_permissions": {
             "can_media_tag": true
@@ -78,13 +76,13 @@
           "parody_commentary_fan_label": "None",
           "profile_image_shape": "Circle",
           "profile_bio": {
-            "description": "Semi-pro investor & analyst. Asymmetric stock picking. $10M+ AUM. Tech, consumer, value."
+            "description": "Synthetic test account for fixture data."
           },
           "privacy": {
             "protected": false
           },
           "relationship_perspectives": {
-            "following": true
+            "following": false
           },
           "tipjar_settings": {},
           "verification": {
@@ -1388,7 +1386,7 @@
       "reply_count": 1,
       "retweet_count": 0,
       "retweeted": false,
-      "user_id_str": "2007674507587399680",
+      "user_id_str": "9000000000000000001",
       "id_str": "2019488673935552978"
     },
     "quick_promote_eligibility": {

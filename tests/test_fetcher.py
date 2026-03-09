@@ -384,8 +384,8 @@ class TestTweetFromBirdJson:
         """Parse retweet metadata from Bird --json-full nested _raw legacy payload."""
         data = {
             "id": "2019489337843306678",
-            "author": {"username": "tylercowen", "name": "tylercowen"},
-            "text": "RT @DKThomp: for me the odds that AI is a bubble declined significantly ... under-bu…",
+            "author": {"username": "fakeretweeter", "name": "fakeretweeter"},
+            "text": "RT @fakeoriginal: for me the odds that AI is a bubble declined significantly ... under-bu…",
             "_raw": {
                 "legacy": {
                     "retweeted_status_result": {
@@ -409,8 +409,8 @@ class TestTweetFromBirdJson:
                                 "user_results": {
                                     "result": {
                                         "core": {
-                                            "screen_name": "DKThomp",
-                                            "name": "Derek Thompson",
+                                            "screen_name": "fakeoriginal",
+                                            "name": "Fake Original Poster",
                                         }
                                     }
                                 }
@@ -432,10 +432,10 @@ class TestTweetFromBirdJson:
         tweet = Tweet.from_bird_json(data)
 
         assert tweet.is_retweet is True
-        assert tweet.retweeted_by_handle == "tylercowen"
+        assert tweet.retweeted_by_handle == "fakeretweeter"
         assert tweet.original_tweet_id == "2019484169915572452"
-        assert tweet.original_author_handle == "DKThomp"
-        assert tweet.original_author_name == "Derek Thompson"
+        assert tweet.original_author_handle == "fakeoriginal"
+        assert tweet.original_author_name == "Fake Original Poster"
         assert tweet.original_content is not None
         assert "under-built" in tweet.original_content
         assert "Soviet levels" in tweet.original_content
@@ -587,8 +587,8 @@ class TestRunBird:
         assert code == 0
         mock_subprocess.assert_called_once()
 
-    def test_run_bird_adds_auth_flags(self, mock_subprocess, mock_auth_env):
-        """Auth flags should be added from environment."""
+    def test_run_bird_passes_auth_via_env(self, mock_subprocess, mock_auth_env):
+        """Auth tokens should be passed via env, not CLI flags."""
 
         def _fake_run(*args, **kwargs):
             return MagicMock(stderr="", returncode=0)
@@ -598,10 +598,13 @@ class TestRunBird:
         run_bird(["home"])
 
         call_args = mock_subprocess.call_args[0][0]
-        assert "--auth-token" in call_args
-        assert "test_token" in call_args
-        assert "--ct0" in call_args
-        assert "test_ct0" in call_args
+        # Auth tokens should NOT appear as CLI arguments
+        assert "--auth-token" not in call_args
+        assert "--ct0" not in call_args
+        # They should be in the env passed to subprocess
+        call_kwargs = mock_subprocess.call_args[1]
+        assert call_kwargs["env"]["AUTH_TOKEN"] == "test_token"
+        assert call_kwargs["env"]["CT0"] == "test_ct0"
 
     def test_run_bird_timeout(self, mock_subprocess, mock_auth_env):
         """Timeout should return error."""
