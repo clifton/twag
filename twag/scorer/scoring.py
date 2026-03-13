@@ -9,6 +9,7 @@ from .llm_client import _call_llm, _call_llm_vision, _parse_json_response
 from .prompts import (
     ARTICLE_SUMMARY_PROMPT,
     BATCH_TRIAGE_PROMPT,
+    DIFF_EXPLAIN_PROMPT,
     DOCUMENT_SUMMARY_PROMPT,
     ENRICHMENT_PROMPT,
     MEDIA_PROMPT,
@@ -391,3 +392,19 @@ def analyze_media(
 ) -> MediaAnalysisResult:
     """Analyze any tweet media image with OCR and classification."""
     return analyze_image(image_url=image_url, model=model, provider=provider)
+
+
+def explain_diff(
+    diff_text: str,
+    model: str | None = None,
+    provider: str | None = None,
+) -> str:
+    """Send a git diff to the enrichment LLM and return a semantic explanation."""
+    config = load_config()
+    model = model or config["llm"]["enrichment_model"]
+    provider = provider or config["llm"].get("enrichment_provider", "anthropic")
+    reasoning = config["llm"].get("enrichment_reasoning")
+
+    prompt = DIFF_EXPLAIN_PROMPT.format(diff=diff_text)
+    text = _call_llm(provider, model, prompt, max_tokens=4096, reasoning=reasoning)
+    return text.strip()

@@ -149,7 +149,7 @@ Visual selection prioritizes data-oriented images (charts, tables, documents).
 Defined in `twag/cli/`:
 
 - **Setup:** `init`, `doctor`
-- **Pipeline:** `fetch`, `process`, `analyze`, `digest`
+- **Pipeline:** `fetch`, `process`, `analyze`, `digest`, `diff`
 - **Accounts:** `list`, `add`, `promote`, `demote`, `mute`, `boost`, `decay`, `import`
 - **Query:** `search`, `narratives list`
 - **Maintenance:** `stats`, `prune`, `export`

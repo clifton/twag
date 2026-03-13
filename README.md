@@ -225,6 +225,15 @@ twag analyze 1234567890123456789 --reprocess  # Force re-analyze
 twag analyze 1234567890123456789 -m gemini-2.0-flash  # Override model
 ```
 
+### Diff Commands
+
+```bash
+twag diff                          # Explain last commit
+twag diff HEAD~3..HEAD             # Explain last 3 commits
+twag diff main..feature-branch     # Explain branch changes
+twag diff -m gemini-2.0-flash      # Override model
+```
+
 ### Digest Commands
 
 ```bash

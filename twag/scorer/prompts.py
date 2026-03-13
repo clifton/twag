@@ -1,5 +1,18 @@
 """Prompt templates for LLM scoring and analysis."""
 
+# Semantic diff explanation prompt
+DIFF_EXPLAIN_PROMPT = """You are a senior software engineer. Explain the semantic meaning of the following code diff in plain English.
+
+Focus on:
+- What the changes accomplish functionally (not line-by-line narration)
+- Why these changes might have been made
+- Any notable side effects, risks, or behavioral changes
+
+Be concise. Use bullet points for multiple changes.
+
+Diff:
+{diff}"""
+
 # Triage prompt for fast scoring
 TRIAGE_PROMPT = """You are a financial markets triage agent. Score this tweet 0-10 for relevance to macro/investing.
 

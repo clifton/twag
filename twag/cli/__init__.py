@@ -13,6 +13,7 @@ from . import accounts as _accounts_mod
 from . import analyze as _analyze_mod
 from . import config_cmd as _config_mod
 from . import db_cmd as _db_mod
+from . import diff_cmd as _diff_mod
 from . import digest as _digest_mod
 from . import fetch as _fetch_mod
 from . import init_cmd as _init_mod
@@ -47,6 +48,7 @@ cli.add_command(_stats_mod.prune)
 cli.add_command(_stats_mod.export)
 cli.add_command(_config_mod.config)
 cli.add_command(_db_mod.db)
+cli.add_command(_diff_mod.diff)
 cli.add_command(_search_mod.search)
 cli.add_command(_web_mod.web)
 
