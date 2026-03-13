@@ -1,5 +1,9 @@
 """Database schema definitions for twag."""
 
+# Bump this when SCHEMA or migrations change.
+# After init_db completes, PRAGMA user_version is set to this value.
+CURRENT_SCHEMA_VERSION = 1
+
 SCHEMA = """
 -- Tweets: Core storage with deduplication
 CREATE TABLE IF NOT EXISTS tweets (
@@ -126,6 +130,7 @@ CREATE INDEX IF NOT EXISTS idx_tweets_author ON tweets(author_handle);
 CREATE INDEX IF NOT EXISTS idx_tweets_signal_tier ON tweets(signal_tier);
 CREATE INDEX IF NOT EXISTS idx_tweets_bookmarked ON tweets(bookmarked) WHERE bookmarked = 1;
 CREATE INDEX IF NOT EXISTS idx_tweets_quote ON tweets(quote_tweet_id) WHERE quote_tweet_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_tweets_reply ON tweets(in_reply_to_tweet_id) WHERE in_reply_to_tweet_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_fetch_log_endpoint ON fetch_log(endpoint, executed_at DESC);
 
 -- User reactions for feedback loop

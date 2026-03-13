@@ -7,7 +7,7 @@ from pathlib import Path
 import rich_click as click
 
 from ..config import get_database_path
-from ..db import dump_sql, get_connection, init_db, rebuild_fts, restore_sql
+from ..db import dump_sql, get_connection, get_schema_info, init_db, rebuild_fts, restore_sql
 from ._console import console
 
 
@@ -46,6 +46,45 @@ def db_rebuild_fts():
         count = rebuild_fts(conn)
         conn.commit()
     console.print(f"Indexed {count} tweets")
+
+
+@db.command("schema-status")
+def db_schema_status():
+    """Show schema health: version, column coverage, index coverage."""
+    from rich.table import Table
+
+    db_file = get_database_path()
+    if not db_file.exists():
+        console.print(f"[red]Database not found: {db_file}[/red]")
+        sys.exit(1)
+
+    with get_connection(readonly=True) as conn:
+        info = get_schema_info(conn)
+
+    # Version row
+    ver_status = "[green]OK[/green]" if info["version_match"] else "[yellow]DRIFT[/yellow]"
+    console.print(f"Schema version: {info['user_version']} (expected {info['expected_version']}) {ver_status}")
+
+    # Missing columns
+    if info["missing_columns"]:
+        table = Table(title="Missing Columns")
+        table.add_column("Table")
+        table.add_column("Columns")
+        for tbl, cols in sorted(info["missing_columns"].items()):
+            table.add_row(tbl, ", ".join(cols))
+        console.print(table)
+    else:
+        console.print("Columns: [green]all present[/green]")
+
+    # Missing indexes
+    if info["missing_indexes"]:
+        table = Table(title="Missing Indexes")
+        table.add_column("Index")
+        for idx in info["missing_indexes"]:
+            table.add_row(idx)
+        console.print(table)
+    else:
+        console.print("Indexes: [green]all present[/green]")
 
 
 @db.command("dump")
