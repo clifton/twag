@@ -1,6 +1,6 @@
 """LLM-powered tweet scoring and analysis."""
 
-from .llm_client import (
+from .llm_client import (  # noqa: F401
     _call_llm,
     _call_llm_vision,
     _parse_json_response,
@@ -29,9 +29,6 @@ __all__ = [
     "TriageResult",
     "VisionResult",
     "XArticleSummaryResult",
-    "_call_llm",
-    "_call_llm_vision",
-    "_parse_json_response",
     "analyze_image",
     "analyze_media",
     "enrich_tweet",

@@ -20,7 +20,7 @@ from .context_commands import (
     toggle_context_command,
     upsert_context_command,
 )
-from .maintenance import (
+from .maintenance import (  # noqa: F401
     _filter_fts_from_sql,
     _is_fts_statement,
     dump_sql,
@@ -60,7 +60,7 @@ from .search import (
     query_suggests_equity_context,
     search_tweets,
 )
-from .time_utils import (
+from .time_utils import (  # noqa: F401
     _get_et_offset,
     get_market_day_cutoff,
     parse_time_range,
@@ -98,9 +98,6 @@ __all__ = [
     "Prompt",
     "Reaction",
     "SearchResult",
-    "_filter_fts_from_sql",
-    "_get_et_offset",
-    "_is_fts_statement",
     "apply_account_decay",
     "archive_stale_narratives",
     "boost_account",
