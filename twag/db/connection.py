@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from ..config import get_database_path
-from .schema import FTS_SCHEMA, SCHEMA
+from .schema import CURRENT_SCHEMA_VERSION, FTS_SCHEMA, SCHEMA
 
 
 def init_db(db_path: Path | None = None) -> None:
@@ -23,6 +23,7 @@ def init_db(db_path: Path | None = None) -> None:
             with get_connection(db_path) as conn:
                 conn.executescript(SCHEMA)
                 _run_migrations(conn)
+                conn.execute(f"PRAGMA user_version = {CURRENT_SCHEMA_VERSION}")
                 conn.commit()
             return
         except sqlite3.OperationalError as e:
@@ -149,6 +150,70 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         "ON tweets(in_reply_to_tweet_id) WHERE in_reply_to_tweet_id IS NOT NULL"
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_fetch_log_endpoint ON fetch_log(endpoint, executed_at DESC)")
+
+
+def get_schema_info(conn: sqlite3.Connection) -> dict:
+    """Return a diagnostic dict describing schema health.
+
+    Keys:
+        user_version: current PRAGMA user_version value
+        expected_version: CURRENT_SCHEMA_VERSION from schema.py
+        version_match: whether the two agree
+        missing_columns: dict of table_name -> list of missing column names
+        missing_indexes: list of index names present in SCHEMA but not in the db
+    """
+    import re
+
+    # Current user_version
+    user_version = conn.execute("PRAGMA user_version").fetchone()[0]
+
+    # --- columns ---------------------------------------------------
+    # Parse expected columns from SCHEMA CREATE TABLE blocks
+    expected_columns: dict[str, set[str]] = {}
+    table_pattern = re.compile(
+        r"CREATE TABLE IF NOT EXISTS (\w+)\s*\((.*?)\);",
+        re.DOTALL | re.IGNORECASE,
+    )
+    for m in table_pattern.finditer(SCHEMA):
+        table = m.group(1)
+        body = m.group(2)
+        cols: set[str] = set()
+        for line in body.split("\n"):
+            line = line.strip().rstrip(",")
+            if not line or line.startswith("--"):
+                continue
+            # Skip constraints (PRIMARY KEY, FOREIGN KEY, UNIQUE, CHECK)
+            first = line.split()[0].upper() if line.split() else ""
+            if first in ("PRIMARY", "FOREIGN", "UNIQUE", "CHECK", "CONSTRAINT"):
+                continue
+            col_name = line.split()[0]
+            cols.add(col_name)
+        expected_columns[table] = cols
+
+    missing_columns: dict[str, list[str]] = {}
+    for table, expected in expected_columns.items():
+        cursor = conn.execute(f"PRAGMA table_info({table})")
+        actual = {row[1] for row in cursor.fetchall()}
+        diff = sorted(expected - actual)
+        if diff:
+            missing_columns[table] = diff
+
+    # --- indexes ---------------------------------------------------
+    idx_pattern = re.compile(r"CREATE INDEX IF NOT EXISTS (\w+)", re.IGNORECASE)
+    expected_indexes = {m.group(1) for m in idx_pattern.finditer(SCHEMA)}
+
+    cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='index'")
+    actual_indexes = {row[0] for row in cursor.fetchall()}
+
+    missing_indexes = sorted(expected_indexes - actual_indexes)
+
+    return {
+        "user_version": user_version,
+        "expected_version": CURRENT_SCHEMA_VERSION,
+        "version_match": user_version == CURRENT_SCHEMA_VERSION,
+        "missing_columns": missing_columns,
+        "missing_indexes": missing_indexes,
+    }
 
 
 def _init_fts(conn: sqlite3.Connection) -> None:
