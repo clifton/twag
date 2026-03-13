@@ -79,6 +79,7 @@ class TweetResponse(BaseModel):
     reference_links: list[dict[str, str]] = []
     external_links: list[dict[str, str]] = []
     display_content: str | None = None
+    links_json: str | None = None
 
 
 class TweetListResponse(BaseModel):

@@ -9,6 +9,7 @@ from fastapi import APIRouter, Query, Request
 
 from ...db import get_connection, get_feed_tweets, get_tweet_by_id, get_tweets_by_ids, parse_time_range
 from ...media import parse_media_items
+from ...models.api import TweetResponse
 from ..tweet_utils import (
     decode_html_entities,
     normalize_links_for_display,
@@ -367,7 +368,7 @@ async def list_tweets(
     }
 
 
-@router.get("/tweets/{tweet_id}")
+@router.get("/tweets/{tweet_id}", response_model=TweetResponse)
 async def get_tweet(request: Request, tweet_id: str) -> dict[str, Any]:
     """Get a single tweet by ID."""
     db_path = request.app.state.db_path

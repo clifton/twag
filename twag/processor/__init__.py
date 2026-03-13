@@ -1,6 +1,6 @@
 """Tweet processing pipeline."""
 
-from .dependencies import (
+from .dependencies import (  # noqa: F401
     _ensure_quote_row,
     _expand_links_for_rows,
     _expand_single_tweet_links,
@@ -27,7 +27,7 @@ from .storage import (
     store_bookmarked_tweets,
     store_fetched_tweets,
 )
-from .triage import (
+from .triage import (  # noqa: F401
     _analyze_media_items,
     _build_triage_text,
     _merge_document_media,
@@ -42,28 +42,6 @@ from .triage import (
 )
 
 __all__ = [
-    "_analyze_media_items",
-    "_build_triage_text",
-    "_ensure_quote_row",
-    "_expand_links_for_rows",
-    "_expand_single_tweet_links",
-    "_expand_unprocessed_with_dependencies",
-    "_extract_dependency_ids_from_row",
-    "_extract_inline_linked_tweet_ids",
-    "_extract_inline_linked_tweet_ids_from_links_json",
-    "_fetch_inline_linked_tweets",
-    "_fetch_quote_by_id",
-    "_fetch_quote_chain",
-    "_fetch_reply_chain",
-    "_merge_document_media",
-    "_needs_media_analysis",
-    "_normalized_worker_count",
-    "_page_number_hint",
-    "_prefer_stronger_signal_tier",
-    "_row_get",
-    "_select_article_top_visual",
-    "_tokenize_for_overlap",
-    "_triage_rows",
     "auto_promote_bookmarked_authors",
     "enrich_high_signal",
     "ensure_media_analysis",
