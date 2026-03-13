@@ -2,6 +2,7 @@
 
 import html
 import os
+import time
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -9,10 +10,30 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from ..config import get_database_path
 from ..db import init_db
-from .routes import context, prompts, reactions, tweets
+from ..metrics import counter, histogram
+from .routes import context, metrics, prompts, reactions, tweets
+
+
+class MetricsMiddleware(BaseHTTPMiddleware):
+    """Track request count and latency per route."""
+
+    async def dispatch(self, request: Request, call_next):
+        start = time.monotonic()
+        response = await call_next(request)
+        duration = time.monotonic() - start
+
+        method = request.method
+        status = response.status_code
+
+        counter(f"http_requests_{method}_{status}").inc()
+        histogram("http_request_duration_seconds").observe(duration)
+
+        return response
+
 
 # Paths
 TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -28,6 +49,9 @@ def create_app() -> FastAPI:
     )
 
     app.state.db_path = get_database_path()
+
+    # Metrics middleware (added before CORS so it wraps all requests)
+    app.add_middleware(MetricsMiddleware)
 
     # CORS: restrict to localhost origins
     app.add_middleware(
@@ -50,6 +74,7 @@ def create_app() -> FastAPI:
     app.include_router(reactions.router, prefix="/api")
     app.include_router(prompts.router, prefix="/api")
     app.include_router(context.router, prefix="/api")
+    app.include_router(metrics.router, prefix="/api")
 
     # In dev mode (TWAG_DEV=1), skip SPA serving — Vite dev server handles frontend
     dev_mode = os.environ.get("TWAG_DEV") == "1"
