@@ -31,7 +31,7 @@ metadata:
         bins: ["bird"]
         label: "Install bird CLI (brew)"
         os: ["darwin"]
-allowed-tools: Bash(twag:*), Bash(bird:*)
+allowed-tools: Bash(twag:*) Bash(bird:*)
 ---
 
 # twag — Twitter/X Market Signal Aggregator
