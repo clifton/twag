@@ -7,6 +7,7 @@ import httpx
 
 from .config import load_config
 from .fetcher import get_tweet_url
+from .metric_names import TELEGRAM_SEND_FAILURE, TELEGRAM_SEND_SUCCESS
 from .metrics import counter
 
 
@@ -135,12 +136,12 @@ def send_telegram_alert(
         )
         success = response.status_code == 200
         if success:
-            counter("telegram_send_success").inc()
+            counter(TELEGRAM_SEND_SUCCESS).inc()
         else:
-            counter("telegram_send_failure").inc()
+            counter(TELEGRAM_SEND_FAILURE).inc()
         return success
     except Exception:
-        counter("telegram_send_failure").inc()
+        counter(TELEGRAM_SEND_FAILURE).inc()
         return False
 
 
