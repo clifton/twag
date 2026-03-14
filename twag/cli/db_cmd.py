@@ -1,5 +1,6 @@
 """Database commands."""
 
+import logging
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -9,6 +10,8 @@ import rich_click as click
 from ..config import get_database_path
 from ..db import dump_sql, get_connection, init_db, rebuild_fts, restore_sql
 from ._console import console
+
+log = logging.getLogger(__name__)
 
 
 @click.group()
@@ -121,6 +124,7 @@ def db_restore(input_file: str, force: bool):
                 tweet_count = cursor.fetchone()[0]
             msg = f"This will replace the existing database ({tweet_count} tweets). Continue?"
         except Exception:
+            log.debug("Could not read tweet count for restore prompt", exc_info=True)
             msg = "This will replace the existing database. Continue?"
 
         if not click.confirm(msg):
@@ -143,5 +147,6 @@ def db_restore(input_file: str, force: bool):
             f"Restored database: {counts['tweets']} tweets, {counts['accounts']} accounts, {counts['fts']} FTS entries"
         )
     except Exception as e:
+        log.exception("Database restore failed")
         console.print(f"[red]Error restoring database: {e}[/red]")
         sys.exit(1)

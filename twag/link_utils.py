@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from functools import lru_cache
@@ -10,6 +11,8 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from .metrics import counter, histogram
+
+log = logging.getLogger(__name__)
 
 _URL_RE = re.compile(r"https?://[^\s<>()]+", re.IGNORECASE)
 _TRAILING_PUNCT_RE = re.compile(r"[)\],.?!:;]+$")
@@ -118,6 +121,7 @@ def _expand_short_url(url: str) -> str:
                     if resolved:
                         return resolved
         except Exception:
+            log.debug("Link expansion failed for %s via %s", cleaned, method, exc_info=True)
             counter("link_expansion_failures").inc()
             continue
     return cleaned
