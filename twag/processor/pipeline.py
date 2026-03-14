@@ -20,6 +20,11 @@ from ..db import (
 )
 from ..fetcher import read_tweet
 from ..media import build_media_context
+from ..metric_names import (
+    PIPELINE_CYCLE_DURATION_SECONDS,
+    PIPELINE_PROCESS_DURATION_SECONDS,
+    PIPELINE_TWEET_TOTAL,
+)
 from ..metrics import counter, histogram
 from ..scorer import EnrichmentResult, TriageResult, enrich_tweet
 from .dependencies import _expand_links_for_rows, _expand_unprocessed_with_dependencies
@@ -45,7 +50,7 @@ def process_unprocessed(
     force_refresh: bool = False,
 ) -> list[TriageResult]:
     """Process tweets that haven't been scored yet."""
-    _pipeline_hist = histogram("pipeline_process_duration_seconds")
+    _pipeline_hist = histogram(PIPELINE_PROCESS_DURATION_SECONDS)
     with _pipeline_hist.time():
         return _process_unprocessed_inner(
             limit=limit,
@@ -166,7 +171,7 @@ def _process_unprocessed_inner(
 
         conn.commit()
 
-    counter("pipeline_tweets_processed").inc(len(results))
+    counter(PIPELINE_TWEET_TOTAL).inc(len(results))
     return results
 
 
@@ -394,7 +399,7 @@ def run_full_cycle(
     enrich: bool = True,
 ) -> dict:
     """Run a full fetch/process/enrich cycle."""
-    _cycle_hist = histogram("pipeline_full_cycle_duration_seconds")
+    _cycle_hist = histogram(PIPELINE_CYCLE_DURATION_SECONDS)
     with _cycle_hist.time():
         return _run_full_cycle_inner(fetch_home, fetch_tier1, process, enrich)
 

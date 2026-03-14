@@ -9,6 +9,18 @@ from anthropic import Anthropic
 
 from twag.auth import get_api_key
 from twag.config import load_config
+from twag.metric_names import (
+    LLM_ANTHROPIC_CALL,
+    LLM_ANTHROPIC_CALL_DURATION_SECONDS,
+    LLM_ANTHROPIC_TOKEN_INPUT,
+    LLM_ANTHROPIC_TOKEN_OUTPUT,
+    LLM_ERROR,
+    LLM_GEMINI_CALL,
+    LLM_GEMINI_CALL_DURATION_SECONDS,
+    LLM_GEMINI_TOKEN_INPUT,
+    LLM_GEMINI_TOKEN_OUTPUT,
+    LLM_RETRY,
+)
 from twag.metrics import counter, histogram
 
 
@@ -36,16 +48,16 @@ def _extract_anthropic_text(content_blocks: list[Any]) -> str:
 def _call_anthropic(model: str, prompt: str, max_tokens: int = 2048) -> str:
     """Call Anthropic API and return text response."""
     client = get_anthropic_client()
-    with histogram("llm_call_duration_seconds_anthropic").time():
+    with histogram(LLM_ANTHROPIC_CALL_DURATION_SECONDS).time():
         response = client.messages.create(
             model=model,
             max_tokens=max_tokens,
             messages=[{"role": "user", "content": prompt}],
         )
-    counter("llm_calls_anthropic").inc()
+    counter(LLM_ANTHROPIC_CALL).inc()
     if hasattr(response, "usage") and response.usage:
-        counter("llm_tokens_input_anthropic").inc(response.usage.input_tokens or 0)
-        counter("llm_tokens_output_anthropic").inc(response.usage.output_tokens or 0)
+        counter(LLM_ANTHROPIC_TOKEN_INPUT).inc(response.usage.input_tokens or 0)
+        counter(LLM_ANTHROPIC_TOKEN_OUTPUT).inc(response.usage.output_tokens or 0)
     return _extract_anthropic_text(response.content)
 
 
@@ -62,16 +74,16 @@ def _call_gemini(model: str, prompt: str, max_tokens: int = 2048, reasoning: str
         # Gemini 3+ uses thinking_level (string: "low", "medium", "high")
         config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_level=reasoning)  # ty: ignore[invalid-argument-type]
 
-    with histogram("llm_call_duration_seconds_gemini").time():
+    with histogram(LLM_GEMINI_CALL_DURATION_SECONDS).time():
         response = client.models.generate_content(
             model=model,
             contents=prompt,
             config=types.GenerateContentConfig(**config_kwargs),
         )
-    counter("llm_calls_gemini").inc()
+    counter(LLM_GEMINI_CALL).inc()
     if hasattr(response, "usage_metadata") and response.usage_metadata:
-        counter("llm_tokens_input_gemini").inc(response.usage_metadata.prompt_token_count or 0)
-        counter("llm_tokens_output_gemini").inc(response.usage_metadata.candidates_token_count or 0)
+        counter(LLM_GEMINI_TOKEN_INPUT).inc(response.usage_metadata.prompt_token_count or 0)
+        counter(LLM_GEMINI_TOKEN_OUTPUT).inc(response.usage_metadata.candidates_token_count or 0)
     return response.text
 
 
@@ -164,13 +176,13 @@ def _with_retry(fn):
             return fn()
         except Exception as exc:
             attempt += 1
-            counter("llm_retries").inc()
+            counter(LLM_RETRY).inc()
             msg = str(exc).lower()
             if "not set" in msg and "api" in msg:
-                counter("llm_errors").inc()
+                counter(LLM_ERROR).inc()
                 raise
             if retries and attempt >= retries:
-                counter("llm_errors").inc()
+                counter(LLM_ERROR).inc()
                 raise
 
             delay = min(max_delay, base_delay * (2 ** (attempt - 1)))

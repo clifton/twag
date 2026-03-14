@@ -14,6 +14,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from ..config import get_database_path
 from ..db import init_db
+from ..metric_names import HTTP_REQUEST_DURATION_SECONDS, http_request_counter_name
 from ..metrics import counter, histogram
 from .routes import context, metrics, prompts, reactions, tweets
 
@@ -29,8 +30,8 @@ class MetricsMiddleware(BaseHTTPMiddleware):
         method = request.method
         status = response.status_code
 
-        counter(f"http_requests_{method}_{status}").inc()
-        histogram("http_request_duration_seconds").observe(duration)
+        counter(http_request_counter_name(method, status)).inc()
+        histogram(HTTP_REQUEST_DURATION_SECONDS).observe(duration)
 
         return response
 
