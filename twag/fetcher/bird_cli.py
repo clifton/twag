@@ -11,6 +11,7 @@ from typing import Any
 
 from ..auth import get_auth_env
 from ..config import load_config
+from ..metrics import counter, histogram
 from .extractors import Tweet, _looks_truncated_text, _needs_retweet_hydration
 
 log = logging.getLogger(__name__)
@@ -95,8 +96,17 @@ def run_bird(args: list[str], timeout: int = 60) -> tuple[str, str, int]:
     base_seconds = bird_cfg.get("retry_base_seconds", 15.0)
     max_seconds = bird_cfg.get("retry_max_seconds", 120.0)
 
+    _hist = histogram("bird_call_duration_seconds")
+    _cmd_label = args[0] if args else "unknown"
+
     for attempt in range(max_attempts):
-        stdout, stderr, returncode = _run_bird_once(cmd, env, args, timeout)
+        with _hist.time():
+            stdout, stderr, returncode = _run_bird_once(cmd, env, args, timeout)
+
+        if returncode == 0:
+            counter("bird_calls_success").inc()
+        else:
+            counter("bird_calls_failure").inc()
 
         if returncode == 0 or not _is_rate_limited(stderr):
             return stdout, stderr, returncode
@@ -224,6 +234,7 @@ def fetch_home_timeline(count: int = 100) -> list[Tweet]:
     tweets = _parse_bird_output(stdout)
     if not tweets and stdout.strip():
         log.warning("bird home returned %d bytes but 0 parseable tweets", len(stdout))
+    counter("fetch_tweets_returned").inc(len(tweets))
     return _hydrate_truncated_retweets(tweets)
 
 
@@ -239,6 +250,7 @@ def fetch_user_tweets(handle: str, count: int = 50) -> list[Tweet]:
         raise RuntimeError(f"bird user-tweets failed for {handle} (exit {code}): {stderr.strip()}")
 
     tweets = _parse_bird_output(stdout)
+    counter("fetch_tweets_returned").inc(len(tweets))
     return _hydrate_truncated_retweets(tweets)
 
 
