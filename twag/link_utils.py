@@ -9,6 +9,9 @@ from threading import Lock
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
+from .metric_names import LINK_EXPANSION_DURATION_SECONDS, LINK_EXPANSION_FAILURE
+from .metrics import counter, histogram
+
 _URL_RE = re.compile(r"https?://[^\s<>()]+", re.IGNORECASE)
 _TRAILING_PUNCT_RE = re.compile(r"[)\],.?!:;]+$")
 _STATUS_URL_RE = re.compile(
@@ -106,14 +109,17 @@ def _expand_short_url(url: str) -> str:
         ("HEAD", _SHORT_URL_HEAD_TIMEOUT_SECONDS),
         ("GET", _SHORT_URL_GET_TIMEOUT_SECONDS),
     )
+    _hist = histogram(LINK_EXPANSION_DURATION_SECONDS)
     for method, timeout in attempts:
         try:
-            request = Request(cleaned, method=method, headers=headers)
-            with urlopen(request, timeout=timeout) as response:
-                resolved = clean_url_candidate(response.geturl() or cleaned)
-                if resolved:
-                    return resolved
+            with _hist.time():
+                request = Request(cleaned, method=method, headers=headers)
+                with urlopen(request, timeout=timeout) as response:
+                    resolved = clean_url_candidate(response.geturl() or cleaned)
+                    if resolved:
+                        return resolved
         except Exception:
+            counter(LINK_EXPANSION_FAILURE).inc()
             continue
     return cleaned
 

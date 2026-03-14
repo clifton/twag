@@ -7,6 +7,8 @@ import httpx
 
 from .config import load_config
 from .fetcher import get_tweet_url
+from .metric_names import TELEGRAM_SEND_FAILURE, TELEGRAM_SEND_SUCCESS
+from .metrics import counter
 
 
 def is_quiet_hours() -> bool:
@@ -132,8 +134,14 @@ def send_telegram_alert(
             },
             timeout=10,
         )
-        return response.status_code == 200
+        success = response.status_code == 200
+        if success:
+            counter(TELEGRAM_SEND_SUCCESS).inc()
+        else:
+            counter(TELEGRAM_SEND_FAILURE).inc()
+        return success
     except Exception:
+        counter(TELEGRAM_SEND_FAILURE).inc()
         return False
 
 

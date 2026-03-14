@@ -1,5 +1,5 @@
 """Route modules for twag web API."""
 
-from . import context, prompts, reactions, tweets
+from . import context, metrics, prompts, reactions, tweets
 
-__all__ = ["context", "prompts", "reactions", "tweets"]
+__all__ = ["context", "metrics", "prompts", "reactions", "tweets"]
