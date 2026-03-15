@@ -21,7 +21,6 @@ from .context_commands import (
     upsert_context_command,
 )
 from .maintenance import (
-    _filter_fts_from_sql,
     _is_fts_statement,
     dump_sql,
     prune_old_tweets,
@@ -61,7 +60,6 @@ from .search import (
     search_tweets,
 )
 from .time_utils import (
-    _get_et_offset,
     get_market_day_cutoff,
     parse_time_range,
 )
@@ -98,8 +96,6 @@ __all__ = [
     "Prompt",
     "Reaction",
     "SearchResult",
-    "_filter_fts_from_sql",
-    "_get_et_offset",
     "_is_fts_statement",
     "apply_account_decay",
     "archive_stale_narratives",

@@ -242,6 +242,8 @@ async def _run_command(command: str, timeout: float = 30.0) -> tuple[str, str, i
             proc.returncode or 0,
         )
     except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()
         return "", "Command timed out", -1
     except Exception as e:
         return "", str(e), -1

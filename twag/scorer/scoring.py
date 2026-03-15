@@ -40,17 +40,6 @@ class EnrichmentResult:
 
 
 @dataclass
-class VisionResult:
-    """Result of chart/image analysis."""
-
-    chart_type: str
-    description: str
-    insight: str
-    implication: str
-    tickers: list[str] = field(default_factory=list)
-
-
-@dataclass
 class MediaAnalysisResult:
     """Result of image/media analysis."""
 
