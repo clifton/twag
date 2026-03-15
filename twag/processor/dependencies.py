@@ -18,7 +18,6 @@ from ..db import (
     get_tweet_by_id,
     get_tweets_by_ids,
     insert_tweet,
-    is_tweet_seen,
     update_tweet_links_expanded,
     upsert_account,
 )
@@ -322,9 +321,9 @@ def _fetch_quote_by_id(
         return 0
     seen.add(quote_id)
 
-    if is_tweet_seen(conn, quote_id):
-        row = get_tweet_by_id(conn, quote_id)
-        if row and row["has_quote"] and row["quote_tweet_id"]:
+    row = get_tweet_by_id(conn, quote_id)
+    if row:
+        if row["has_quote"] and row["quote_tweet_id"]:
             return _fetch_quote_by_id(
                 conn,
                 row["quote_tweet_id"],
@@ -480,15 +479,28 @@ def _expand_unprocessed_with_dependencies(
     queue: deque[tuple[sqlite3.Row, int]] = deque((row, 0) for row in rows)
 
     while queue:
-        row, depth = queue.popleft()
-        if depth >= max_depth:
-            continue
-        for dep_id in _extract_dependency_ids_from_row(row):
-            if dep_id in seen_dependency_ids:
+        # Collect all dependency IDs at the current depth level for batch fetch
+        pending: list[tuple[str, int]] = []
+        batch_dep_ids: set[str] = set()
+        while queue:
+            row, depth = queue.popleft()
+            if depth >= max_depth:
                 continue
-            seen_dependency_ids.add(dep_id)
+            for dep_id in _extract_dependency_ids_from_row(row):
+                if dep_id in seen_dependency_ids:
+                    continue
+                seen_dependency_ids.add(dep_id)
+                pending.append((dep_id, depth))
+                batch_dep_ids.add(dep_id)
 
-            dep_row = get_tweet_by_id(conn, dep_id)
+        if not batch_dep_ids:
+            break
+
+        # Batch-fetch all dependency rows in one query
+        fetched_rows = get_tweets_by_ids(conn, batch_dep_ids)
+
+        for dep_id, depth in pending:
+            dep_row = fetched_rows.get(dep_id)
             if not dep_row and fetch_missing:
                 dep_row = _ensure_quote_row(conn, dep_id, delay=delay, status_cb=status_cb)
             if not dep_row:

@@ -87,16 +87,29 @@ def get_config_path() -> Path:
     return get_xdg_config_home() / APP_NAME / "config.json"
 
 
+_config_cache: dict[str, Any] = {"mtime": 0.0, "config": None}
+
+
 def load_config() -> dict[str, Any]:
-    """Load configuration, merging with defaults."""
-    config = DEFAULT_CONFIG.copy()
+    """Load configuration, merging with defaults. Cached by file mtime."""
     config_path = get_config_path()
 
+    try:
+        current_mtime = config_path.stat().st_mtime
+    except OSError:
+        current_mtime = 0.0
+
+    if _config_cache["config"] is not None and _config_cache["mtime"] == current_mtime:
+        return _config_cache["config"]
+
+    config = DEFAULT_CONFIG.copy()
     if config_path.exists():
         with open(config_path) as f:
             user_config = json.load(f)
             config = deep_merge(config, user_config)
 
+    _config_cache["mtime"] = current_mtime
+    _config_cache["config"] = config
     return config
 
 
@@ -107,6 +120,9 @@ def save_config(config: dict[str, Any]) -> None:
 
     with open(config_path, "w") as f:
         json.dump(config, f, indent=2)
+
+    # Invalidate cache so next load_config() picks up the new file
+    _config_cache["config"] = None
 
 
 def deep_merge(base: dict, override: dict) -> dict:

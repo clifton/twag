@@ -468,69 +468,40 @@ async def list_categories(request: Request) -> dict[str, Any]:
     db_path = request.app.state.db_path
 
     with get_connection(db_path, readonly=True) as conn:
-        # Get category distribution
+        # Use json_each to unnest category arrays in SQL, avoiding
+        # fetching all rows and aggregating in Python.
         cursor = conn.execute(
             """
-            SELECT category, COUNT(*) as count
-            FROM tweets
-            WHERE category IS NOT NULL AND processed_at IS NOT NULL
-            GROUP BY category
+            SELECT j.value AS name, COUNT(*) AS count
+            FROM tweets, json_each(tweets.category) AS j
+            WHERE tweets.category IS NOT NULL AND tweets.processed_at IS NOT NULL
+            GROUP BY name
             ORDER BY count DESC
             """
         )
-        raw_counts = {row["category"]: row["count"] for row in cursor.fetchall()}
+        rows = cursor.fetchall()
 
-    # Parse and aggregate categories (they may be JSON arrays)
-    import json
-
-    category_counts: dict[str, int] = {}
-    for cat_raw, count in raw_counts.items():
-        try:
-            cats = json.loads(cat_raw)
-            if isinstance(cats, str):
-                cats = [cats]
-        except json.JSONDecodeError:
-            cats = [cat_raw]
-
-        for cat in cats:
-            category_counts[cat] = category_counts.get(cat, 0) + count
-
-    # Sort by count
-    sorted_cats = sorted(category_counts.items(), key=lambda x: -x[1])
-
-    return {"categories": [{"name": name, "count": count} for name, count in sorted_cats]}
+    return {"categories": [{"name": row["name"], "count": row["count"]} for row in rows]}
 
 
 @router.get("/tickers")
 async def list_tickers(request: Request, limit: int = 50) -> dict[str, Any]:
     """Get list of mentioned tickers with counts."""
-    import json
-
     db_path = request.app.state.db_path
 
     with get_connection(db_path, readonly=True) as conn:
+        # Use json_each to unnest ticker arrays in SQL, avoiding fetching all rows
         cursor = conn.execute(
             """
-            SELECT tickers
-            FROM tweets
-            WHERE tickers IS NOT NULL AND processed_at IS NOT NULL
-            """
+            SELECT UPPER(j.value) AS symbol, COUNT(*) AS count
+            FROM tweets, json_each(tweets.tickers) AS j
+            WHERE tweets.tickers IS NOT NULL AND tweets.processed_at IS NOT NULL
+            GROUP BY symbol
+            ORDER BY count DESC
+            LIMIT ?
+            """,
+            (limit,),
         )
         rows = cursor.fetchall()
 
-    # Aggregate tickers
-    ticker_counts: dict[str, int] = {}
-    for row in rows:
-        try:
-            tickers = json.loads(row["tickers"])
-        except json.JSONDecodeError:
-            tickers = [t.strip() for t in row["tickers"].split(",") if t.strip()]
-
-        for ticker in tickers:
-            ticker = ticker.upper()
-            ticker_counts[ticker] = ticker_counts.get(ticker, 0) + 1
-
-    # Sort by count and limit
-    sorted_tickers = sorted(ticker_counts.items(), key=lambda x: -x[1])[:limit]
-
-    return {"tickers": [{"symbol": symbol, "count": count} for symbol, count in sorted_tickers]}
+    return {"tickers": [{"symbol": row["symbol"], "count": row["count"]} for row in rows]}

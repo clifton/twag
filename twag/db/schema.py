@@ -127,6 +127,7 @@ CREATE INDEX IF NOT EXISTS idx_tweets_signal_tier ON tweets(signal_tier);
 CREATE INDEX IF NOT EXISTS idx_tweets_bookmarked ON tweets(bookmarked) WHERE bookmarked = 1;
 CREATE INDEX IF NOT EXISTS idx_tweets_quote ON tweets(quote_tweet_id) WHERE quote_tweet_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_fetch_log_endpoint ON fetch_log(endpoint, executed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tweet_narratives_narrative ON tweet_narratives(narrative_id);
 
 -- User reactions for feedback loop
 CREATE TABLE IF NOT EXISTS reactions (

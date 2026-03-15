@@ -9,18 +9,28 @@ from anthropic import Anthropic
 
 from twag.auth import get_api_key
 from twag.config import load_config
+from twag.metrics import counter, histogram
+
+_anthropic_client: Anthropic | None = None
+_gemini_client: Any = None
 
 
 def get_anthropic_client() -> Anthropic:
-    """Get an Anthropic client."""
-    return Anthropic(api_key=get_api_key("ANTHROPIC_API_KEY"))
+    """Get or create a cached Anthropic client (reuses HTTP connection pool)."""
+    global _anthropic_client
+    if _anthropic_client is None:
+        _anthropic_client = Anthropic(api_key=get_api_key("ANTHROPIC_API_KEY"))
+    return _anthropic_client
 
 
 def get_gemini_client():
-    """Get a Gemini client using the new google.genai SDK."""
-    from google import genai
+    """Get or create a cached Gemini client (reuses HTTP connection pool)."""
+    global _gemini_client
+    if _gemini_client is None:
+        from google import genai
 
-    return genai.Client(api_key=get_api_key("GEMINI_API_KEY"))
+        _gemini_client = genai.Client(api_key=get_api_key("GEMINI_API_KEY"))
+    return _gemini_client
 
 
 def _extract_anthropic_text(content_blocks: list[Any]) -> str:
@@ -35,11 +45,16 @@ def _extract_anthropic_text(content_blocks: list[Any]) -> str:
 def _call_anthropic(model: str, prompt: str, max_tokens: int = 2048) -> str:
     """Call Anthropic API and return text response."""
     client = get_anthropic_client()
-    response = client.messages.create(
-        model=model,
-        max_tokens=max_tokens,
-        messages=[{"role": "user", "content": prompt}],
-    )
+    with histogram("llm_call_duration_seconds_anthropic").time():
+        response = client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            messages=[{"role": "user", "content": prompt}],
+        )
+    counter("llm_calls_anthropic").inc()
+    if hasattr(response, "usage") and response.usage:
+        counter("llm_tokens_input_anthropic").inc(response.usage.input_tokens or 0)
+        counter("llm_tokens_output_anthropic").inc(response.usage.output_tokens or 0)
     return _extract_anthropic_text(response.content)
 
 
@@ -56,11 +71,16 @@ def _call_gemini(model: str, prompt: str, max_tokens: int = 2048, reasoning: str
         # Gemini 3+ uses thinking_level (string: "low", "medium", "high")
         config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_level=reasoning)  # ty: ignore[invalid-argument-type]
 
-    response = client.models.generate_content(
-        model=model,
-        contents=prompt,
-        config=types.GenerateContentConfig(**config_kwargs),
-    )
+    with histogram("llm_call_duration_seconds_gemini").time():
+        response = client.models.generate_content(
+            model=model,
+            contents=prompt,
+            config=types.GenerateContentConfig(**config_kwargs),
+        )
+    counter("llm_calls_gemini").inc()
+    if hasattr(response, "usage_metadata") and response.usage_metadata:
+        counter("llm_tokens_input_gemini").inc(response.usage_metadata.prompt_token_count or 0)
+        counter("llm_tokens_output_gemini").inc(response.usage_metadata.candidates_token_count or 0)
     return response.text
 
 
@@ -153,10 +173,13 @@ def _with_retry(fn):
             return fn()
         except Exception as exc:
             attempt += 1
+            counter("llm_retries").inc()
             msg = str(exc).lower()
             if "not set" in msg and "api" in msg:
+                counter("llm_errors").inc()
                 raise
             if retries and attempt >= retries:
+                counter("llm_errors").inc()
                 raise
 
             delay = min(max_delay, base_delay * (2 ** (attempt - 1)))

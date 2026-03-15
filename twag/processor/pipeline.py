@@ -20,6 +20,7 @@ from ..db import (
 )
 from ..fetcher import read_tweet
 from ..media import build_media_context
+from ..metrics import counter, histogram
 from ..scorer import EnrichmentResult, TriageResult, enrich_tweet
 from .dependencies import _expand_links_for_rows, _expand_unprocessed_with_dependencies
 from .storage import fetch_and_store
@@ -44,6 +45,32 @@ def process_unprocessed(
     force_refresh: bool = False,
 ) -> list[TriageResult]:
     """Process tweets that haven't been scored yet."""
+    _pipeline_hist = histogram("pipeline_process_duration_seconds")
+    with _pipeline_hist.time():
+        return _process_unprocessed_inner(
+            limit=limit,
+            dry_run=dry_run,
+            triage_model=triage_model,
+            enrich_model=enrich_model,
+            rows=rows,
+            progress_cb=progress_cb,
+            status_cb=status_cb,
+            total_cb=total_cb,
+            force_refresh=force_refresh,
+        )
+
+
+def _process_unprocessed_inner(
+    limit: int = 50,
+    dry_run: bool = False,
+    triage_model: str | None = None,
+    enrich_model: str | None = None,
+    rows: list[sqlite3.Row] | None = None,
+    progress_cb: Callable[[int], None] | None = None,
+    status_cb: Callable[[str], None] | None = None,
+    total_cb: Callable[[int], None] | None = None,
+    force_refresh: bool = False,
+) -> list[TriageResult]:
     config = load_config()
     batch_size = config["scoring"]["batch_size"]
     high_threshold = config["scoring"]["high_signal_threshold"]
@@ -139,6 +166,7 @@ def process_unprocessed(
 
         conn.commit()
 
+    counter("pipeline_tweets_processed").inc(len(results))
     return results
 
 
@@ -366,6 +394,17 @@ def run_full_cycle(
     enrich: bool = True,
 ) -> dict:
     """Run a full fetch/process/enrich cycle."""
+    _cycle_hist = histogram("pipeline_full_cycle_duration_seconds")
+    with _cycle_hist.time():
+        return _run_full_cycle_inner(fetch_home, fetch_tier1, process, enrich)
+
+
+def _run_full_cycle_inner(
+    fetch_home: bool,
+    fetch_tier1: bool,
+    process: bool,
+    enrich: bool,
+) -> dict:
     stats = {
         "home_fetched": 0,
         "home_new": 0,

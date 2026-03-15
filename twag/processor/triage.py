@@ -405,7 +405,7 @@ def _triage_rows(
 
     def _submit_enrichment(tweet_id: str, tweet_row: sqlite3.Row) -> None:
         """Prepare enrichment parameters (fast DB reads) and submit to text_pool."""
-        row = get_tweet_by_id(conn, tweet_id)
+        row = tweet_row
         if not row or (row["analysis_json"] and not force_refresh):
             _complete_task(tweet_id)
             return
