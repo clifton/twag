@@ -35,49 +35,6 @@ def _looks_truncated_text(text: str | None) -> bool:
     return bool(stripped) and stripped.endswith(("\u2026", "..."))
 
 
-def _build_quote_embed(
-    conn, quote_id: str | None, *, depth: int = 0, seen: set[str] | None = None
-) -> dict[str, Any] | None:
-    if not quote_id:
-        return None
-    if depth >= MAX_QUOTE_DEPTH:
-        return None
-
-    visited = seen or set()
-    if quote_id in visited:
-        return None
-    visited.add(quote_id)
-
-    row = get_tweet_by_id(conn, quote_id)
-    if not row:
-        return None
-
-    embed = quote_embed_from_row(row)
-
-    content = row["content"] or ""
-    links_json = []
-    if row["links_json"]:
-        try:
-            decoded = json.loads(row["links_json"])
-            if isinstance(decoded, list):
-                links_json = [item for item in decoded if isinstance(item, dict)]
-        except json.JSONDecodeError:
-            links_json = []
-    normalized = normalize_links_for_display(
-        tweet_id=row["id"],
-        text=content,
-        links=links_json,
-        has_media=bool(row["has_media"]),
-    )
-    nested_quote_id = row["quote_tweet_id"] or _inline_quote_id_from_links(row["id"], normalized.inline_tweet_links)
-    if nested_quote_id and nested_quote_id != row["id"]:
-        nested_embed = _build_quote_embed(conn, nested_quote_id, depth=depth + 1, seen=visited)
-        if nested_embed:
-            embed["quote_embed"] = nested_embed
-
-    return embed
-
-
 def _build_quote_embed_from_cache(
     cache: dict[str, Any],
     quote_id: str | None,
@@ -481,8 +438,6 @@ async def list_categories(request: Request) -> dict[str, Any]:
         raw_counts = {row["category"]: row["count"] for row in cursor.fetchall()}
 
     # Parse and aggregate categories (they may be JSON arrays)
-    import json
-
     category_counts: dict[str, int] = {}
     for cat_raw, count in raw_counts.items():
         try:
@@ -504,8 +459,6 @@ async def list_categories(request: Request) -> dict[str, Any]:
 @router.get("/tickers")
 async def list_tickers(request: Request, limit: int = 50) -> dict[str, Any]:
     """Get list of mentioned tickers with counts."""
-    import json
-
     db_path = request.app.state.db_path
 
     with get_connection(db_path, readonly=True) as conn:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -230,7 +230,7 @@ def reprocess_today_quoted(
         )
 
         # Mark all reprocessed tweets so they aren't reprocessed again
-        now = datetime.now().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         tweet_ids = [row["id"] for row in rows]
         conn.executemany(
             "UPDATE tweets SET quote_reprocessed_at = ? WHERE id = ?",
@@ -396,8 +396,7 @@ def run_full_cycle(
                 stats["tier1_fetched"] += fetched
                 stats["tier1_new"] += new
             except Exception:
-                # Log but continue
-                pass
+                log.warning("Failed to fetch tier-1 account %s", account["handle"], exc_info=True)
 
     # Process unprocessed tweets
     if process:

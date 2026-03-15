@@ -12,6 +12,7 @@ def upsert_narrative(
     tickers: list[str] | None = None,
 ) -> int:
     """Insert or update a narrative, returning its ID."""
+    now = datetime.now(timezone.utc).isoformat()
     cursor = conn.execute(
         """
         INSERT INTO narratives (name, sentiment, related_tickers, last_mentioned_at)
@@ -26,8 +27,8 @@ def upsert_narrative(
             name,
             sentiment,
             json.dumps(tickers) if tickers else None,
-            datetime.now(timezone.utc).isoformat(),
-            datetime.now(timezone.utc).isoformat(),
+            now,
+            now,
         ),
     )
     row = cursor.fetchone()

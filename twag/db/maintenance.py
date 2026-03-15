@@ -176,7 +176,6 @@ def restore_sql(
 
         return {"tweets": tweet_count, "accounts": account_count, "fts": fts_count}
     except Exception:
-        conn.close()
         # Attempt to restore backup on failure
         if backup:
             backup_path = db_path.with_suffix(".db.bak")
