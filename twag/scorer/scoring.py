@@ -1,5 +1,6 @@
 """Scoring, triage, enrichment, and analysis functions."""
 
+import logging
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -15,6 +16,8 @@ from .prompts import (
     SUMMARIZE_PROMPT,
     TRIAGE_PROMPT,
 )
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -272,6 +275,12 @@ def summarize_x_article(
             data = _parse_json_response(text)
             break
         except Exception:
+            log.warning(
+                "Article summary failed with %s/%s, trying next provider",
+                cand_provider,
+                cand_model,
+                exc_info=True,
+            )
             continue
 
     if data is None:

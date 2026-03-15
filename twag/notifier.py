@@ -1,5 +1,6 @@
 """Telegram notifications for high-signal tweets."""
 
+import logging
 import os
 from datetime import datetime
 
@@ -7,6 +8,8 @@ import httpx
 
 from .config import load_config
 from .fetcher import get_tweet_url
+
+log = logging.getLogger(__name__)
 
 
 def is_quiet_hours() -> bool:
@@ -111,11 +114,13 @@ def send_telegram_alert(
             chat_id = os.environ.get("TELEGRAM_CHAT_ID")
 
     if not chat_id:
+        log.warning("Telegram alert skipped: no chat_id configured")
         return False
 
     # Get bot token
     bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
     if not bot_token:
+        log.warning("Telegram alert skipped: TELEGRAM_BOT_TOKEN not set")
         return False
 
     # Send via Telegram API
@@ -132,8 +137,12 @@ def send_telegram_alert(
             },
             timeout=10,
         )
-        return response.status_code == 200
+        if response.status_code != 200:
+            log.warning("Telegram send failed: HTTP %d - %s", response.status_code, response.text[:200])
+            return False
+        return True
     except Exception:
+        log.exception("Telegram send failed")
         return False
 
 
