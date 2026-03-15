@@ -4,15 +4,29 @@ import html
 import os
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, Security
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.security import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from ..config import get_database_path
 from ..db import init_db
 from .routes import context, prompts, reactions, tweets
+
+_api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+
+async def require_api_key(api_key: str | None = Security(_api_key_header)) -> str | None:
+    """Validate API key if TWAG_API_KEY is set. No-op when unset."""
+    expected = os.environ.get("TWAG_API_KEY")
+    if not expected:
+        return None
+    if not api_key or api_key != expected:
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+    return api_key
+
 
 # Paths
 TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -45,11 +59,11 @@ def create_app() -> FastAPI:
     templates.env.filters["unescape"] = lambda s: html.unescape(s) if s else s
     app.state.templates = templates
 
-    # Include API routers
+    # Include API routers — mutating routes require API key auth
     app.include_router(tweets.router, prefix="/api")
-    app.include_router(reactions.router, prefix="/api")
-    app.include_router(prompts.router, prefix="/api")
-    app.include_router(context.router, prefix="/api")
+    app.include_router(reactions.router, prefix="/api", dependencies=[Depends(require_api_key)])
+    app.include_router(prompts.router, prefix="/api", dependencies=[Depends(require_api_key)])
+    app.include_router(context.router, prefix="/api", dependencies=[Depends(require_api_key)])
 
     # In dev mode (TWAG_DEV=1), skip SPA serving — Vite dev server handles frontend
     dev_mode = os.environ.get("TWAG_DEV") == "1"

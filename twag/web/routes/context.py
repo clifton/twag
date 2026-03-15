@@ -223,10 +223,18 @@ def _extract_tweet_variables(tweet_row) -> dict[str, str]:
     return variables
 
 
+ALLOWED_COMMANDS = {"bird", "curl"}
+
+
 async def _run_command(command: str, timeout: float = 30.0) -> tuple[str, str, int]:
-    """Run a command and return (stdout, stderr, returncode)."""
+    """Run a command and return (stdout, stderr, returncode).
+
+    Only executables in ALLOWED_COMMANDS may be invoked.
+    """
     try:
         args = shlex.split(command)
+        if not args or args[0] not in ALLOWED_COMMANDS:
+            return "", f"Command not allowed: {args[0] if args else '(empty)'}", -1
         proc = await asyncio.create_subprocess_exec(
             *args,
             stdout=asyncio.subprocess.PIPE,
