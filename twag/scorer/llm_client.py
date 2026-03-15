@@ -1,6 +1,7 @@
 """LLM client infrastructure: provider dispatch, retry logic, JSON parsing."""
 
 import json
+import logging
 import random
 import time
 from typing import Any
@@ -140,6 +141,9 @@ def _call_llm_vision(provider: str, model: str, image_url: str, prompt: str, max
     return _with_retry(_invoke)
 
 
+_log = logging.getLogger(__name__)
+
+
 def _with_retry(fn):
     config = load_config()
     retries = config.get("llm", {}).get("retry_max_attempts", 4)
@@ -157,11 +161,20 @@ def _with_retry(fn):
             if "not set" in msg and "api" in msg:
                 raise
             if retries and attempt >= retries:
+                _log.warning("LLM call failed after %d attempts, raising", attempt)
                 raise
 
             delay = min(max_delay, base_delay * (2 ** (attempt - 1)))
             if jitter:
                 delay = max(0.0, delay * (1 + random.uniform(-jitter, jitter)))
+            _log.debug(
+                "LLM retry %d/%d after %.1fs (%s: %s)",
+                attempt,
+                retries,
+                delay,
+                type(exc).__name__,
+                str(exc)[:120],
+            )
             time.sleep(delay)
 
 

@@ -1,5 +1,7 @@
 """CLI entry point for twag."""
 
+import logging
+
 import rich_click as click
 
 from .. import __version__
@@ -29,8 +31,15 @@ from .analyze import _print_status_analysis as _print_status_analysis
 
 @click.group()
 @click.version_option(version=__version__)
-def cli():
+@click.option("-v", "--verbose", is_flag=True, help="Enable debug logging.")
+def cli(verbose: bool):
     """Twitter aggregator for market-relevant signals."""
+    level = logging.DEBUG if verbose else logging.WARNING
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s %(name)s %(levelname)s %(message)s",
+        datefmt="%H:%M:%S",
+    )
 
 
 # Register commands

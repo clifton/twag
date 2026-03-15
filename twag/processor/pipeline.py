@@ -349,6 +349,7 @@ def enrich_high_signal(
                             (result.signal_tier, tweet_id),
                         )
                 except Exception:
+                    log.exception("Enrichment failed for tweet %s", tweet_id)
                     continue
         finally:
             if text_pool:
@@ -396,8 +397,7 @@ def run_full_cycle(
                 stats["tier1_fetched"] += fetched
                 stats["tier1_new"] += new
             except Exception:
-                # Log but continue
-                pass
+                log.exception("Failed to fetch tier-1 account @%s", account["handle"])
 
     # Process unprocessed tweets
     if process:
