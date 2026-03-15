@@ -192,13 +192,15 @@ def search_tweets(
 
     where_clause = " AND ".join(conditions)
 
-    # Order clause
-    if order_by == "score":
-        order_clause = "t.relevance_score DESC NULLS LAST"
-    elif order_by == "time":
-        order_clause = "t.created_at DESC"
-    else:  # rank (BM25)
-        order_clause = "bm25(tweets_fts)"
+    # Order clause — explicit allowlist to prevent SQL injection
+    _SEARCH_ORDER_MAP = {
+        "score": "t.relevance_score DESC NULLS LAST",
+        "time": "t.created_at DESC",
+        "rank": "bm25(tweets_fts)",
+    }
+    if order_by not in _SEARCH_ORDER_MAP:
+        order_by = "rank"
+    order_clause = _SEARCH_ORDER_MAP[order_by]
 
     params.extend([limit, offset])
 
@@ -332,12 +334,17 @@ def get_feed_tweets(
     where_clause = " AND ".join(conditions)
     params.extend([limit, offset])
 
-    if order_by == "latest":
-        inner_order = "created_at DESC"
-        outer_order = "t.created_at DESC"
-    else:
-        inner_order = "relevance_score DESC, created_at DESC"
-        outer_order = "t.relevance_score DESC, t.created_at DESC"
+    # Explicit allowlist to prevent SQL injection via order_by
+    _FEED_ORDER_MAP = {
+        "latest": ("created_at DESC", "t.created_at DESC"),
+        "relevance": (
+            "relevance_score DESC, created_at DESC",
+            "t.relevance_score DESC, t.created_at DESC",
+        ),
+    }
+    if order_by not in _FEED_ORDER_MAP:
+        order_by = "relevance"
+    inner_order, outer_order = _FEED_ORDER_MAP[order_by]
 
     cursor = conn.execute(
         f"""
