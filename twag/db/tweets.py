@@ -535,15 +535,19 @@ def get_tweets_for_digest(
     min_score: float = 5.0,
 ) -> list[sqlite3.Row]:
     """Get processed tweets for a specific date above min_score."""
+    # Use range query so the created_at index can be used instead of
+    # applying date() to every row (which forces a full table scan).
+    date_start = f"{date}T00:00:00"
+    date_end = f"{date}T23:59:59.999999"
     cursor = conn.execute(
         """
         SELECT * FROM tweets
-        WHERE date(created_at) = ?
+        WHERE created_at >= ? AND created_at <= ?
         AND relevance_score >= ?
         AND processed_at IS NOT NULL
         ORDER BY relevance_score DESC
         """,
-        (date, min_score),
+        (date_start, date_end, min_score),
     )
     return cursor.fetchall()
 

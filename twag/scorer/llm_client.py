@@ -11,17 +11,26 @@ from twag.auth import get_api_key
 from twag.config import load_config
 from twag.metrics import counter, histogram
 
+_anthropic_client: Anthropic | None = None
+_gemini_client: Any = None
+
 
 def get_anthropic_client() -> Anthropic:
-    """Get an Anthropic client."""
-    return Anthropic(api_key=get_api_key("ANTHROPIC_API_KEY"))
+    """Get or create a cached Anthropic client (reuses HTTP connection pool)."""
+    global _anthropic_client
+    if _anthropic_client is None:
+        _anthropic_client = Anthropic(api_key=get_api_key("ANTHROPIC_API_KEY"))
+    return _anthropic_client
 
 
 def get_gemini_client():
-    """Get a Gemini client using the new google.genai SDK."""
-    from google import genai
+    """Get or create a cached Gemini client (reuses HTTP connection pool)."""
+    global _gemini_client
+    if _gemini_client is None:
+        from google import genai
 
-    return genai.Client(api_key=get_api_key("GEMINI_API_KEY"))
+        _gemini_client = genai.Client(api_key=get_api_key("GEMINI_API_KEY"))
+    return _gemini_client
 
 
 def _extract_anthropic_text(content_blocks: list[Any]) -> str:
