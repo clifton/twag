@@ -14,6 +14,7 @@ from . import analyze as _analyze_mod
 from . import config_cmd as _config_mod
 from . import db_cmd as _db_mod
 from . import digest as _digest_mod
+from . import entropy as _entropy_mod
 from . import fetch as _fetch_mod
 from . import init_cmd as _init_mod
 from . import narratives as _narratives_mod
@@ -49,6 +50,7 @@ cli.add_command(_config_mod.config)
 cli.add_command(_db_mod.db)
 cli.add_command(_search_mod.search)
 cli.add_command(_web_mod.web)
+cli.add_command(_entropy_mod.entropy)
 
 
 if __name__ == "__main__":
