@@ -156,6 +156,11 @@ async def list_tweets(
     """
     db_path = request.app.state.db_path
 
+    # Validate sort parameter against allowlist
+    allowed_sorts = {"relevance", "latest", None}
+    if sort not in allowed_sorts:
+        sort = "relevance"
+
     # Parse time ranges
     since_dt = None
     until_dt = None

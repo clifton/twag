@@ -5,7 +5,7 @@ import re
 import shlex
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from ...db import (
@@ -21,6 +21,30 @@ from ...media import build_media_context, parse_media_items
 from ...processor import ensure_media_analysis
 
 router = APIRouter(tags=["context"])
+
+# Executables allowed in context command templates
+ALLOWED_EXECUTABLES = frozenset({"twag", "bird", "jq", "curl", "echo", "cat", "date"})
+
+
+def _validate_command_template(template: str) -> None:
+    """Validate that a command template only uses allowed executables.
+
+    Raises HTTPException if the executable is not in the allowlist.
+    """
+    try:
+        tokens = shlex.split(template.split("{")[0] if "{" in template else template)
+    except ValueError:
+        tokens = template.split()
+
+    if not tokens:
+        raise HTTPException(status_code=400, detail="Empty command template")
+
+    executable = tokens[0].rsplit("/", 1)[-1]  # strip any path prefix
+    if executable not in ALLOWED_EXECUTABLES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Executable '{executable}' not allowed. Allowed: {sorted(ALLOWED_EXECUTABLES)}",
+        )
 
 
 class ContextCommandCreate(BaseModel):
@@ -70,6 +94,7 @@ async def create_context_command(
     command: ContextCommandCreate,
 ) -> dict[str, Any]:
     """Create a new context command."""
+    _validate_command_template(command.command_template)
     db_path = request.app.state.db_path
 
     with get_connection(db_path) as conn:
@@ -120,6 +145,7 @@ async def update_context_command(
     command: ContextCommandCreate,
 ) -> dict[str, Any]:
     """Update a context command."""
+    _validate_command_template(command.command_template)
     db_path = request.app.state.db_path
 
     with get_connection(db_path) as conn:
