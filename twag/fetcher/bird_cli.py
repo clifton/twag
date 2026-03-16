@@ -77,10 +77,12 @@ def run_bird(args: list[str], timeout: int = 60) -> tuple[str, str, int]:
     _rate_limit_bird()
     env = get_auth_env()
 
-    # Build command with auth if available
+    # Build command with auth if available.
+    # NOTE: auth tokens are passed as CLI args because bird CLI does not support
+    # reading them from environment variables. This makes them visible in the
+    # process table — acceptable for a single-user local tool.
     cmd = ["bird", *args]
 
-    # Add auth flags if we have the tokens
     auth_token = env.get("AUTH_TOKEN")
     ct0 = env.get("CT0")
 
