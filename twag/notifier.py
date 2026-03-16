@@ -1,5 +1,6 @@
 """Telegram notifications for high-signal tweets."""
 
+import html
 import os
 from datetime import datetime
 
@@ -67,6 +68,11 @@ def format_alert(
     tickers: list[str] | None = None,
 ) -> str:
     """Format a high-signal alert message."""
+    # HTML-escape user-controlled fields for Telegram HTML parse_mode
+    author_handle = html.escape(author_handle)
+    content = html.escape(content)
+    summary = html.escape(summary) if summary else summary
+
     # Truncate content for preview
     preview = content[:150] + "..." if len(content) > 150 else content
 
@@ -87,8 +93,9 @@ def format_alert(
     if summary:
         lines.append(f"📊 {summary}")
 
-    if tickers:
-        lines.append(f"💡 Tickers: {', '.join(tickers)}")
+    escaped_tickers = [html.escape(t) for t in tickers] if tickers else tickers
+    if escaped_tickers:
+        lines.append(f"💡 Tickers: {', '.join(escaped_tickers)}")
 
     url = get_tweet_url(tweet_id, author_handle)
     lines.append(f"🔗 {url}")
