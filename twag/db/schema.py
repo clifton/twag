@@ -168,6 +168,21 @@ CREATE TABLE IF NOT EXISTS context_commands (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- LLM usage tracking for cost attribution
+CREATE TABLE IF NOT EXISTS llm_usage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    component TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    model TEXT NOT NULL,
+    input_tokens INTEGER DEFAULT 0,
+    output_tokens INTEGER DEFAULT 0,
+    estimated_cost_usd REAL DEFAULT 0.0
+);
+
+CREATE INDEX IF NOT EXISTS idx_llm_usage_timestamp ON llm_usage(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_llm_usage_component ON llm_usage(component, timestamp DESC);
+
 -- Additional indexes for new tables
 CREATE INDEX IF NOT EXISTS idx_reactions_tweet ON reactions(tweet_id);
 CREATE INDEX IF NOT EXISTS idx_reactions_type ON reactions(reaction_type);

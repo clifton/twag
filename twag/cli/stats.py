@@ -9,7 +9,10 @@ from rich.table import Table
 from ..db import (
     archive_stale_narratives,
     get_connection,
+    get_cost_by_component,
+    get_cost_summary,
     get_processed_counts,
+    get_total_cost,
     get_tweet_stats,
     prune_old_tweets,
 )
@@ -102,3 +105,88 @@ def export(fmt: str, days: int):
         tweets = [dict(row) for row in cursor.fetchall()]
 
     click.echo(json.dumps(tweets, indent=2, default=str))
+
+
+def _format_cost(cost: float) -> str:
+    """Format a USD cost value for display."""
+    if cost < 0.01:
+        return f"${cost:.4f}"
+    return f"${cost:.2f}"
+
+
+def _format_tokens(count: int | None) -> str:
+    """Format token counts with K/M suffixes."""
+    if not count:
+        return "0"
+    if count >= 1_000_000:
+        return f"{count / 1_000_000:.1f}M"
+    if count >= 1_000:
+        return f"{count / 1_000:.1f}K"
+    return str(count)
+
+
+@click.command()
+@click.option(
+    "--period",
+    type=click.Choice(["today", "7d", "30d", "all"]),
+    default="7d",
+    help="Time period for cost breakdown",
+)
+@click.option("--by-model", is_flag=True, help="Show breakdown by model")
+def costs(period: str, by_model: bool):
+    """Show LLM cost breakdown by component and model."""
+    days_map = {"today": 1, "7d": 7, "30d": 30, "all": None}
+    days = days_map[period]
+
+    with get_connection(readonly=True) as conn:
+        total = get_total_cost(conn, days=days)
+
+        if by_model:
+            rows = get_cost_summary(conn, days=days)
+        else:
+            rows = get_cost_by_component(conn, days=days)
+
+    if not rows:
+        console.print(f"No LLM usage recorded ({period}).")
+        return
+
+    title = f"LLM costs ({period})"
+    table = Table(title=title)
+
+    if by_model:
+        table.add_column("Component", style="bold")
+        table.add_column("Provider")
+        table.add_column("Model")
+        table.add_column("Calls", justify="right")
+        table.add_column("Input", justify="right")
+        table.add_column("Output", justify="right")
+        table.add_column("Cost", justify="right", style="green")
+
+        for row in rows:
+            table.add_row(
+                row["component"],
+                row["provider"],
+                row["model"],
+                str(row["calls"]),
+                _format_tokens(row["total_input_tokens"]),
+                _format_tokens(row["total_output_tokens"]),
+                _format_cost(row["total_cost_usd"]),
+            )
+    else:
+        table.add_column("Component", style="bold")
+        table.add_column("Calls", justify="right")
+        table.add_column("Input", justify="right")
+        table.add_column("Output", justify="right")
+        table.add_column("Cost", justify="right", style="green")
+
+        for row in rows:
+            table.add_row(
+                row["component"],
+                str(row["calls"]),
+                _format_tokens(row["total_input_tokens"]),
+                _format_tokens(row["total_output_tokens"]),
+                _format_cost(row["total_cost_usd"]),
+            )
+
+    console.print(table)
+    console.print(f"\nTotal estimated cost ({period}): [bold green]{_format_cost(total)}[/bold green]")

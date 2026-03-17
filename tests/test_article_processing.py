@@ -272,7 +272,7 @@ def test_summarize_x_article_falls_back_to_triage_provider(monkeypatch) -> None:
 
     calls: list[tuple[str, str]] = []
 
-    def _fake_call_llm(provider, model, prompt, max_tokens=2048, reasoning=None):
+    def _fake_call_llm(provider, model, prompt, max_tokens=2048, reasoning=None, component=None):
         calls.append((provider, model))
         if provider == "anthropic":
             raise RuntimeError("ANTHROPIC_API_KEY not set")

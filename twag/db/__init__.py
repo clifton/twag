@@ -20,6 +20,13 @@ from .context_commands import (
     toggle_context_command,
     upsert_context_command,
 )
+from .costs import (
+    get_cost_by_component,
+    get_cost_by_date,
+    get_cost_summary,
+    get_total_cost,
+    log_llm_usage,
+)
 from .maintenance import (
     _filter_fts_from_sql,
     _is_fts_statement,
@@ -116,6 +123,9 @@ __all__ = [
     "get_bookmark_counts_by_author",
     "get_connection",
     "get_context_command",
+    "get_cost_by_component",
+    "get_cost_by_date",
+    "get_cost_summary",
     "get_feed_tweets",
     "get_last_fetch",
     "get_market_day_cutoff",
@@ -125,6 +135,7 @@ __all__ = [
     "get_reactions_for_tweet",
     "get_reactions_summary",
     "get_reactions_with_tweets",
+    "get_total_cost",
     "get_tweet_by_id",
     "get_tweet_stats",
     "get_tweets_by_ids",
@@ -136,6 +147,7 @@ __all__ = [
     "is_tweet_seen",
     "link_tweet_narrative",
     "log_fetch",
+    "log_llm_usage",
     "mark_tweet_bookmarked",
     "mark_tweet_in_digest",
     "migrate_seen_json",

@@ -133,6 +133,24 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         if seeded > 0:
             conn.commit()
 
+    # Create llm_usage table if not present (cost attribution)
+    cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='llm_usage'")
+    if not cursor.fetchone():
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS llm_usage (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                component TEXT NOT NULL,
+                provider TEXT NOT NULL,
+                model TEXT NOT NULL,
+                input_tokens INTEGER DEFAULT 0,
+                output_tokens INTEGER DEFAULT 0,
+                estimated_cost_usd REAL DEFAULT 0.0
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_llm_usage_timestamp ON llm_usage(timestamp DESC)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_llm_usage_component ON llm_usage(component, timestamp DESC)")
+
     # Ensure performance indexes exist on existing databases
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_tweets_processed_score "
