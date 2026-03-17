@@ -16,8 +16,8 @@ def test_render_digest_uses_labeled_article_sections(monkeypatch, tmp_path):
     db_path = tmp_path / "twag_renderer_article_sections.db"
     init_db(db_path)
 
-    now = datetime.now(timezone.utc)
-    digest_date = now.strftime("%Y-%m-%d")
+    now = datetime(2025, 6, 15, 12, 0, 0, tzinfo=timezone.utc)
+    digest_date = "2025-06-15"
 
     with get_connection(db_path) as conn:
         inserted = insert_tweet(
