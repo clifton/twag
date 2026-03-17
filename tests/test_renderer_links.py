@@ -10,8 +10,8 @@ def test_render_digest_removes_self_links_and_renders_external_and_inline(monkey
     db_path = tmp_path / "twag_renderer_links.db"
     init_db(db_path)
 
-    now = datetime.now(timezone.utc)
-    digest_date = now.strftime("%Y-%m-%d")
+    now = datetime(2025, 6, 15, 12, 0, 0, tzinfo=timezone.utc)
+    digest_date = "2025-06-15"
 
     with get_connection(db_path) as conn:
         # Linked tweet is present in DB but intentionally not processed for digest inclusion.
@@ -81,8 +81,8 @@ def test_render_digest_does_not_expand_short_urls_at_render_time(monkeypatch, tm
     db_path = tmp_path / "twag_renderer_no_runtime_expansion.db"
     init_db(db_path)
 
-    now = datetime.now(timezone.utc)
-    digest_date = now.strftime("%Y-%m-%d")
+    now = datetime(2025, 6, 15, 12, 0, 0, tzinfo=timezone.utc)
+    digest_date = "2025-06-15"
 
     with get_connection(db_path) as conn:
         inserted = insert_tweet(

@@ -26,7 +26,9 @@ def test_process_unprocessed_expands_links_and_persists_before_triage(monkeypatc
         assert inserted is True
         conn.commit()
 
-    monkeypatch.setattr(pipeline_mod, "get_connection", lambda: get_connection(db_path))
+    monkeypatch.setattr(
+        pipeline_mod, "get_connection", lambda readonly=False: get_connection(db_path, readonly=readonly)
+    )
     monkeypatch.setattr(
         pipeline_mod,
         "load_config",
@@ -111,7 +113,9 @@ def test_process_unprocessed_skips_already_expanded_links(monkeypatch, tmp_path)
         )
         conn.commit()
 
-    monkeypatch.setattr(pipeline_mod, "get_connection", lambda: get_connection(db_path))
+    monkeypatch.setattr(
+        pipeline_mod, "get_connection", lambda readonly=False: get_connection(db_path, readonly=readonly)
+    )
     monkeypatch.setattr(
         pipeline_mod,
         "load_config",
@@ -191,7 +195,9 @@ def test_reprocess_today_quoted_expands_quote_row_links(monkeypatch, tmp_path) -
         root_row = get_tweet_by_id(conn, "r1")
         assert root_row is not None
 
-    monkeypatch.setattr(pipeline_mod, "get_connection", lambda: get_connection(db_path))
+    monkeypatch.setattr(
+        pipeline_mod, "get_connection", lambda readonly=False: get_connection(db_path, readonly=readonly)
+    )
     monkeypatch.setattr(
         pipeline_mod,
         "load_config",
@@ -258,7 +264,9 @@ def test_process_unprocessed_adds_reply_parent_to_processing_stack(monkeypatch, 
         assert inserted_root is True
         conn.commit()
 
-    monkeypatch.setattr(pipeline_mod, "get_connection", lambda: get_connection(db_path))
+    monkeypatch.setattr(
+        pipeline_mod, "get_connection", lambda readonly=False: get_connection(db_path, readonly=readonly)
+    )
     monkeypatch.setattr(
         pipeline_mod,
         "load_config",
@@ -322,7 +330,9 @@ def test_process_unprocessed_adds_thread_linked_tweet_to_processing_stack(monkey
         assert inserted_root is True
         conn.commit()
 
-    monkeypatch.setattr(pipeline_mod, "get_connection", lambda: get_connection(db_path))
+    monkeypatch.setattr(
+        pipeline_mod, "get_connection", lambda readonly=False: get_connection(db_path, readonly=readonly)
+    )
     monkeypatch.setattr(
         pipeline_mod,
         "load_config",
