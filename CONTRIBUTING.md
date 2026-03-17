@@ -21,16 +21,16 @@ npm install
 
 ```bash
 # Python tests
-pytest
+uv run pytest
 
 # With coverage
-pytest --cov=twag
+uv run pytest --cov=twag
 
 # Lint check
-ruff check .
+uv run ruff check .
 
 # Format check
-ruff format --check .
+uv run ruff format --check .
 ```
 
 ## Code Style
@@ -42,8 +42,8 @@ ruff format --check .
 Run before committing:
 
 ```bash
-ruff format .
-ruff check --fix .
+uv run ruff format .
+uv run ruff check --fix .
 ```
 
 ## Making Changes

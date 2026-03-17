@@ -35,6 +35,7 @@ FETCH → PROCESS → DIGEST
 - `twag/article_sections.py` — Article section extraction
 - `twag/web/` — FastAPI backend (app, tweet_utils, routes: tweets, context, prompts, reactions)
 - `twag/web/frontend/` — React feed UI
+- `scripts/` — Utility scripts (benchmarking, cron runner, migrations, model testing)
 
 ## Key Files
 
@@ -46,6 +47,10 @@ FETCH → PROCESS → DIGEST
 | `CLAUDE.md` | This file — agent/developer guidance |
 | `TELEGRAM_DIGEST_FORMAT.md` | Telegram output formatting rules |
 | `SUGGESTED_CRON_SCHEDULE.md` | Automation setup guide |
+| `scripts/benchmark_parallelism.py` | Scorer parallelism benchmarking |
+| `scripts/cron-runner.sh` | Cron job wrapper script |
+| `scripts/migrate.sh` | Database migration helper |
+| `scripts/test_models.py` | LLM model testing utility |
 
 ## OpenClaw Skill Context
 
