@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 from ..config import load_config
 from ..db import (
     get_tweet_by_id,
+    log_llm_usage,
     update_account_stats,
     update_tweet_analysis,
     update_tweet_article,
@@ -26,6 +27,7 @@ from ..scorer import (
     TriageResult,
     analyze_media,
     enrich_tweet,
+    flush_usage_events,
     summarize_document_text,
     summarize_tweet,
     summarize_x_article,
@@ -791,6 +793,14 @@ def _triage_rows(
             text_pool.shutdown(wait=True)
         if vision_pool:
             vision_pool.shutdown(wait=True)
+
+        # Flush accumulated LLM usage events to DB
+        events = flush_usage_events()
+        if events:
+            try:
+                log_llm_usage(conn, events)
+            except Exception:
+                pass
 
     return all_results
 

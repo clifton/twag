@@ -4,6 +4,7 @@ from .llm_client import (
     _call_llm,
     _call_llm_vision,
     _parse_json_response,
+    flush_usage_events,
     get_anthropic_client,
     get_gemini_client,
 )
@@ -35,6 +36,7 @@ __all__ = [
     "analyze_image",
     "analyze_media",
     "enrich_tweet",
+    "flush_usage_events",
     "get_anthropic_client",
     "get_gemini_client",
     "summarize_document_text",

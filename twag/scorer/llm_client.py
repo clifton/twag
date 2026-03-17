@@ -2,13 +2,79 @@
 
 import json
 import random
+import threading
 import time
+from datetime import datetime, timezone
 from typing import Any
 
 from anthropic import Anthropic
 
 from twag.auth import get_api_key
 from twag.config import load_config
+
+# --- Cost-per-token pricing (USD per token) ---
+# Input/output prices per 1M tokens converted to per-token
+COST_PER_TOKEN: dict[str, dict[str, float]] = {
+    # Anthropic models
+    "claude-sonnet-4-20250514": {"input": 3.0 / 1_000_000, "output": 15.0 / 1_000_000},
+    "claude-haiku-4-20250414": {"input": 0.80 / 1_000_000, "output": 4.0 / 1_000_000},
+    "claude-3-5-sonnet-20241022": {"input": 3.0 / 1_000_000, "output": 15.0 / 1_000_000},
+    "claude-3-5-haiku-20241022": {"input": 0.80 / 1_000_000, "output": 4.0 / 1_000_000},
+    # Gemini models
+    "gemini-2.5-flash": {"input": 0.15 / 1_000_000, "output": 0.60 / 1_000_000},
+    "gemini-2.5-pro": {"input": 1.25 / 1_000_000, "output": 10.0 / 1_000_000},
+    "gemini-2.0-flash": {"input": 0.10 / 1_000_000, "output": 0.40 / 1_000_000},
+    "gemini-3.1-pro": {"input": 1.25 / 1_000_000, "output": 10.0 / 1_000_000},
+}
+
+# --- Usage accumulator (thread-safe) ---
+_usage_lock = threading.Lock()
+_usage_events: list[dict[str, Any]] = []
+
+
+def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
+    """Estimate USD cost for a call using the pricing table."""
+    pricing = COST_PER_TOKEN.get(model)
+    if not pricing:
+        # Try prefix match for model variants
+        for key, p in COST_PER_TOKEN.items():
+            if model.startswith(key.rsplit("-", 1)[0]):
+                pricing = p
+                break
+    if not pricing:
+        return 0.0
+    return input_tokens * pricing["input"] + output_tokens * pricing["output"]
+
+
+def _record_usage(
+    provider: str,
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    component: str | None,
+) -> None:
+    """Append a usage event to the module-level accumulator."""
+    if component is None:
+        return
+    event = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "component": component,
+        "provider": provider,
+        "model": model,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "estimated_cost_usd": _estimate_cost(model, input_tokens, output_tokens),
+    }
+    with _usage_lock:
+        _usage_events.append(event)
+
+
+def flush_usage_events() -> list[dict[str, Any]]:
+    """Drain and return all accumulated usage events."""
+    with _usage_lock:
+        events = list(_usage_events)
+        _usage_events.clear()
+    return events
 
 
 def get_anthropic_client() -> Anthropic:
@@ -32,7 +98,7 @@ def _extract_anthropic_text(content_blocks: list[Any]) -> str:
     return ""
 
 
-def _call_anthropic(model: str, prompt: str, max_tokens: int = 2048) -> str:
+def _call_anthropic(model: str, prompt: str, max_tokens: int = 2048, component: str | None = None) -> str:
     """Call Anthropic API and return text response."""
     client = get_anthropic_client()
     response = client.messages.create(
@@ -40,10 +106,18 @@ def _call_anthropic(model: str, prompt: str, max_tokens: int = 2048) -> str:
         max_tokens=max_tokens,
         messages=[{"role": "user", "content": prompt}],
     )
+    usage = response.usage
+    _record_usage("anthropic", model, usage.input_tokens, usage.output_tokens, component)
     return _extract_anthropic_text(response.content)
 
 
-def _call_gemini(model: str, prompt: str, max_tokens: int = 2048, reasoning: str | None = None) -> str:
+def _call_gemini(
+    model: str,
+    prompt: str,
+    max_tokens: int = 2048,
+    reasoning: str | None = None,
+    component: str | None = None,
+) -> str:
     """Call Gemini API and return text response."""
     from google.genai import types
 
@@ -61,10 +135,21 @@ def _call_gemini(model: str, prompt: str, max_tokens: int = 2048, reasoning: str
         contents=prompt,
         config=types.GenerateContentConfig(**config_kwargs),
     )
+    metadata = getattr(response, "usage_metadata", None)
+    if metadata:
+        _record_usage(
+            "gemini",
+            model,
+            getattr(metadata, "prompt_token_count", 0) or 0,
+            getattr(metadata, "candidates_token_count", 0) or 0,
+            component,
+        )
     return response.text
 
 
-def _call_anthropic_vision(model: str, image_url: str, prompt: str, max_tokens: int = 1024) -> str:
+def _call_anthropic_vision(
+    model: str, image_url: str, prompt: str, max_tokens: int = 1024, component: str | None = None
+) -> str:
     """Call Anthropic API with image and return text response."""
     client = get_anthropic_client()
     response = client.messages.create(
@@ -89,10 +174,14 @@ def _call_anthropic_vision(model: str, image_url: str, prompt: str, max_tokens: 
             }
         ],
     )
+    usage = response.usage
+    _record_usage("anthropic", model, usage.input_tokens, usage.output_tokens, component)
     return _extract_anthropic_text(response.content)
 
 
-def _call_gemini_vision(model: str, image_url: str, prompt: str, max_tokens: int = 1024) -> str:
+def _call_gemini_vision(
+    model: str, image_url: str, prompt: str, max_tokens: int = 1024, component: str | None = None
+) -> str:
     """Call Gemini API with image and return text response."""
     import httpx
     from google.genai import types
@@ -115,27 +204,50 @@ def _call_gemini_vision(model: str, image_url: str, prompt: str, max_tokens: int
             max_output_tokens=max_tokens,
         ),
     )
+    metadata = getattr(response, "usage_metadata", None)
+    if metadata:
+        _record_usage(
+            "gemini",
+            model,
+            getattr(metadata, "prompt_token_count", 0) or 0,
+            getattr(metadata, "candidates_token_count", 0) or 0,
+            component,
+        )
     return response.text
 
 
-def _call_llm(provider: str, model: str, prompt: str, max_tokens: int = 2048, reasoning: str | None = None) -> str:
+def _call_llm(
+    provider: str,
+    model: str,
+    prompt: str,
+    max_tokens: int = 2048,
+    reasoning: str | None = None,
+    component: str | None = None,
+) -> str:
     """Call LLM based on provider."""
 
     def _invoke() -> str:
         if provider == "gemini":
-            return _call_gemini(model, prompt, max_tokens, reasoning=reasoning)
-        return _call_anthropic(model, prompt, max_tokens)
+            return _call_gemini(model, prompt, max_tokens, reasoning=reasoning, component=component)
+        return _call_anthropic(model, prompt, max_tokens, component=component)
 
     return _with_retry(_invoke)
 
 
-def _call_llm_vision(provider: str, model: str, image_url: str, prompt: str, max_tokens: int = 1024) -> str:
+def _call_llm_vision(
+    provider: str,
+    model: str,
+    image_url: str,
+    prompt: str,
+    max_tokens: int = 1024,
+    component: str | None = None,
+) -> str:
     """Call LLM with vision based on provider."""
 
     def _invoke() -> str:
         if provider == "gemini":
-            return _call_gemini_vision(model, image_url, prompt, max_tokens)
-        return _call_anthropic_vision(model, image_url, prompt, max_tokens)
+            return _call_gemini_vision(model, image_url, prompt, max_tokens, component=component)
+        return _call_anthropic_vision(model, image_url, prompt, max_tokens, component=component)
 
     return _with_retry(_invoke)
 
