@@ -1,0 +1,36 @@
+#!/bin/sh
+# commit-msg hook: enforce conventional commit format
+# Allowed types: feat|fix|chore|docs|perf|refactor|test|ci|build|style
+
+commit_msg_file="$1"
+commit_msg=$(head -1 "$commit_msg_file")
+
+# Allow merge commits
+if echo "$commit_msg" | grep -qE '^Merge '; then
+    exit 0
+fi
+
+# Allow fixup and squash commits
+if echo "$commit_msg" | grep -qE '^(fixup|squash)! '; then
+    exit 0
+fi
+
+# Check conventional commit format: type: description or type(scope): description
+if echo "$commit_msg" | grep -qE '^(feat|fix|chore|docs|perf|refactor|test|ci|build|style)(\(.+\))?: .+'; then
+    exit 0
+fi
+
+echo >&2 "ERROR: Commit message does not follow conventional commit format."
+echo >&2 ""
+echo >&2 "Expected: <type>: <description>"
+echo >&2 "  or:     <type>(<scope>): <description>"
+echo >&2 ""
+echo >&2 "Allowed types: feat, fix, chore, docs, perf, refactor, test, ci, build, style"
+echo >&2 ""
+echo >&2 "Examples:"
+echo >&2 "  feat: add new scoring model"
+echo >&2 "  fix(fetcher): handle rate limit errors"
+echo >&2 "  chore: update dependencies"
+echo >&2 ""
+echo >&2 "Your message: $commit_msg"
+exit 1
