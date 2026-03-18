@@ -2,6 +2,8 @@
 
 import json
 import os
+import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -87,17 +89,45 @@ def get_config_path() -> Path:
     return get_xdg_config_home() / APP_NAME / "config.json"
 
 
+_config_cache: dict[str, Any] | None = None
+_config_cache_time: float = 0.0
+_config_cache_lock = threading.Lock()
+_CONFIG_TTL_SECONDS = 30.0
+
+
 def load_config() -> dict[str, Any]:
-    """Load configuration, merging with defaults."""
-    config = DEFAULT_CONFIG.copy()
-    config_path = get_config_path()
+    """Load configuration, merging with defaults. Cached with a 30s TTL."""
+    global _config_cache, _config_cache_time
 
-    if config_path.exists():
-        with open(config_path) as f:
-            user_config = json.load(f)
-            config = deep_merge(config, user_config)
+    now = time.monotonic()
+    if _config_cache is not None and (now - _config_cache_time) < _CONFIG_TTL_SECONDS:
+        return _config_cache
 
-    return config
+    with _config_cache_lock:
+        # Double-check after acquiring lock
+        now = time.monotonic()
+        if _config_cache is not None and (now - _config_cache_time) < _CONFIG_TTL_SECONDS:
+            return _config_cache
+
+        config = DEFAULT_CONFIG.copy()
+        config_path = get_config_path()
+
+        if config_path.exists():
+            with open(config_path) as f:
+                user_config = json.load(f)
+                config = deep_merge(config, user_config)
+
+        _config_cache = config
+        _config_cache_time = time.monotonic()
+        return config
+
+
+def invalidate_config_cache() -> None:
+    """Invalidate the cached config so the next load_config() re-reads from disk."""
+    global _config_cache, _config_cache_time
+    with _config_cache_lock:
+        _config_cache = None
+        _config_cache_time = 0.0
 
 
 def save_config(config: dict[str, Any]) -> None:
@@ -107,6 +137,8 @@ def save_config(config: dict[str, Any]) -> None:
 
     with open(config_path, "w") as f:
         json.dump(config, f, indent=2)
+
+    invalidate_config_cache()
 
 
 def deep_merge(base: dict, override: dict) -> dict:

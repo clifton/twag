@@ -377,6 +377,22 @@ def _triage_rows(
         )
         tweet_map[tweet_id] = row
 
+    # Batch-prefetch account categories to avoid N individual SELECT queries
+    unique_handles = {row["author_handle"] for row in tweet_rows if row["author_handle"]}
+    account_categories: dict[str, str] = {}
+    if unique_handles:
+        handle_list = list(unique_handles)
+        chunk_size = 999
+        for i in range(0, len(handle_list), chunk_size):
+            chunk = handle_list[i : i + chunk_size]
+            placeholders = ",".join("?" * len(chunk))
+            acct_cursor = conn.execute(
+                f"SELECT handle, category FROM accounts WHERE handle IN ({placeholders})",
+                chunk,
+            )
+            for acct_row in acct_cursor.fetchall():
+                account_categories[acct_row["handle"]] = acct_row["category"] or "unknown"
+
     all_results: list[TriageResult] = []
 
     total = len(tweets_for_triage)
@@ -419,12 +435,7 @@ def _triage_rows(
         media_items = parse_media_items(row["media_items"])
         media_context = build_media_context(media_items) if media_items else (row["media_analysis"] or "")
 
-        acct_cursor = conn.execute(
-            "SELECT category FROM accounts WHERE handle = ?",
-            (row["author_handle"],),
-        )
-        acct_row = acct_cursor.fetchone()
-        author_category = acct_row["category"] if acct_row else "unknown"
+        author_category = account_categories.get(row["author_handle"], "unknown")
 
         if status_cb:
             status_cb(f"Enriching @{row['author_handle']}")

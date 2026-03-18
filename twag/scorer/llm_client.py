@@ -2,6 +2,7 @@
 
 import json
 import random
+import threading
 import time
 from typing import Any
 
@@ -10,17 +11,36 @@ from anthropic import Anthropic
 from twag.auth import get_api_key
 from twag.config import load_config
 
+_anthropic_client: Anthropic | None = None
+_anthropic_lock = threading.Lock()
+_gemini_client: Any = None
+_gemini_lock = threading.Lock()
+
 
 def get_anthropic_client() -> Anthropic:
-    """Get an Anthropic client."""
-    return Anthropic(api_key=get_api_key("ANTHROPIC_API_KEY"))
+    """Get a cached Anthropic client (singleton) to reuse HTTP connection pool."""
+    global _anthropic_client
+    if _anthropic_client is not None:
+        return _anthropic_client
+    with _anthropic_lock:
+        if _anthropic_client is not None:
+            return _anthropic_client
+        _anthropic_client = Anthropic(api_key=get_api_key("ANTHROPIC_API_KEY"))
+        return _anthropic_client
 
 
 def get_gemini_client():
-    """Get a Gemini client using the new google.genai SDK."""
-    from google import genai
+    """Get a cached Gemini client (singleton) to reuse HTTP connection pool."""
+    global _gemini_client
+    if _gemini_client is not None:
+        return _gemini_client
+    with _gemini_lock:
+        if _gemini_client is not None:
+            return _gemini_client
+        from google import genai
 
-    return genai.Client(api_key=get_api_key("GEMINI_API_KEY"))
+        _gemini_client = genai.Client(api_key=get_api_key("GEMINI_API_KEY"))
+        return _gemini_client
 
 
 def _extract_anthropic_text(content_blocks: list[Any]) -> str:

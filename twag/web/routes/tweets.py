@@ -336,7 +336,6 @@ async def list_tweets(
                     "is_x_article": t.is_x_article,
                     "article_title": t.article_title,
                     "article_preview": t.article_preview,
-                    "article_text": t.article_text,
                     "article_summary_short": t.article_summary_short,
                     "article_primary_points": t.article_primary_points,
                     "article_action_items": t.article_action_items,

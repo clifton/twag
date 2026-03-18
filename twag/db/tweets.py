@@ -538,12 +538,12 @@ def get_tweets_for_digest(
     cursor = conn.execute(
         """
         SELECT * FROM tweets
-        WHERE date(created_at) = ?
+        WHERE created_at >= ? AND created_at < date(?, '+1 day')
         AND relevance_score >= ?
         AND processed_at IS NOT NULL
         ORDER BY relevance_score DESC
         """,
-        (date, min_score),
+        (date, date, min_score),
     )
     return cursor.fetchall()
 
@@ -565,8 +565,8 @@ def is_tweet_seen(conn: sqlite3.Connection, tweet_id: str) -> bool:
 def get_tweet_stats(conn: sqlite3.Connection, date: str | None = None) -> dict[str, Any]:
     """Get tweet processing statistics."""
     if date:
-        where_clause = "WHERE date(created_at) = ?"
-        params: tuple = (date,)
+        where_clause = "WHERE created_at >= ? AND created_at < date(?, '+1 day')"
+        params: tuple = (date, date)
     else:
         where_clause = ""
         params = ()
@@ -600,9 +600,10 @@ def get_processed_counts(conn: sqlite3.Connection) -> dict[str, int]:
         SELECT
             SUM(CASE WHEN processed_at >= datetime('now', '-1 hour') THEN 1 ELSE 0 END) as last_1h,
             SUM(CASE WHEN processed_at >= datetime('now', '-24 hours') THEN 1 ELSE 0 END) as last_24h,
-            SUM(CASE WHEN processed_at >= datetime('now', '-7 days') THEN 1 ELSE 0 END) as last_7d
+            COUNT(*) as last_7d
         FROM tweets
         WHERE processed_at IS NOT NULL
+        AND processed_at >= datetime('now', '-7 days')
         """
     )
     row = cursor.fetchone()
@@ -730,19 +731,15 @@ def migrate_seen_json(conn: sqlite3.Connection, seen_json_path: Path) -> int:
         data = json.load(f)
 
     seen_ids = data.get("seen", [])
-    count = 0
+    if not seen_ids:
+        return 0
 
-    for tweet_id in seen_ids:
-        try:
-            conn.execute(
-                """
-                INSERT INTO tweets (id, author_handle, content, source)
-                VALUES (?, ?, ?, ?)
-                """,
-                (tweet_id, "unknown", "[migrated from seen.json]", "migration"),
-            )
-            count += 1
-        except sqlite3.IntegrityError:
-            pass  # Already exists
-
-    return count
+    rows = [(tid, "unknown", "[migrated from seen.json]", "migration") for tid in seen_ids]
+    cursor = conn.executemany(
+        """
+        INSERT OR IGNORE INTO tweets (id, author_handle, content, source)
+        VALUES (?, ?, ?, ?)
+        """,
+        rows,
+    )
+    return cursor.rowcount
