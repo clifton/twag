@@ -1,8 +1,9 @@
 """Reaction API routes."""
 
+import json
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from ...db import (
@@ -13,6 +14,12 @@ from ...db import (
     get_reactions_with_tweets,
     insert_reaction,
     mute_account,
+)
+from ...models.api import (
+    ReactionCreateResponse,
+    ReactionExportResponse,
+    ReactionListResponse,
+    ReactionSummaryResponse,
 )
 
 router = APIRouter(tags=["reactions"])
@@ -27,7 +34,7 @@ class ReactionCreate(BaseModel):
     target: str | None = None  # author handle or category for X reactions
 
 
-@router.post("/react")
+@router.post("/react", response_model=ReactionCreateResponse)
 async def create_reaction(request: Request, reaction: ReactionCreate) -> dict[str, Any]:
     """
     Create a reaction to a tweet.
@@ -44,12 +51,12 @@ async def create_reaction(request: Request, reaction: ReactionCreate) -> dict[st
     # Validate reaction type
     valid_types = {">>", ">", "<", "x_author", "x_topic"}
     if reaction.reaction_type not in valid_types:
-        return {"error": f"Invalid reaction type. Must be one of: {valid_types}"}
+        raise HTTPException(status_code=422, detail=f"Invalid reaction type. Must be one of: {valid_types}")
 
     # Handle mute actions
     if reaction.reaction_type == "x_author":
         if not reaction.target:
-            return {"error": "target (author handle) required for x_author reaction"}
+            raise HTTPException(status_code=422, detail="target (author handle) required for x_author reaction")
 
         with get_connection(db_path) as conn:
             mute_account(conn, reaction.target)
@@ -64,6 +71,8 @@ async def create_reaction(request: Request, reaction: ReactionCreate) -> dict[st
 
         return {
             "id": reaction_id,
+            "tweet_id": reaction.tweet_id,
+            "reaction_type": reaction.reaction_type,
             "message": f"Author @{reaction.target} muted",
         }
 
@@ -85,44 +94,10 @@ async def create_reaction(request: Request, reaction: ReactionCreate) -> dict[st
     }
 
 
-@router.get("/reactions/{tweet_id}")
-async def get_tweet_reactions(request: Request, tweet_id: str) -> dict[str, Any]:
-    """Get all reactions for a specific tweet."""
-    db_path = request.app.state.db_path
-
-    with get_connection(db_path, readonly=True) as conn:
-        reactions = get_reactions_for_tweet(conn, tweet_id)
-
-    return {
-        "tweet_id": tweet_id,
-        "reactions": [
-            {
-                "id": r.id,
-                "reaction_type": r.reaction_type,
-                "reason": r.reason,
-                "target": r.target,
-                "created_at": r.created_at.isoformat() if r.created_at else None,
-            }
-            for r in reactions
-        ],
-    }
+# Static routes MUST come before parameterized routes to avoid shadowing
 
 
-@router.delete("/reactions/{reaction_id}")
-async def remove_reaction(request: Request, reaction_id: int) -> dict[str, Any]:
-    """Delete a reaction."""
-    db_path = request.app.state.db_path
-
-    with get_connection(db_path) as conn:
-        deleted = delete_reaction(conn, reaction_id)
-        conn.commit()
-
-    if deleted:
-        return {"message": "Reaction deleted"}
-    return {"error": "Reaction not found"}
-
-
-@router.get("/reactions/summary")
+@router.get("/reactions/summary", response_model=ReactionSummaryResponse)
 async def reactions_summary(request: Request) -> dict[str, Any]:
     """Get summary of reaction counts by type."""
     db_path = request.app.state.db_path
@@ -133,7 +108,7 @@ async def reactions_summary(request: Request) -> dict[str, Any]:
     return {"summary": summary}
 
 
-@router.get("/reactions/export")
+@router.get("/reactions/export", response_model=ReactionExportResponse)
 async def export_reactions(
     request: Request,
     reaction_type: str | None = None,
@@ -143,8 +118,6 @@ async def export_reactions(
     Export reactions with associated tweet data.
     Useful for prompt tuning analysis.
     """
-    import json
-
     db_path = request.app.state.db_path
 
     with get_connection(db_path, readonly=True) as conn:
@@ -184,3 +157,43 @@ async def export_reactions(
         "count": len(export_data),
         "reactions": export_data,
     }
+
+
+# Parameterized routes AFTER static routes
+
+
+@router.get("/reactions/{tweet_id}", response_model=ReactionListResponse)
+async def get_tweet_reactions(request: Request, tweet_id: str) -> dict[str, Any]:
+    """Get all reactions for a specific tweet."""
+    db_path = request.app.state.db_path
+
+    with get_connection(db_path, readonly=True) as conn:
+        reactions = get_reactions_for_tweet(conn, tweet_id)
+
+    return {
+        "tweet_id": tweet_id,
+        "reactions": [
+            {
+                "id": r.id,
+                "reaction_type": r.reaction_type,
+                "reason": r.reason,
+                "target": r.target,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in reactions
+        ],
+    }
+
+
+@router.delete("/reactions/{reaction_id}")
+async def remove_reaction(request: Request, reaction_id: int) -> dict[str, Any]:
+    """Delete a reaction."""
+    db_path = request.app.state.db_path
+
+    with get_connection(db_path) as conn:
+        deleted = delete_reaction(conn, reaction_id)
+        conn.commit()
+
+    if deleted:
+        return {"message": "Reaction deleted"}
+    raise HTTPException(status_code=404, detail="Reaction not found")

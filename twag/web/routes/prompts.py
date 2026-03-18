@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from ...db import (
@@ -13,6 +13,13 @@ from ...db import (
     get_reactions_with_tweets,
     rollback_prompt,
     upsert_prompt,
+)
+from ...models.api import (
+    MessageResponse,
+    PromptHistoryResponse,
+    PromptListResponse,
+    PromptResponse,
+    PromptUpdateResponse,
 )
 
 router = APIRouter(tags=["prompts"])
@@ -32,7 +39,7 @@ class TuneRequest(BaseModel):
     reaction_limit: int = 50
 
 
-@router.get("/prompts")
+@router.get("/prompts", response_model=PromptListResponse)
 async def list_prompts(request: Request) -> dict[str, Any]:
     """Get all prompts."""
     db_path = request.app.state.db_path
@@ -55,7 +62,7 @@ async def list_prompts(request: Request) -> dict[str, Any]:
     }
 
 
-@router.get("/prompts/{name}")
+@router.get("/prompts/{name}", response_model=PromptResponse)
 async def get_prompt_by_name(request: Request, name: str) -> dict[str, Any]:
     """Get a specific prompt by name."""
     db_path = request.app.state.db_path
@@ -64,7 +71,7 @@ async def get_prompt_by_name(request: Request, name: str) -> dict[str, Any]:
         prompt = get_prompt(conn, name)
 
     if not prompt:
-        return {"error": "Prompt not found"}
+        raise HTTPException(status_code=404, detail="Prompt not found")
 
     return {
         "id": prompt.id,
@@ -76,7 +83,7 @@ async def get_prompt_by_name(request: Request, name: str) -> dict[str, Any]:
     }
 
 
-@router.put("/prompts/{name}")
+@router.put("/prompts/{name}", response_model=PromptUpdateResponse)
 async def update_prompt(
     request: Request,
     name: str,
@@ -96,7 +103,7 @@ async def update_prompt(
     }
 
 
-@router.get("/prompts/{name}/history")
+@router.get("/prompts/{name}/history", response_model=PromptHistoryResponse)
 async def get_history(request: Request, name: str, limit: int = 10) -> dict[str, Any]:
     """Get version history for a prompt."""
     db_path = request.app.state.db_path
@@ -110,7 +117,7 @@ async def get_history(request: Request, name: str, limit: int = 10) -> dict[str,
     }
 
 
-@router.post("/prompts/{name}/rollback")
+@router.post("/prompts/{name}/rollback", response_model=MessageResponse)
 async def rollback_to_version(
     request: Request,
     name: str,
@@ -125,7 +132,7 @@ async def rollback_to_version(
 
     if success:
         return {"message": f"Rolled back {name} to version {version}"}
-    return {"error": f"Version {version} not found for prompt {name}"}
+    raise HTTPException(status_code=404, detail=f"Version {version} not found for prompt {name}")
 
 
 @router.post("/prompts/tune")
@@ -145,7 +152,7 @@ async def tune_prompt(request: Request, tune_req: TuneRequest) -> dict[str, Any]
         # Get current prompt
         prompt = get_prompt(conn, tune_req.prompt_name)
         if not prompt:
-            return {"error": f"Prompt '{tune_req.prompt_name}' not found"}
+            raise HTTPException(status_code=404, detail=f"Prompt '{tune_req.prompt_name}' not found")
 
         # Get reactions with tweets
         high_importance = get_reactions_with_tweets(conn, ">>", tune_req.reaction_limit)
@@ -153,7 +160,7 @@ async def tune_prompt(request: Request, tune_req: TuneRequest) -> dict[str, Any]
         less_important = get_reactions_with_tweets(conn, "<", tune_req.reaction_limit)
 
     if not high_importance and not should_be_higher and not less_important:
-        return {"error": "No reactions found. Add reactions to tweets first."}
+        raise HTTPException(status_code=400, detail="No reactions found. Add reactions to tweets first.")
 
     # Format reaction examples
     def format_examples(reactions: list) -> str:
@@ -255,10 +262,10 @@ SUGGESTED PROMPT:
         }
 
     except Exception as e:
-        return {"error": f"LLM call failed: {e!s}"}
+        raise HTTPException(status_code=500, detail=f"LLM call failed: {e!s}") from e
 
 
-@router.post("/prompts/{name}/apply-suggestion")
+@router.post("/prompts/{name}/apply-suggestion", response_model=PromptUpdateResponse)
 async def apply_suggestion(
     request: Request,
     name: str,
