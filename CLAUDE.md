@@ -164,7 +164,9 @@ If command behavior changes, update `README.md` and `SKILL.md` in the same PR.
 
 ## Commit Hygiene
 
+- Use [conventional commits](https://www.conventionalcommits.org/): `type: description` or `type(scope): description`
+- Allowed types: `feat`, `fix`, `chore`, `docs`, `perf`, `refactor`, `test`, `ci`, `build`, `style`
+- A `commit-msg` hook enforces this format (run `scripts/setup-hooks.sh` to install hooks)
 - Keep commits focused and atomic
 - Run formatting/lint/tests before committing
 - Don't commit temporary artifacts unless explicitly requested
-- Write descriptive commit messages
