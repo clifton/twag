@@ -5,7 +5,7 @@ import re
 import shlex
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from ...db import (
@@ -18,6 +18,12 @@ from ...db import (
     upsert_context_command,
 )
 from ...media import build_media_context, parse_media_items
+from ...models.api import (
+    ContextCommandCreateResponse,
+    ContextCommandListResponse,
+    ContextCommandResponse,
+    MessageResponse,
+)
 from ...processor import ensure_media_analysis
 
 router = APIRouter(tags=["context"])
@@ -38,7 +44,7 @@ class TestCommandRequest(BaseModel):
     tweet_id: str
 
 
-@router.get("/context-commands")
+@router.get("/context-commands", response_model=ContextCommandListResponse)
 async def list_context_commands(
     request: Request,
     enabled_only: bool = False,
@@ -64,7 +70,7 @@ async def list_context_commands(
     }
 
 
-@router.post("/context-commands")
+@router.post("/context-commands", response_model=ContextCommandCreateResponse)
 async def create_context_command(
     request: Request,
     command: ContextCommandCreate,
@@ -89,7 +95,7 @@ async def create_context_command(
     }
 
 
-@router.get("/context-commands/{name}")
+@router.get("/context-commands/{name}", response_model=ContextCommandResponse)
 async def get_context_command_by_name(
     request: Request,
     name: str,
@@ -101,7 +107,7 @@ async def get_context_command_by_name(
         cmd = get_context_command(conn, name)
 
     if not cmd:
-        return {"error": "Context command not found"}
+        raise HTTPException(status_code=404, detail="Context command not found")
 
     return {
         "id": cmd.id,
@@ -113,7 +119,7 @@ async def get_context_command_by_name(
     }
 
 
-@router.put("/context-commands/{name}")
+@router.put("/context-commands/{name}", response_model=ContextCommandCreateResponse)
 async def update_context_command(
     request: Request,
     name: str,
@@ -139,7 +145,7 @@ async def update_context_command(
     }
 
 
-@router.delete("/context-commands/{name}")
+@router.delete("/context-commands/{name}", response_model=MessageResponse)
 async def remove_context_command(
     request: Request,
     name: str,
@@ -153,10 +159,10 @@ async def remove_context_command(
 
     if deleted:
         return {"message": f"Context command '{name}' deleted"}
-    return {"error": "Context command not found"}
+    raise HTTPException(status_code=404, detail="Context command not found")
 
 
-@router.post("/context-commands/{name}/toggle")
+@router.post("/context-commands/{name}/toggle", response_model=MessageResponse)
 async def toggle_command(
     request: Request,
     name: str,
@@ -172,7 +178,7 @@ async def toggle_command(
     if found:
         status = "enabled" if enabled else "disabled"
         return {"message": f"Context command '{name}' {status}"}
-    return {"error": "Context command not found"}
+    raise HTTPException(status_code=404, detail="Context command not found")
 
 
 def _substitute_variables(template: str, variables: dict[str, str]) -> str:
@@ -263,11 +269,11 @@ async def test_context_command(
     with get_connection(db_path, readonly=True) as conn:
         cmd = get_context_command(conn, name)
         if not cmd:
-            return {"error": "Context command not found"}
+            raise HTTPException(status_code=404, detail="Context command not found")
 
         tweet = get_tweet_by_id(conn, test_req.tweet_id)
         if not tweet:
-            return {"error": "Tweet not found"}
+            raise HTTPException(status_code=404, detail="Tweet not found")
 
     # Extract variables and substitute
     variables = _extract_tweet_variables(tweet)
@@ -318,7 +324,7 @@ async def analyze_tweet_with_context(
     with get_connection(db_path) as conn:
         tweet = get_tweet_by_id(conn, tweet_id)
         if not tweet:
-            return {"error": "Tweet not found"}
+            raise HTTPException(status_code=404, detail="Tweet not found")
 
         commands = get_all_context_commands(conn, enabled_only=True)
         media_items = ensure_media_analysis(conn, tweet)

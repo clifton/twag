@@ -5,10 +5,23 @@ import re
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 
-from ...db import get_connection, get_feed_tweets, get_tweet_by_id, get_tweets_by_ids, parse_time_range
+from ...db import (
+    get_connection,
+    get_feed_tweets,
+    get_reactions_for_tweet,
+    get_tweet_by_id,
+    get_tweets_by_ids,
+    parse_time_range,
+)
 from ...media import parse_media_items
+from ...models.api import (
+    CategoryListResponse,
+    TickerListResponse,
+    TweetListResponse,
+    TweetResponse,
+)
 from ..tweet_utils import (
     decode_html_entities,
     normalize_links_for_display,
@@ -126,7 +139,7 @@ def _build_quote_embed_from_cache(
     return embed
 
 
-@router.get("/tweets")
+@router.get("/tweets", response_model=TweetListResponse)
 async def list_tweets(
     request: Request,
     category: str | None = None,
@@ -367,66 +380,155 @@ async def list_tweets(
     }
 
 
-@router.get("/tweets/{tweet_id}")
+@router.get("/tweets/{tweet_id}", response_model=TweetResponse)
 async def get_tweet(request: Request, tweet_id: str) -> dict[str, Any]:
-    """Get a single tweet by ID."""
+    """Get a single tweet by ID with display-enriched fields matching the list endpoint."""
     db_path = request.app.state.db_path
 
     with get_connection(db_path, readonly=True) as conn:
         tweet = get_tweet_by_id(conn, tweet_id)
+        if not tweet:
+            raise HTTPException(status_code=404, detail="Tweet not found")
 
-    if not tweet:
-        return {"error": "Tweet not found"}
+        # Parse JSON fields
+        categories = []
+        if tweet["category"]:
+            try:
+                categories = json.loads(tweet["category"])
+                if isinstance(categories, str):
+                    categories = [categories]
+            except json.JSONDecodeError:
+                categories = [tweet["category"]]
 
-    # Parse JSON fields
-    categories = []
-    if tweet["category"]:
-        try:
-            categories = json.loads(tweet["category"])
-            if isinstance(categories, str):
-                categories = [categories]
-        except json.JSONDecodeError:
-            categories = [tweet["category"]]
+        tickers = []
+        if tweet["tickers"]:
+            try:
+                tickers = json.loads(tweet["tickers"])
+            except json.JSONDecodeError:
+                tickers = [t.strip() for t in tweet["tickers"].split(",") if t.strip()]
 
-    tickers = []
-    if tweet["tickers"]:
-        try:
-            tickers = json.loads(tweet["tickers"])
-        except json.JSONDecodeError:
-            tickers = [t.strip() for t in tweet["tickers"].split(",") if t.strip()]
+        article_primary_points = []
+        if tweet["article_primary_points_json"]:
+            try:
+                decoded = json.loads(tweet["article_primary_points_json"])
+                if isinstance(decoded, list):
+                    article_primary_points = [item for item in decoded if isinstance(item, dict)]
+            except json.JSONDecodeError:
+                article_primary_points = []
 
-    article_primary_points = []
-    if tweet["article_primary_points_json"]:
-        try:
-            decoded = json.loads(tweet["article_primary_points_json"])
-            if isinstance(decoded, list):
-                article_primary_points = [item for item in decoded if isinstance(item, dict)]
-        except json.JSONDecodeError:
-            article_primary_points = []
+        article_action_items = []
+        if tweet["article_action_items_json"]:
+            try:
+                decoded = json.loads(tweet["article_action_items_json"])
+                if isinstance(decoded, list):
+                    article_action_items = [item for item in decoded if isinstance(item, dict)]
+            except json.JSONDecodeError:
+                article_action_items = []
 
-    article_action_items = []
-    if tweet["article_action_items_json"]:
-        try:
-            decoded = json.loads(tweet["article_action_items_json"])
-            if isinstance(decoded, list):
-                article_action_items = [item for item in decoded if isinstance(item, dict)]
-        except json.JSONDecodeError:
-            article_action_items = []
+        article_top_visual = None
+        if tweet["article_top_visual_json"]:
+            try:
+                decoded = json.loads(tweet["article_top_visual_json"])
+                if isinstance(decoded, dict):
+                    article_top_visual = decoded
+            except json.JSONDecodeError:
+                article_top_visual = None
 
-    article_top_visual = None
-    if tweet["article_top_visual_json"]:
-        try:
-            decoded = json.loads(tweet["article_top_visual_json"])
-            if isinstance(decoded, dict):
-                article_top_visual = decoded
-        except json.JSONDecodeError:
-            article_top_visual = None
+        # Build display-enriched fields (same as list endpoint)
+        content_raw = tweet["content"] or ""
+        links_json_parsed = []
+        if tweet["links_json"]:
+            try:
+                decoded = json.loads(tweet["links_json"])
+                if isinstance(decoded, list):
+                    links_json_parsed = [item for item in decoded if isinstance(item, dict)]
+            except json.JSONDecodeError:
+                links_json_parsed = []
+
+        normalized = normalize_links_for_display(
+            tweet_id=tweet["id"],
+            text=content_raw,
+            links=links_json_parsed,
+            has_media=bool(tweet["has_media"]),
+        )
+
+        inline_links = normalized.inline_tweet_links
+        inline_quote_id = None
+        if not tweet["has_quote"]:
+            inline_quote_id = _inline_quote_id_from_links(tweet["id"], inline_links)
+
+        quote_id = tweet["quote_tweet_id"] or inline_quote_id
+        if quote_id == tweet["id"]:
+            quote_id = None
+
+        quote_embed = _build_quote_embed(conn, quote_id)
+
+        inline_quote_embeds: list[dict[str, Any]] = []
+        reference_links: list[dict[str, str]] = []
+        for link in inline_links:
+            tid = link.get("id")
+            url = link.get("url") or ""
+            if not tid or tid == tweet["id"]:
+                continue
+            if quote_id and tid == quote_id:
+                continue
+            embed = _build_quote_embed(conn, tid)
+            if embed:
+                inline_quote_embeds.append(embed)
+            else:
+                reference_links.append({"id": tid, "url": url})
+
+        display_content = normalized.display_text if content_raw else content_raw
+
+        is_retweet = bool(tweet["is_retweet"])
+        retweeted_by_handle = tweet["retweeted_by_handle"]
+        retweeted_by_name = tweet["retweeted_by_name"]
+        original_tweet_id = tweet["original_tweet_id"]
+        original_author_handle = tweet["original_author_handle"]
+        original_author_name = tweet["original_author_name"]
+        original_content = tweet["original_content"]
+
+        if not is_retweet:
+            match = LEGACY_RETWEET_RE.match(content_raw)
+            if match:
+                is_retweet = True
+                retweeted_by_handle = tweet["author_handle"]
+                retweeted_by_name = tweet["author_name"]
+                original_author_handle = match.group(1)
+                fallback_original = match.group(2).strip() or None
+                if fallback_original and not _looks_truncated_text(fallback_original):
+                    original_content = fallback_original
+
+        display_author_handle = (
+            original_author_handle if is_retweet and original_author_handle else tweet["author_handle"]
+        )
+        display_author_name = original_author_name if is_retweet and original_author_name else tweet["author_name"]
+        display_tweet_id = original_tweet_id if is_retweet and original_tweet_id else tweet["id"]
+        if is_retweet and original_content:
+            display_content = original_content
+            display_content = normalize_links_for_display(
+                tweet_id=display_tweet_id,
+                text=display_content,
+                links=links_json_parsed,
+                has_media=bool(tweet["has_media"]),
+            ).display_text
+
+        content = decode_html_entities(tweet["content"])
+        original_content = decode_html_entities(original_content)
+        display_content = decode_html_entities(display_content)
+
+        # Get reactions for this tweet
+        reactions_list = get_reactions_for_tweet(conn, tweet_id)
+        reactions = [r.reaction_type for r in reactions_list]
 
     return {
         "id": tweet["id"],
         "author_handle": tweet["author_handle"],
         "author_name": tweet["author_name"],
-        "content": decode_html_entities(tweet["content"]),
+        "display_author_handle": display_author_handle,
+        "display_author_name": display_author_name,
+        "display_tweet_id": display_tweet_id,
+        "content": content,
         "content_summary": tweet["content_summary"],
         "summary": tweet["summary"],
         "created_at": tweet["created_at"],
@@ -451,18 +553,23 @@ async def get_tweet(request: Request, tweet_id: str) -> dict[str, Any]:
         "article_action_items": article_action_items,
         "article_top_visual": article_top_visual,
         "article_processed_at": tweet["article_processed_at"],
-        "is_retweet": bool(tweet["is_retweet"]),
-        "retweeted_by_handle": tweet["retweeted_by_handle"],
-        "retweeted_by_name": tweet["retweeted_by_name"],
-        "original_tweet_id": tweet["original_tweet_id"],
-        "original_author_handle": tweet["original_author_handle"],
-        "original_author_name": tweet["original_author_name"],
-        "original_content": decode_html_entities(tweet["original_content"]),
-        "links_json": tweet["links_json"],
+        "is_retweet": is_retweet,
+        "retweeted_by_handle": retweeted_by_handle,
+        "retweeted_by_name": retweeted_by_name,
+        "original_tweet_id": original_tweet_id,
+        "original_author_handle": original_author_handle,
+        "original_author_name": original_author_name,
+        "original_content": original_content,
+        "reactions": reactions,
+        "quote_embed": quote_embed,
+        "inline_quote_embeds": inline_quote_embeds,
+        "reference_links": reference_links,
+        "external_links": normalized.external_links,
+        "display_content": display_content,
     }
 
 
-@router.get("/categories")
+@router.get("/categories", response_model=CategoryListResponse)
 async def list_categories(request: Request) -> dict[str, Any]:
     """Get list of all categories with tweet counts."""
     db_path = request.app.state.db_path
@@ -501,7 +608,7 @@ async def list_categories(request: Request) -> dict[str, Any]:
     return {"categories": [{"name": name, "count": count} for name, count in sorted_cats]}
 
 
-@router.get("/tickers")
+@router.get("/tickers", response_model=TickerListResponse)
 async def list_tickers(request: Request, limit: int = 50) -> dict[str, Any]:
     """Get list of mentioned tickers with counts."""
     import json
