@@ -14,6 +14,14 @@ from ...db import (
     rollback_prompt,
     upsert_prompt,
 )
+from ...models.api import (
+    PromptHistoryResponse,
+    PromptListResponse,
+    PromptResponse,
+    PromptRollbackResponse,
+    PromptTuneResponse,
+    PromptUpdateResponse,
+)
 
 router = APIRouter(tags=["prompts"])
 
@@ -32,7 +40,7 @@ class TuneRequest(BaseModel):
     reaction_limit: int = 50
 
 
-@router.get("/prompts")
+@router.get("/prompts", response_model=PromptListResponse)
 async def list_prompts(request: Request) -> dict[str, Any]:
     """Get all prompts."""
     db_path = request.app.state.db_path
@@ -55,7 +63,7 @@ async def list_prompts(request: Request) -> dict[str, Any]:
     }
 
 
-@router.get("/prompts/{name}")
+@router.get("/prompts/{name}", response_model=PromptResponse)
 async def get_prompt_by_name(request: Request, name: str) -> dict[str, Any]:
     """Get a specific prompt by name."""
     db_path = request.app.state.db_path
@@ -76,7 +84,7 @@ async def get_prompt_by_name(request: Request, name: str) -> dict[str, Any]:
     }
 
 
-@router.put("/prompts/{name}")
+@router.put("/prompts/{name}", response_model=PromptUpdateResponse)
 async def update_prompt(
     request: Request,
     name: str,
@@ -96,7 +104,7 @@ async def update_prompt(
     }
 
 
-@router.get("/prompts/{name}/history")
+@router.get("/prompts/{name}/history", response_model=PromptHistoryResponse)
 async def get_history(request: Request, name: str, limit: int = 10) -> dict[str, Any]:
     """Get version history for a prompt."""
     db_path = request.app.state.db_path
@@ -110,7 +118,7 @@ async def get_history(request: Request, name: str, limit: int = 10) -> dict[str,
     }
 
 
-@router.post("/prompts/{name}/rollback")
+@router.post("/prompts/{name}/rollback", response_model=PromptRollbackResponse)
 async def rollback_to_version(
     request: Request,
     name: str,
@@ -128,7 +136,7 @@ async def rollback_to_version(
     return {"error": f"Version {version} not found for prompt {name}"}
 
 
-@router.post("/prompts/tune")
+@router.post("/prompts/tune", response_model=PromptTuneResponse)
 async def tune_prompt(request: Request, tune_req: TuneRequest) -> dict[str, Any]:
     """
     LLM-assisted prompt tuning based on user reactions.
@@ -258,7 +266,7 @@ SUGGESTED PROMPT:
         return {"error": f"LLM call failed: {e!s}"}
 
 
-@router.post("/prompts/{name}/apply-suggestion")
+@router.post("/prompts/{name}/apply-suggestion", response_model=PromptUpdateResponse)
 async def apply_suggestion(
     request: Request,
     name: str,
