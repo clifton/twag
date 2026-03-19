@@ -1,8 +1,10 @@
 """Tests for processor parallelization and enrichment throughput helpers."""
 
+import sqlite3
 import threading
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from typing import cast
 
 import twag.processor.dependencies as deps_mod
 import twag.processor.pipeline as pipeline_mod
@@ -321,7 +323,7 @@ def test_triage_parallel_db_access_stays_on_owner_thread(monkeypatch, tmp_path) 
         )
 
         results = triage_mod._triage_rows(
-            conn,
+            cast(sqlite3.Connection, conn),
             tweet_rows=rows,
             batch_size=1,
             triage_model=None,
@@ -447,7 +449,7 @@ def test_expand_links_parallel_db_access_stays_on_owner_thread(monkeypatch, tmp_
         )
 
         refreshed_rows = deps_mod._expand_links_for_rows(
-            conn,
+            cast(sqlite3.Connection, conn),
             rows,
             max_workers=4,
             quote_depth=0,

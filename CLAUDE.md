@@ -74,6 +74,7 @@ pip install -e ".[dev]"
 ```bash
 uv run ruff format .
 uv run ruff check .
+uv run ty check
 ```
 
 ### Test
@@ -95,8 +96,9 @@ npm run dev      # Dev server (port 8080)
 
 1. Format: `uv run ruff format <files>`
 2. Lint: `uv run ruff check <files>`
-3. Test: `uv run pytest -q <relevant tests>`
-4. If frontend changed: `cd twag/web/frontend && npm run build`
+3. Typecheck: `uv run ty check`
+4. Test: `uv run pytest -q <relevant tests>`
+5. If frontend changed: `cd twag/web/frontend && npm run build`
 
 ## Documentation Expectations
 
