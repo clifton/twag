@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Enforce conventional commit message format:
+#   type: description
+#   type(scope): description
+#
+# Allowed types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert
+
+set -euo pipefail
+
+COMMIT_MSG_FILE="$1"
+COMMIT_MSG=$(head -1 "$COMMIT_MSG_FILE")
+
+# Allow merge commits
+if echo "$COMMIT_MSG" | grep -qE '^Merge '; then
+    exit 0
+fi
+
+# Allow fixup/squash commits
+if echo "$COMMIT_MSG" | grep -qE '^(fixup|squash)! '; then
+    exit 0
+fi
+
+# Validate conventional commit format
+PATTERN='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-zA-Z0-9_-]+\))?!?: .+'
+
+if ! echo "$COMMIT_MSG" | grep -qE "$PATTERN"; then
+    echo "ERROR: Commit message does not follow conventional commits format."
+    echo ""
+    echo "  Expected: type(scope): description"
+    echo "  Got:      $COMMIT_MSG"
+    echo ""
+    echo "  Allowed types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert"
+    echo "  Scope is optional: fix: description  OR  fix(parser): description"
+    echo ""
+    echo "  Examples:"
+    echo "    feat: add new scoring model"
+    echo "    fix(fetcher): handle rate limit errors"
+    echo "    docs: update installation guide"
+    exit 1
+fi
