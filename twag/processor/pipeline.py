@@ -285,6 +285,7 @@ def enrich_high_signal(
 
         results: list[EnrichmentResult] = []
         futures = {}
+        # Enrichment workers compute results only; DB writes stay on this thread after future resolution.
         text_pool = (
             ThreadPoolExecutor(max_workers=max_text_workers) if max_text_workers and max_text_workers > 1 else None
         )

@@ -388,6 +388,7 @@ def _triage_rows(
     # Tags: "summary", "media", "article", "enrich"
     all_futures: dict[Any, tuple[str, Any]] = {}
 
+    # Worker pools return analysis payloads only; SQLite access stays on the owner thread.
     triage_pool = ThreadPoolExecutor(max_workers=max_triage_workers) if max_triage_workers > 1 else None
     text_pool = ThreadPoolExecutor(max_workers=max_text_workers) if max_text_workers and max_text_workers > 1 else None
     vision_pool = (
@@ -715,7 +716,7 @@ def _triage_rows(
                 all_results.extend(results)
                 _handle_results(results)
 
-        # Unified collection: all downstream futures complete in natural order
+        # Apply worker results here so DB writes remain serialized on this thread.
         for future in as_completed(list(all_futures.keys())):
             tag, data = all_futures.pop(future)
             if tag == "summary":
