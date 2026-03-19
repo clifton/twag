@@ -3,7 +3,7 @@
 import json
 import re
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Query, Request
 
@@ -131,15 +131,15 @@ async def list_tweets(
     request: Request,
     category: str | None = None,
     ticker: str | None = None,
-    min_score: float | None = Query(None, ge=0, le=10),
+    min_score: Annotated[float | None, Query(ge=0, le=10)] = None,
     signal_tier: str | None = None,
     author: str | None = None,
     bookmarked: bool = False,
     since: str | None = None,
     until: str | None = None,
     sort: str | None = None,
-    limit: int = Query(50, ge=1, le=200),
-    offset: int = Query(0, ge=0),
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> dict[str, Any]:
     """
     Get paginated feed of processed tweets.
@@ -212,7 +212,7 @@ async def list_tweets(
 
             for link in inline_links:
                 tid = link.get("id")
-                if tid and tid != t.id and tid != quote_id:
+                if tid and tid not in (t.id, quote_id):
                     quote_ids_needed.add(tid)
 
             tweet_normalized.append((t, normalized, quote_id, inline_links))
