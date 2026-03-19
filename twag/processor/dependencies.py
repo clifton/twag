@@ -173,6 +173,7 @@ def _expand_links_for_rows(
         expanded_at = datetime.now(timezone.utc).isoformat()
 
         if max_workers > 1:
+            # Link workers expand URLs only; persistence stays on the caller thread below.
             with ThreadPoolExecutor(max_workers=max_workers) as pool:
                 futures = {
                     pool.submit(_expand_single_tweet_links, row): str(row["id"]) for row in rows_for_link_expansion
