@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 import twag.processor.dependencies as deps_mod
 import twag.processor.pipeline as pipeline_mod
 from twag.db import get_connection, get_tweet_by_id, init_db, insert_tweet, update_tweet_processing
+from twag.fetcher import Tweet
+from twag.fetcher.bird_cli import ReadTweetFailure, ReadTweetResult
 
 
 def test_process_unprocessed_expands_links_and_persists_before_triage(monkeypatch, tmp_path) -> None:
@@ -350,3 +352,147 @@ def test_process_unprocessed_adds_thread_linked_tweet_to_processing_stack(monkey
     assert results == []
     ids = {row["id"] for row in captured_rows}
     assert ids == {"r2", "10001"}
+
+
+def test_process_unprocessed_fetches_dependency_with_malformed_unicode_without_crashing(monkeypatch, tmp_path) -> None:
+    db_path = tmp_path / "twag_process_dependency_unicode.db"
+    init_db(db_path)
+
+    with get_connection(db_path) as conn:
+        inserted_root = insert_tweet(
+            conn,
+            tweet_id="root-1",
+            author_handle="root_user",
+            content="Root text",
+            created_at=datetime.now(timezone.utc),
+            source="test",
+            has_quote=True,
+            quote_tweet_id="dep-\ud83d",
+        )
+        assert inserted_root is True
+        conn.commit()
+
+    monkeypatch.setattr(pipeline_mod, "get_connection", lambda: get_connection(db_path))
+    monkeypatch.setattr(
+        pipeline_mod,
+        "load_config",
+        lambda: {
+            "scoring": {
+                "batch_size": 10,
+                "high_signal_threshold": 7,
+                "min_score_for_media": 3,
+            },
+            "fetch": {"quote_depth": 3, "quote_delay": 0.0},
+            "processing": {"max_concurrency_url_expansion": 2},
+        },
+    )
+    monkeypatch.setattr(deps_mod, "expand_links_in_place", lambda links: links)
+    monkeypatch.setattr(
+        deps_mod,
+        "read_tweet_with_diagnostics",
+        lambda _tweet_id: ReadTweetResult(
+            tweet=Tweet(
+                id="dep-\ud83d",
+                author_handle="dep_user\ud83d",
+                author_name="Dep \udc49 User",
+                content="Dependency \ud83d[\udc49 content",
+                created_at=datetime.now(timezone.utc),
+                has_quote=False,
+                quote_tweet_id=None,
+                in_reply_to_tweet_id=None,
+                conversation_id=None,
+                has_media=False,
+                media_items=[],
+                has_link=True,
+                is_x_article=True,
+                article_title="Article \ud83d",
+                article_preview="Preview \udc49",
+                article_text="Body \ud83d[\udc49 text",
+                is_retweet=False,
+                retweeted_by_handle=None,
+                retweeted_by_name=None,
+                original_tweet_id=None,
+                original_author_handle=None,
+                original_author_name=None,
+                original_content=None,
+                raw={},
+                links=[
+                    {
+                        "url": "https://t.co/\ud83d",
+                        "expanded_url": "https://example.com/\udc49",
+                        "display_url": "bad\ud83d",
+                    }
+                ],
+            )
+        ),
+    )
+
+    captured_rows: list[dict] = []
+
+    def _fake_triage_rows(_conn, **kwargs):
+        captured_rows.extend(kwargs["tweet_rows"])
+        return []
+
+    monkeypatch.setattr(pipeline_mod, "_triage_rows", _fake_triage_rows)
+
+    results = pipeline_mod.process_unprocessed(limit=10)
+
+    assert results == []
+    ids = {row["id"] for row in captured_rows}
+    assert ids == {"root-1", "dep-\ufffd"}
+
+    with get_connection(db_path) as conn:
+        dep_row = get_tweet_by_id(conn, "dep-\ufffd")
+        assert dep_row is not None
+        assert dep_row["content"] == "Dependency \ufffd[\ufffd content"
+        assert dep_row["article_text"] == "Body \ufffd[\ufffd text"
+        links = json.loads(dep_row["links_json"])
+        assert links[0]["expanded_url"] == "https://example.com/\ufffd"
+
+
+def test_dependency_fetch_skips_repeated_non_retryable_failures_in_same_run(monkeypatch, tmp_path, caplog) -> None:
+    db_path = tmp_path / "twag_dependency_skip_non_retryable.db"
+    init_db(db_path)
+    deps_mod._SKIPPED_DEPENDENCY_FETCHES.clear()
+
+    failure = ReadTweetFailure(reason="tweet unavailable or missing: Tweet not found in response", retryable=False)
+    calls = {"count": 0}
+
+    def _fake_read(_tweet_id: str) -> ReadTweetResult:
+        calls["count"] += 1
+        return ReadTweetResult(tweet=None, failure=failure)
+
+    monkeypatch.setattr(deps_mod, "read_tweet_with_diagnostics", _fake_read)
+
+    with get_connection(db_path) as conn:
+        assert deps_mod._ensure_quote_row(conn, "dep-404", delay=0.0) is None
+        assert deps_mod._ensure_quote_row(conn, "dep-404", delay=0.0) is None
+
+    assert calls["count"] == 1
+    assert "Skipping dependency tweet dep-404 for the rest of this run" in caplog.text
+
+
+def test_dependency_fetch_does_not_cache_auth_failures(monkeypatch, tmp_path, caplog) -> None:
+    db_path = tmp_path / "twag_dependency_keep_auth_retryable.db"
+    init_db(db_path)
+    deps_mod._SKIPPED_DEPENDENCY_FETCHES.clear()
+
+    failure = ReadTweetFailure(
+        reason="authentication/authorization failure: 403 Forbidden: auth token expired",
+        retryable=True,
+        auth_related=True,
+    )
+    calls = {"count": 0}
+
+    def _fake_read(_tweet_id: str) -> ReadTweetResult:
+        calls["count"] += 1
+        return ReadTweetResult(tweet=None, failure=failure)
+
+    monkeypatch.setattr(deps_mod, "read_tweet_with_diagnostics", _fake_read)
+
+    with get_connection(db_path) as conn:
+        assert deps_mod._ensure_quote_row(conn, "dep-auth", delay=0.0) is None
+        assert deps_mod._ensure_quote_row(conn, "dep-auth", delay=0.0) is None
+
+    assert calls["count"] == 2
+    assert "keeping it retryable" in caplog.text

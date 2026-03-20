@@ -32,7 +32,7 @@ export interface Tweet {
   article_action_items: ArticleActionItem[];
   article_top_visual: ArticleTopVisual | null;
   article_processed_at: string | null;
-  reactions: string | null;
+  reactions: string[];
   is_retweet: boolean;
   retweeted_by_handle: string | null;
   retweeted_by_name: string | null;
@@ -40,12 +40,12 @@ export interface Tweet {
   original_author_handle: string | null;
   original_author_name: string | null;
   original_content: string | null;
-  // Enriched fields (from enhanced API)
-  quote_embed?: QuoteEmbed | null;
-  inline_quote_embeds?: QuoteEmbed[] | null;
-  reference_links?: ReferenceLink[];
-  external_links?: ExternalLink[];
-  display_content?: string | null;
+  // Enriched display fields
+  quote_embed: QuoteEmbed | null;
+  inline_quote_embeds: QuoteEmbed[];
+  reference_links: ReferenceLink[];
+  external_links: ExternalLink[];
+  display_content: string | null;
 }
 
 export interface ArticlePrimaryPoint {

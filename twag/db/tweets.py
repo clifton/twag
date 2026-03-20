@@ -6,6 +6,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from ..text_utils import sanitize_nested_strings, sanitize_text
+from .connection import execute_with_retry
+
 
 def insert_tweet(
     conn: sqlite3.Connection,
@@ -36,8 +39,29 @@ def insert_tweet(
     links: list[dict[str, Any]] | None = None,
 ) -> bool:
     """Insert a tweet, returning True if new, False if duplicate."""
+    tweet_id = sanitize_text(tweet_id) or ""
+    author_handle = sanitize_text(author_handle) or ""
+    author_name = sanitize_text(author_name)
+    content = sanitize_text(content) or ""
+    source = sanitize_text(source) or "home"
+    quote_tweet_id = sanitize_text(quote_tweet_id)
+    in_reply_to_tweet_id = sanitize_text(in_reply_to_tweet_id)
+    conversation_id = sanitize_text(conversation_id)
+    media_items = _sanitize_json_value(media_items)
+    links = _sanitize_json_value(links)
+    article_title = sanitize_text(article_title)
+    article_preview = sanitize_text(article_preview)
+    article_text = sanitize_text(article_text)
+    retweeted_by_handle = sanitize_text(retweeted_by_handle)
+    retweeted_by_name = sanitize_text(retweeted_by_name)
+    original_tweet_id = sanitize_text(original_tweet_id)
+    original_author_handle = sanitize_text(original_author_handle)
+    original_author_name = sanitize_text(original_author_name)
+    original_content = sanitize_text(original_content)
+
     try:
-        conn.execute(
+        execute_with_retry(
+            conn,
             """
             INSERT INTO tweets (
                 id, author_handle, author_name, content, created_at, source,
@@ -60,9 +84,9 @@ def insert_tweet(
                 in_reply_to_tweet_id,
                 conversation_id,
                 int(has_media),
-                json.dumps(media_items) if media_items else None,
+                _json_dumps_safe(media_items) if media_items else None,
                 int(has_link),
-                json.dumps(links) if links else None,
+                _json_dumps_safe(links) if links else None,
                 int(is_x_article),
                 article_title,
                 article_preview,
@@ -133,9 +157,9 @@ def _merge_media_items(
         if not url:
             continue
         if url in by_url:
-            by_url[url].update({k: v for k, v in item.items() if v is not None})
+            by_url[url].update({k: _sanitize_json_value(v) for k, v in item.items() if v is not None})
         else:
-            by_url[url] = dict(item)
+            by_url[url] = _sanitize_json_value(dict(item))
 
     merged = list(by_url.values())
     return merged or None
@@ -276,7 +300,7 @@ def _merge_duplicate_tweet_payload(
         return
 
     params.append(tweet_id)
-    conn.execute(f"UPDATE tweets SET {', '.join(updates)} WHERE id = ?", params)
+    execute_with_retry(conn, f"UPDATE tweets SET {', '.join(updates)} WHERE id = ?", params)
 
 
 def _looks_truncated_text(text: str | None) -> bool:
@@ -328,7 +352,7 @@ def _merge_duplicate_retweet_metadata(
             params.append(original_content)
 
     params.append(tweet_id)
-    conn.execute(f"UPDATE tweets SET {', '.join(updates)} WHERE id = ?", params)
+    execute_with_retry(conn, f"UPDATE tweets SET {', '.join(updates)} WHERE id = ?", params)
 
 
 def _should_replace_original_content(existing: str | None, candidate: str) -> bool:
@@ -343,6 +367,14 @@ def _should_replace_original_content(existing: str | None, candidate: str) -> bo
     if len(candidate_stripped) > len(existing_stripped) and candidate_stripped.startswith(existing_stripped):
         return True
     return False
+
+
+def _sanitize_json_value(value: Any) -> Any:
+    return sanitize_nested_strings(value)
+
+
+def _json_dumps_safe(value: Any) -> str:
+    return json.dumps(_sanitize_json_value(value))
 
 
 def get_unprocessed_tweets(conn: sqlite3.Connection, limit: int = 50) -> list[sqlite3.Row]:
@@ -369,11 +401,13 @@ def update_tweet_processing(
     tickers: list[str] | None = None,
 ) -> None:
     """Update a tweet with processing results."""
+    tweet_id = sanitize_text(tweet_id) or ""
     # Normalize categories to list and store as JSON
     if isinstance(categories, str):
         categories = [categories]
 
-    conn.execute(
+    execute_with_retry(
+        conn,
         """
         UPDATE tweets SET
             processed_at = ?,
@@ -387,10 +421,10 @@ def update_tweet_processing(
         (
             datetime.now(timezone.utc).isoformat(),
             relevance_score,
-            json.dumps(categories),
-            summary,
-            signal_tier,
-            json.dumps(tickers) if tickers else None,
+            _json_dumps_safe(categories),
+            sanitize_text(summary),
+            sanitize_text(signal_tier),
+            _json_dumps_safe(tickers) if tickers else None,
             tweet_id,
         ),
     )
@@ -405,28 +439,30 @@ def update_tweet_enrichment(
     content_summary: str | None = None,
 ) -> None:
     """Update a tweet with enrichment data."""
+    tweet_id = sanitize_text(tweet_id) or ""
     updates = []
     params = []
 
     if media_analysis is not None:
         updates.append("media_analysis = ?")
-        params.append(media_analysis)
+        params.append(sanitize_text(media_analysis))
 
     if media_items is not None:
         updates.append("media_items = ?")
-        params.append(json.dumps(media_items))
+        params.append(_json_dumps_safe(media_items))
 
     if link_summary is not None:
         updates.append("link_summary = ?")
-        params.append(link_summary)
+        params.append(sanitize_text(link_summary))
 
     if content_summary is not None:
         updates.append("content_summary = ?")
-        params.append(content_summary)
+        params.append(sanitize_text(content_summary))
 
     if updates:
         params.append(tweet_id)
-        conn.execute(
+        execute_with_retry(
+            conn,
             f"UPDATE tweets SET {', '.join(updates)} WHERE id = ?",
             params,
         )
@@ -439,11 +475,13 @@ def update_tweet_links_expanded(
     expanded_at: str,
 ) -> None:
     """Persist normalized links payload and expansion timestamp."""
+    tweet_id = sanitize_text(tweet_id) or ""
     if isinstance(links_json, str) or links_json is None:
-        payload = links_json
+        payload = sanitize_text(links_json)
     else:
-        payload = json.dumps(links_json)
-    conn.execute(
+        payload = _json_dumps_safe(links_json)
+    execute_with_retry(
+        conn,
         """
         UPDATE tweets SET
             links_json = ?,
@@ -467,27 +505,28 @@ def update_tweet_article(
     mirror_to_link_summary: bool = True,
 ) -> None:
     """Update structured X article analysis fields for a tweet."""
+    tweet_id = sanitize_text(tweet_id) or ""
     updates: list[str] = []
     params: list[Any] = []
 
     if article_summary_short is not None:
         updates.append("article_summary_short = ?")
-        params.append(article_summary_short)
+        params.append(sanitize_text(article_summary_short))
         if mirror_to_link_summary:
             updates.append("link_summary = ?")
-            params.append(article_summary_short)
+            params.append(sanitize_text(article_summary_short))
 
     if primary_points is not None:
         updates.append("article_primary_points_json = ?")
-        params.append(json.dumps(primary_points))
+        params.append(_json_dumps_safe(primary_points))
 
     if actionable_items is not None:
         updates.append("article_action_items_json = ?")
-        params.append(json.dumps(actionable_items))
+        params.append(_json_dumps_safe(actionable_items))
 
     if set_top_visual:
         updates.append("article_top_visual_json = ?")
-        params.append(json.dumps(top_visual) if top_visual else None)
+        params.append(_json_dumps_safe(top_visual) if top_visual else None)
 
     if processed_at is not None:
         updates.append("article_processed_at = ?")
@@ -497,7 +536,8 @@ def update_tweet_article(
         return
 
     params.append(tweet_id)
-    conn.execute(
+    execute_with_retry(
+        conn,
         f"UPDATE tweets SET {', '.join(updates)} WHERE id = ?",
         params,
     )
@@ -511,19 +551,21 @@ def update_tweet_analysis(
     tickers: list[str] | None = None,
 ) -> None:
     """Store structured analysis results for a tweet."""
+    tweet_id = sanitize_text(tweet_id) or ""
     updates = ["analysis_json = ?"]
-    params: list[Any] = [json.dumps(analysis)]
+    params: list[Any] = [_json_dumps_safe(analysis)]
 
     if signal_tier is not None:
         updates.append("signal_tier = ?")
-        params.append(signal_tier)
+        params.append(sanitize_text(signal_tier))
 
     if tickers is not None:
         updates.append("tickers = ?")
-        params.append(json.dumps(tickers) if tickers else None)
+        params.append(_json_dumps_safe(tickers) if tickers else None)
 
     params.append(tweet_id)
-    conn.execute(
+    execute_with_retry(
+        conn,
         f"UPDATE tweets SET {', '.join(updates)} WHERE id = ?",
         params,
     )
@@ -550,7 +592,9 @@ def get_tweets_for_digest(
 
 def mark_tweet_in_digest(conn: sqlite3.Connection, tweet_id: str, date: str) -> None:
     """Mark a tweet as included in a digest."""
-    conn.execute(
+    tweet_id = sanitize_text(tweet_id) or ""
+    execute_with_retry(
+        conn,
         "UPDATE tweets SET included_in_digest = ? WHERE id = ?",
         (date, tweet_id),
     )
@@ -558,6 +602,7 @@ def mark_tweet_in_digest(conn: sqlite3.Connection, tweet_id: str, date: str) -> 
 
 def is_tweet_seen(conn: sqlite3.Connection, tweet_id: str) -> bool:
     """Check if a tweet has been seen before."""
+    tweet_id = sanitize_text(tweet_id) or ""
     cursor = conn.execute("SELECT 1 FROM tweets WHERE id = ?", (tweet_id,))
     return cursor.fetchone() is not None
 
@@ -617,7 +662,9 @@ def get_processed_counts(conn: sqlite3.Connection) -> dict[str, int]:
 
 def mark_tweet_bookmarked(conn: sqlite3.Connection, tweet_id: str) -> None:
     """Mark a tweet as bookmarked."""
-    conn.execute(
+    tweet_id = sanitize_text(tweet_id) or ""
+    execute_with_retry(
+        conn,
         """
         UPDATE tweets SET
             bookmarked = 1,
@@ -661,6 +708,7 @@ def get_authors_to_promote(conn: sqlite3.Connection, min_bookmarks: int = 3) -> 
 
 def get_tweet_by_id(conn: sqlite3.Connection, tweet_id: str) -> sqlite3.Row | None:
     """Get a single tweet by ID."""
+    tweet_id = sanitize_text(tweet_id) or ""
     cursor = conn.execute("SELECT * FROM tweets WHERE id = ?", (tweet_id,))
     return cursor.fetchone()
 
@@ -674,7 +722,7 @@ def get_tweets_by_ids(conn: sqlite3.Connection, tweet_ids: set[str]) -> dict[str
         return {}
 
     result: dict[str, sqlite3.Row] = {}
-    id_list = list(tweet_ids)
+    id_list = [sanitize_text(tweet_id) or "" for tweet_id in tweet_ids]
     chunk_size = 999
 
     for i in range(0, len(id_list), chunk_size):
@@ -698,12 +746,18 @@ def log_fetch(
     query_params: dict | None = None,
 ) -> None:
     """Log a fetch operation."""
-    conn.execute(
+    execute_with_retry(
+        conn,
         """
         INSERT INTO fetch_log (endpoint, tweets_fetched, new_tweets, query_params)
         VALUES (?, ?, ?, ?)
         """,
-        (endpoint, tweets_fetched, new_tweets, json.dumps(query_params)),
+        (
+            sanitize_text(endpoint),
+            tweets_fetched,
+            new_tweets,
+            _json_dumps_safe(query_params),
+        ),
     )
 
 
@@ -734,7 +788,8 @@ def migrate_seen_json(conn: sqlite3.Connection, seen_json_path: Path) -> int:
 
     for tweet_id in seen_ids:
         try:
-            conn.execute(
+            execute_with_retry(
+                conn,
                 """
                 INSERT INTO tweets (id, author_handle, content, source)
                 VALUES (?, ?, ?, ?)

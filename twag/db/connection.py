@@ -1,5 +1,6 @@
 """Database connection management and initialization."""
 
+import logging
 import sqlite3
 import time
 from collections.abc import Iterator
@@ -8,6 +9,10 @@ from pathlib import Path
 
 from ..config import get_database_path
 from .schema import FTS_SCHEMA, SCHEMA
+
+log = logging.getLogger(__name__)
+_LOCK_RETRY_ATTEMPTS = 4
+_LOCK_RETRY_BASE_DELAY_SECONDS = 2.0
 
 
 def init_db(db_path: Path | None = None) -> None:
@@ -30,6 +35,46 @@ def init_db(db_path: Path | None = None) -> None:
                 time.sleep(1)
                 continue
             raise
+
+
+def _is_database_locked_error(exc: sqlite3.OperationalError) -> bool:
+    message = str(exc).lower()
+    return "database is locked" in message or "database table is locked" in message
+
+
+def _with_lock_retry(operation: str, fn):
+    delay = _LOCK_RETRY_BASE_DELAY_SECONDS
+    for attempt in range(_LOCK_RETRY_ATTEMPTS):
+        try:
+            return fn()
+        except sqlite3.OperationalError as exc:
+            if not _is_database_locked_error(exc) or attempt + 1 >= _LOCK_RETRY_ATTEMPTS:
+                raise
+            log.warning(
+                "%s hit a locked database (attempt %d/%d); retrying in %.1fs",
+                operation,
+                attempt + 1,
+                _LOCK_RETRY_ATTEMPTS,
+                delay,
+            )
+            time.sleep(delay)
+            delay *= 2
+
+
+def execute_with_retry(conn: sqlite3.Connection, sql: str, params: tuple | list = ()):
+    """Run ``conn.execute`` with retries when SQLite reports a transient lock."""
+    return _with_lock_retry("sqlite execute", lambda: conn.execute(sql, params))
+
+
+def executemany_with_retry(conn: sqlite3.Connection, sql: str, seq_of_params):
+    """Run ``conn.executemany`` with retries when SQLite reports a transient lock."""
+    cached_params = list(seq_of_params)
+    return _with_lock_retry("sqlite executemany", lambda: conn.executemany(sql, cached_params))
+
+
+def commit_with_retry(conn: sqlite3.Connection) -> None:
+    """Commit with retries when SQLite reports a transient lock."""
+    _with_lock_retry("sqlite commit", conn.commit)
 
 
 def _run_migrations(conn: sqlite3.Connection) -> None:

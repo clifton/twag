@@ -22,12 +22,14 @@ from ..db import (
     update_tweet_links_expanded,
     upsert_account,
 )
-from ..fetcher import Tweet, read_tweet
+from ..fetcher import Tweet
+from ..fetcher.bird_cli import ReadTweetFailure, read_tweet_with_diagnostics
 from ..link_utils import expand_links_in_place, parse_tweet_status_id
 
 log = logging.getLogger(__name__)
 
 _MAX_INLINE_LINK_FETCHES = 4
+_SKIPPED_DEPENDENCY_FETCHES: dict[str, str] = {}
 
 
 def _row_get(row: sqlite3.Row | dict[str, Any], key: str, default: Any = None) -> Any:
@@ -97,6 +99,38 @@ def _extract_dependency_ids_from_row(row: sqlite3.Row | dict[str, Any]) -> list[
     for linked_id in _extract_inline_linked_tweet_ids_from_links_json(_row_get(row, "links_json"), skip_id=tweet_id):
         _add(linked_id)
     return ordered
+
+
+def _warn_dependency_fetch_failure(tweet_id: str, failure: ReadTweetFailure) -> None:
+    if failure.retryable or failure.auth_related:
+        log.warning("Dependency tweet %s could not be fetched yet; keeping it retryable: %s", tweet_id, failure.reason)
+        return
+
+    log.warning(
+        "Skipping dependency tweet %s for the rest of this run because the failure looks permanent: %s",
+        tweet_id,
+        failure.reason,
+    )
+
+
+def _read_dependency_tweet(tweet_id: str) -> Tweet | None:
+    cached_reason = _SKIPPED_DEPENDENCY_FETCHES.get(tweet_id)
+    if cached_reason:
+        log.warning(
+            "Skipping dependency tweet %s: previously classified as non-retryable in this run (%s)",
+            tweet_id,
+            cached_reason,
+        )
+        return None
+
+    result = read_tweet_with_diagnostics(tweet_id)
+    if result.failure:
+        _warn_dependency_fetch_failure(tweet_id, result.failure)
+        if not result.failure.retryable and not result.failure.auth_related:
+            _SKIPPED_DEPENDENCY_FETCHES[tweet_id] = result.failure.reason
+        return None
+
+    return result.tweet
 
 
 def _expand_single_tweet_links(row: sqlite3.Row | dict[str, Any]) -> tuple[str, list[dict[str, Any]] | None]:
@@ -344,9 +378,8 @@ def _fetch_quote_by_id(
     if status_cb:
         status_cb(f"Fetching dependency tweet {quote_id}")
 
-    quoted = read_tweet(quote_id)
+    quoted = _read_dependency_tweet(quote_id)
     if not quoted or not quoted.id:
-        log.warning("Failed to fetch dependency tweet %s", quote_id)
         return 0
 
     inserted = insert_tweet(
@@ -422,9 +455,8 @@ def _ensure_quote_row(
     if status_cb:
         status_cb(f"Fetching dependency tweet {quote_id}")
 
-    quoted = read_tweet(quote_id)
+    quoted = _read_dependency_tweet(quote_id)
     if not quoted or not quoted.id:
-        log.warning("Failed to fetch dependency tweet %s", quote_id)
         return None
 
     inserted = insert_tweet(

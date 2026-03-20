@@ -4,6 +4,9 @@ import sqlite3
 from datetime import datetime, timezone
 from typing import Any
 
+from ..text_utils import sanitize_text
+from .connection import execute_with_retry
+
 
 def upsert_account(
     conn: sqlite3.Connection,
@@ -13,7 +16,11 @@ def upsert_account(
     category: str | None = None,
 ) -> None:
     """Insert or update an account."""
-    conn.execute(
+    handle = (sanitize_text(handle) or "").lstrip("@")
+    display_name = sanitize_text(display_name)
+    category = sanitize_text(category)
+    execute_with_retry(
+        conn,
         """
         INSERT INTO accounts (handle, display_name, tier, category)
         VALUES (?, ?, ?, ?)
@@ -22,7 +29,7 @@ def upsert_account(
             tier = CASE WHEN excluded.tier < tier THEN excluded.tier ELSE tier END,
             category = COALESCE(excluded.category, category)
         """,
-        (handle.lstrip("@"), display_name, tier, category),
+        (handle, display_name, tier, category),
     )
 
 
@@ -68,12 +75,14 @@ def get_accounts(
 
 def update_account_last_fetched(conn: sqlite3.Connection, handle: str) -> None:
     """Update the last_fetched_at timestamp for an account."""
-    conn.execute(
+    handle = (sanitize_text(handle) or "").lstrip("@")
+    execute_with_retry(
+        conn,
         """
         UPDATE accounts SET last_fetched_at = ?
         WHERE handle = ?
         """,
-        (datetime.now(timezone.utc).isoformat(), handle.lstrip("@")),
+        (datetime.now(timezone.utc).isoformat(), handle),
     )
 
 
@@ -84,9 +93,10 @@ def update_account_stats(
     is_high_signal: bool = False,
 ) -> None:
     """Update account statistics after processing a tweet."""
-    handle = handle.lstrip("@")
+    handle = (sanitize_text(handle) or "").lstrip("@")
 
-    conn.execute(
+    execute_with_retry(
+        conn,
         """
         UPDATE accounts SET
             tweets_seen = tweets_seen + 1,
@@ -109,7 +119,8 @@ def update_account_stats(
 
 def apply_account_decay(conn: sqlite3.Connection, decay_rate: float = 0.05) -> int:
     """Apply decay to account weights. Returns number of affected accounts."""
-    cursor = conn.execute(
+    cursor = execute_with_retry(
+        conn,
         """
         UPDATE accounts
         SET weight = MAX(10, weight * (1 - ?))
@@ -123,35 +134,43 @@ def apply_account_decay(conn: sqlite3.Connection, decay_rate: float = 0.05) -> i
 
 def boost_account(conn: sqlite3.Connection, handle: str, amount: float = 5.0) -> None:
     """Boost an account's weight."""
-    conn.execute(
+    handle = (sanitize_text(handle) or "").lstrip("@")
+    execute_with_retry(
+        conn,
         """
         UPDATE accounts
         SET weight = MIN(100, weight + ?)
         WHERE handle = ?
         """,
-        (amount, handle.lstrip("@")),
+        (amount, handle),
     )
 
 
 def promote_account(conn: sqlite3.Connection, handle: str) -> None:
     """Promote an account to tier 1."""
-    conn.execute(
+    handle = (sanitize_text(handle) or "").lstrip("@")
+    execute_with_retry(
+        conn,
         "UPDATE accounts SET tier = 1 WHERE handle = ?",
-        (handle.lstrip("@"),),
+        (handle,),
     )
 
 
 def mute_account(conn: sqlite3.Connection, handle: str) -> None:
     """Mute an account."""
-    conn.execute(
+    handle = (sanitize_text(handle) or "").lstrip("@")
+    execute_with_retry(
+        conn,
         "UPDATE accounts SET muted = 1 WHERE handle = ?",
-        (handle.lstrip("@"),),
+        (handle,),
     )
 
 
 def demote_account(conn: sqlite3.Connection, handle: str, tier: int = 2) -> None:
     """Demote an account to a lower tier."""
-    conn.execute(
+    handle = (sanitize_text(handle) or "").lstrip("@")
+    execute_with_retry(
+        conn,
         "UPDATE accounts SET tier = ? WHERE handle = ?",
-        (tier, handle.lstrip("@")),
+        (tier, handle),
     )

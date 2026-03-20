@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 import threading
 import time
+from dataclasses import dataclass
 from typing import Any
 
 from ..auth import get_auth_env
@@ -18,6 +19,23 @@ log = logging.getLogger(__name__)
 _BIRD_RATE_LOCK = threading.Lock()
 _BIRD_LAST_CALL = 0.0
 _MAX_RETWEET_HYDRATIONS = 12
+
+
+@dataclass(frozen=True)
+class ReadTweetFailure:
+    """Classified failure for ``bird read``."""
+
+    reason: str
+    retryable: bool
+    auth_related: bool = False
+
+
+@dataclass(frozen=True)
+class ReadTweetResult:
+    """Detailed result for ``bird read``."""
+
+    tweet: Tweet | None
+    failure: ReadTweetFailure | None = None
 
 
 def _is_rate_limited(stderr: str) -> bool:
@@ -40,7 +58,14 @@ def _rate_limit_bird() -> None:
         _BIRD_LAST_CALL = time.monotonic()
 
 
-def _run_bird_once(cmd: list[str], env: dict[str, str], args: list[str], timeout: int) -> tuple[str, str, int]:
+def _run_bird_once(
+    cmd: list[str],
+    env: dict[str, str],
+    args: list[str],
+    timeout: int,
+    *,
+    log_failures: bool = True,
+) -> tuple[str, str, int]:
     """Execute a single bird CLI subprocess call."""
     try:
         with tempfile.TemporaryFile(mode="w+") as tmp:
@@ -58,10 +83,10 @@ def _run_bird_once(cmd: list[str], env: dict[str, str], args: list[str], timeout
         if result.stderr.strip():
             lines = result.stderr.strip().splitlines()
             meaningful = [ln for ln in lines if not ln.strip().startswith("\u2139")]
-            if meaningful:
+            if meaningful and log_failures:
                 level = logging.WARNING if result.returncode == 0 else logging.ERROR
                 log.log(level, "bird %s stderr: %s", args[0] if args else "?", "\n".join(meaningful))
-        if result.returncode != 0:
+        if result.returncode != 0 and log_failures:
             log.error("bird %s exited with code %d", args[0] if args else "?", result.returncode)
         return stdout, result.stderr, result.returncode
     except subprocess.TimeoutExpired:
@@ -72,7 +97,7 @@ def _run_bird_once(cmd: list[str], env: dict[str, str], args: list[str], timeout
         return "", "bird CLI not found", 1
 
 
-def run_bird(args: list[str], timeout: int = 60) -> tuple[str, str, int]:
+def run_bird(args: list[str], timeout: int = 60, *, log_failures: bool = True) -> tuple[str, str, int]:
     """Run bird CLI command with retry on rate limit, returning (stdout, stderr, returncode)."""
     _rate_limit_bird()
     env = get_auth_env()
@@ -96,7 +121,7 @@ def run_bird(args: list[str], timeout: int = 60) -> tuple[str, str, int]:
     max_seconds = bird_cfg.get("retry_max_seconds", 120.0)
 
     for attempt in range(max_attempts):
-        stdout, stderr, returncode = _run_bird_once(cmd, env, args, timeout)
+        stdout, stderr, returncode = _run_bird_once(cmd, env, args, timeout, log_failures=log_failures)
 
         if returncode == 0 or not _is_rate_limited(stderr):
             return stdout, stderr, returncode
@@ -119,6 +144,65 @@ def run_bird(args: list[str], timeout: int = 60) -> tuple[str, str, int]:
         _rate_limit_bird()
 
     return stdout, stderr, returncode
+
+
+def _is_auth_failure(stderr: str) -> bool:
+    lower = stderr.lower()
+    return any(
+        token in lower
+        for token in (
+            "auth",
+            "unauthorized",
+            "forbidden",
+            "login",
+            "cookie",
+            "ct0",
+            "auth_token",
+            "csrf",
+            "403",
+        )
+    )
+
+
+def _is_retryable_read_failure(stderr: str) -> bool:
+    lower = stderr.lower()
+    return _is_rate_limited(stderr) or any(
+        token in lower
+        for token in (
+            "timed out",
+            "timeout",
+            "temporary",
+            "temporarily",
+            "try again",
+            "connection reset",
+            "connection refused",
+            "connection aborted",
+            "network",
+            "unavailable",
+            "internal server error",
+            "bad gateway",
+            "gateway timeout",
+            "service unavailable",
+            "502",
+            "503",
+            "504",
+        )
+    )
+
+
+def _summarize_read_failure(stderr: str, *, code: int) -> ReadTweetFailure:
+    message = stderr.strip() or f"bird read failed with exit code {code}"
+    normalized = " ".join(message.split())
+
+    if _is_auth_failure(message):
+        return ReadTweetFailure(
+            reason=f"authentication/authorization failure: {normalized}", retryable=True, auth_related=True
+        )
+    if _is_retryable_read_failure(message):
+        return ReadTweetFailure(reason=f"transient bird/X failure: {normalized}", retryable=True)
+    if "not found" in message.lower():
+        return ReadTweetFailure(reason=f"tweet unavailable or missing: {normalized}", retryable=False)
+    return ReadTweetFailure(reason=f"non-retryable bird read failure: {normalized}", retryable=False)
 
 
 def _parse_bird_output(stdout: str) -> list[Tweet]:
@@ -264,20 +348,31 @@ def fetch_bookmarks(count: int = 100) -> list[Tweet]:
     return _hydrate_truncated_retweets(tweets)
 
 
-def read_tweet(tweet_url_or_id: str) -> Tweet | None:
-    """Read a single tweet by URL or ID."""
-    stdout, stderr, code = run_bird(["read", tweet_url_or_id, "--json-full"])
+def read_tweet_with_diagnostics(tweet_url_or_id: str) -> ReadTweetResult:
+    """Read a single tweet by URL or ID with failure classification."""
+    stdout, stderr, code = run_bird(["read", tweet_url_or_id, "--json-full"], log_failures=False)
 
     if code != 0:
-        log.error("bird read failed for %s (exit %d): %s", tweet_url_or_id, code, stderr.strip())
-        return None
+        return ReadTweetResult(tweet=None, failure=_summarize_read_failure(stderr, code=code))
 
     tweets = _parse_bird_output(stdout)
     if not tweets:
-        log.warning("bird read returned output for %s but 0 parseable tweets", tweet_url_or_id)
-        return None
+        if stdout.strip():
+            reason = "bird returned output but no parseable tweet payload"
+        else:
+            reason = "bird returned no tweet payload"
+        return ReadTweetResult(tweet=None, failure=ReadTweetFailure(reason=reason, retryable=False))
 
-    return tweets[0]
+    return ReadTweetResult(tweet=tweets[0])
+
+
+def read_tweet(tweet_url_or_id: str) -> Tweet | None:
+    """Read a single tweet by URL or ID."""
+    result = read_tweet_with_diagnostics(tweet_url_or_id)
+    if result.failure:
+        log.warning("bird read skipped %s: %s", tweet_url_or_id, result.failure.reason)
+        return None
+    return result.tweet
 
 
 def get_tweet_url(tweet_id: str, author_handle: str = "i") -> str:

@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from ..text_utils import sanitize_nested_strings, sanitize_text
+
 _TRUNCATION_SUFFIXES = ("\u2026", "...")
 
 
@@ -187,7 +189,9 @@ class Tweet:
 
 def _extract_tweet_id(data: dict[str, Any]) -> str:
     """Extract tweet ID from known bird/X payload variants."""
-    return str(data.get("id") or data.get("id_str") or data.get("tweetId") or data.get("rest_id", ""))
+    return (
+        sanitize_text(str(data.get("id") or data.get("id_str") or data.get("tweetId") or data.get("rest_id", ""))) or ""
+    )
 
 
 def _extract_author(data: dict[str, Any]) -> tuple[str | None, str | None]:
@@ -221,7 +225,7 @@ def _extract_author(data: dict[str, Any]) -> tuple[str | None, str | None]:
         or data.get("authorName")
     )
 
-    return handle, name
+    return sanitize_text(handle), sanitize_text(name)
 
 
 def _extract_content(data: dict[str, Any]) -> str:
@@ -238,7 +242,7 @@ def _extract_content(data: dict[str, Any]) -> str:
         )
         note_text = note_results.get("text")
         if isinstance(note_text, str) and note_text:
-            note_candidates.append(note_text)
+            note_candidates.append(sanitize_text(note_text) or "")
 
     base_text = (
         data.get("text")
@@ -252,9 +256,9 @@ def _extract_content(data: dict[str, Any]) -> str:
     if note_candidates:
         longest_note = max(note_candidates, key=len)
         if len(longest_note) > len(base_text):
-            return html.unescape(longest_note)  # ty: ignore[invalid-argument-type]
+            return sanitize_text(html.unescape(longest_note)) or ""  # ty: ignore[invalid-argument-type]
 
-    return html.unescape(base_text)
+    return sanitize_text(html.unescape(base_text)) or ""
 
 
 def _extract_retweeted_tweet(data: dict[str, Any]) -> dict[str, Any] | None:
@@ -311,9 +315,9 @@ def _extract_article(data: dict[str, Any]) -> tuple[bool, str | None, str | None
     if not top_article and not raw_article:
         return False, None, None, None
 
-    title = top_article.get("title") or raw_article.get("title") or None
-    preview = top_article.get("previewText") or raw_article.get("preview_text") or None
-    text = raw_article.get("plain_text")
+    title = sanitize_text(top_article.get("title") or raw_article.get("title") or None)
+    preview = sanitize_text(top_article.get("previewText") or raw_article.get("preview_text") or None)
+    text = sanitize_text(raw_article.get("plain_text"))
     if not text:
         text = _extract_article_text_from_blocks(raw_article)
     if not text:
@@ -324,7 +328,7 @@ def _extract_article(data: dict[str, Any]) -> tuple[bool, str | None, str | None
         if content and (len(content) >= 400 or (preview and len(content) >= len(preview) + 80)):
             text = content
 
-    return True, title, preview, text
+    return True, title, preview, sanitize_text(text)
 
 
 def _extract_article_text_from_blocks(article_result: dict[str, Any]) -> str | None:
@@ -343,7 +347,7 @@ def _extract_article_text_from_blocks(article_result: dict[str, Any]) -> str | N
             continue
         stripped = text.strip()
         if stripped:
-            parts.append(stripped)
+            parts.append(sanitize_text(stripped) or "")
 
     if not parts:
         return None
@@ -418,14 +422,14 @@ def _extract_media_items(data: dict[str, Any]) -> list[dict[str, Any]]:
             continue
         seen.add(url)
         item_data: dict[str, Any] = {
-            "url": url,
-            "type": item.get("type") or item.get("media_type") or "photo",
+            "url": sanitize_text(url) or "",
+            "type": sanitize_text(item.get("type") or item.get("media_type") or "photo") or "photo",
         }
         if item.get("source"):
-            item_data["source"] = item["source"]
+            item_data["source"] = sanitize_text(item["source"])
         if item.get("media_id"):
-            item_data["media_id"] = item["media_id"]
-        items.append(item_data)
+            item_data["media_id"] = sanitize_text(str(item["media_id"])) or ""
+        items.append(sanitize_nested_strings(item_data))
 
     return items
 
@@ -456,9 +460,9 @@ def _extract_links(data: dict[str, Any], content: str) -> list[dict[str, str]]:
         seen.add(key)
         links.append(
             {
-                "url": raw or resolved,
-                "expanded_url": resolved,
-                "display_url": display,
+                "url": sanitize_text(raw or resolved) or "",
+                "expanded_url": sanitize_text(resolved) or "",
+                "display_url": sanitize_text(display) or "",
             }
         )
 
@@ -471,7 +475,13 @@ def _extract_links(data: dict[str, Any], content: str) -> list[dict[str, str]]:
             if key in seen:
                 continue
             seen.add(key)
-            links.append({"url": raw, "expanded_url": raw, "display_url": raw})
+            links.append(
+                {
+                    "url": sanitize_text(raw) or "",
+                    "expanded_url": sanitize_text(raw) or "",
+                    "display_url": sanitize_text(raw) or "",
+                }
+            )
 
     return links
 
@@ -499,5 +509,5 @@ def _extract_media_items_from_json_blob(blob: str) -> list[dict[str, Any]]:
         if url in seen:
             continue
         seen.add(url)
-        items.append({"url": url, "type": "photo", "source": "article_full_fallback"})
+        items.append(sanitize_nested_strings({"url": url, "type": "photo", "source": "article_full_fallback"}))
     return items
