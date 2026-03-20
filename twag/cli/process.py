@@ -16,7 +16,7 @@ from ._progress import RichProgressReporter, create_progress, make_callbacks
 @click.option("--limit", "-n", default=250, help="Max tweets to process")
 @click.option("--dry-run", is_flag=True, help="Show what would be processed")
 @click.option("--model", "-m", help="Override triage model")
-@click.option("--notify/--no-notify", default=True, help="Send Telegram alerts")
+@click.option("--notify/--no-notify", default=False, help="Send Telegram alerts")
 @click.option(
     "--reprocess-quotes/--no-reprocess-quotes",
     default=True,

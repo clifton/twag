@@ -182,10 +182,10 @@ twag fetch --no-tier1         # Home only
 twag fetch -u @handle         # Specific user
 twag fetch --source search -q "query"  # Search tweets
 
-twag process                  # Score unprocessed
+twag process                  # Score unprocessed (no alerts by default)
 twag process -n 100           # Limit batch
 twag process --dry-run        # Preview
-twag process --no-notify      # Skip alerts
+twag process --notify         # Send alerts
 ```
 
 ### Digest
