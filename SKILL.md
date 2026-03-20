@@ -240,6 +240,7 @@ twag db restore backup.sql --force  # Restore without confirmation
 twag web                      # Start (localhost:5173)
 twag web --host 127.0.0.1     # Localhost only
 twag web --port 8080          # Custom port
+twag web --dev                # Dev mode (Vite + hot reload)
 ```
 
 ### Config
@@ -274,6 +275,7 @@ twag config set key value     # Update setting
 | `ANTHROPIC_API_KEY` | No | Enrichment |
 | `TELEGRAM_BOT_TOKEN` | No | Alerts |
 | `TELEGRAM_CHAT_ID` | No | Alert destination |
+| `TWAG_DATA_DIR` | No | Override data directory |
 
 ## Telegram Digest Format
 

@@ -222,7 +222,7 @@ twag search "market" --min-score 7          # High-signal only
 twag analyze 1234567890123456789              # Analyze by ID
 twag analyze https://x.com/user/status/123    # Analyze by URL
 twag analyze 1234567890123456789 --reprocess  # Force re-analyze
-twag analyze 1234567890123456789 -m gemini-2.0-flash  # Override model
+twag analyze 1234567890123456789 -m gemini-3-flash-preview  # Override model
 ```
 
 ### Digest Commands
@@ -290,7 +290,7 @@ twag web --dev                  # Dev mode (Vite + hot reload)
 ```bash
 twag config show                # Show current config
 twag config path                # Show config file path
-twag config set llm.triage_model gemini-2.0-flash
+twag config set llm.triage_model gemini-3-flash-preview
 twag config set scoring.alert_threshold 8
 ```
 

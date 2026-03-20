@@ -182,18 +182,21 @@ Now tweets scoring 8+ will trigger Telegram alerts during `twag process`.
 
 ### systemd (Linux)
 
-Create `~/.config/systemd/user/twag.service`:
+Create `~/.config/systemd/user/twag-aggregator.service`:
 
 ```ini
 [Unit]
 Description=TWAG Twitter Aggregator
+After=network.target
 
 [Service]
 Type=oneshot
-ExecStart=/bin/bash -c 'source ~/.env && twag fetch && twag process'
+ExecStart=%h/.local/bin/twag fetch && %h/.local/bin/twag process
+WorkingDirectory=%h
+EnvironmentFile=%h/.env
 ```
 
-Create `~/.config/systemd/user/twag.timer`:
+Create `~/.config/systemd/user/twag-aggregator.timer`:
 
 ```ini
 [Unit]
@@ -202,6 +205,7 @@ Description=Run TWAG every 15 minutes
 [Timer]
 OnBootSec=5min
 OnUnitActiveSec=15min
+Persistent=true
 
 [Install]
 WantedBy=timers.target
@@ -211,7 +215,7 @@ Enable:
 
 ```bash
 systemctl --user daemon-reload
-systemctl --user enable --now twag.timer
+systemctl --user enable --now twag-aggregator.timer
 ```
 
 ### launchd (macOS)
