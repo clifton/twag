@@ -8,6 +8,8 @@ import rich_click as click
 
 from ..config import get_database_path
 from ..db import dump_sql, get_connection, init_db, rebuild_fts, restore_sql
+from ..db.connection import get_pending_migrations, get_schema_drift, get_schema_version
+from ..db.schema import SCHEMA_VERSION
 from ._console import console
 
 
@@ -145,3 +147,37 @@ def db_restore(input_file: str, force: bool):
     except Exception as e:
         console.print(f"[red]Error restoring database: {e}[/red]")
         sys.exit(1)
+
+
+@db.command("schema-status")
+def db_schema_status():
+    """Report schema version, pending migrations, and column drift."""
+    db_file = get_database_path()
+
+    if not db_file.exists():
+        console.print(f"[red]Database not found: {db_file}[/red]")
+        sys.exit(1)
+
+    with get_connection(readonly=True) as conn:
+        current = get_schema_version(conn)
+        pending = get_pending_migrations(conn)
+        drift = get_schema_drift(conn)
+
+    console.print(f"Schema version: {current} (latest: {SCHEMA_VERSION})")
+
+    if pending:
+        console.print(f"\n[yellow]{len(pending)} pending migration(s):[/yellow]")
+        for version, desc in pending:
+            console.print(f"  v{version}: {desc}")
+    else:
+        console.print("[green]All migrations applied.[/green]")
+
+    if drift:
+        console.print("\n[yellow]Column drift detected:[/yellow]")
+        for table, info in drift.items():
+            if info["missing"]:
+                console.print(f"  {table} missing: {sorted(info['missing'])}")
+            if info["extra"]:
+                console.print(f"  {table} extra:   {sorted(info['extra'])}")
+    else:
+        console.print("[green]No column drift.[/green]")

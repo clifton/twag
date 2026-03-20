@@ -1,5 +1,74 @@
 """Database schema definitions for twag."""
 
+# Current schema version — bump when adding a new migration
+SCHEMA_VERSION = 2
+
+# Expected column sets for drift detection
+TWEETS_COLUMNS: set[str] = {
+    "id",
+    "author_handle",
+    "author_name",
+    "content",
+    "created_at",
+    "first_seen_at",
+    "source",
+    "processed_at",
+    "relevance_score",
+    "category",
+    "summary",
+    "content_summary",
+    "signal_tier",
+    "tickers",
+    "analysis_json",
+    "has_quote",
+    "quote_tweet_id",
+    "in_reply_to_tweet_id",
+    "conversation_id",
+    "has_media",
+    "media_analysis",
+    "media_items",
+    "has_link",
+    "links_json",
+    "link_summary",
+    "is_x_article",
+    "article_title",
+    "article_preview",
+    "article_text",
+    "article_summary_short",
+    "article_primary_points_json",
+    "article_action_items_json",
+    "article_top_visual_json",
+    "article_processed_at",
+    "links_expanded_at",
+    "quote_reprocessed_at",
+    "is_retweet",
+    "retweeted_by_handle",
+    "retweeted_by_name",
+    "original_tweet_id",
+    "original_author_handle",
+    "original_author_name",
+    "original_content",
+    "included_in_digest",
+    "bookmarked",
+    "bookmarked_at",
+}
+
+ACCOUNTS_COLUMNS: set[str] = {
+    "handle",
+    "display_name",
+    "tier",
+    "weight",
+    "category",
+    "tweets_seen",
+    "tweets_kept",
+    "avg_relevance_score",
+    "last_high_signal_at",
+    "last_fetched_at",
+    "added_at",
+    "auto_promoted",
+    "muted",
+}
+
 SCHEMA = """
 -- Tweets: Core storage with deduplication
 CREATE TABLE IF NOT EXISTS tweets (
