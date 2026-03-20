@@ -17,6 +17,7 @@ from twag.fetcher import (
     read_tweet,
     run_bird,
 )
+from twag.fetcher.bird_cli import read_tweet_with_diagnostics
 
 # ============================================================================
 # Fixtures
@@ -379,6 +380,60 @@ class TestTweetFromBirdJson:
         tweet = Tweet.from_bird_json(data)
 
         assert tweet.content == "Spotify is down -33% and A >$100B move with P&L implications"
+
+    def test_parse_replaces_lone_surrogates_in_content_and_links(self):
+        """Malformed surrogate code units from bird payloads should be normalized."""
+        data = {
+            "id": "303",
+            "author": {"username": "bad\ud83dhandle", "name": "Bad \udc49 Name"},
+            "text": "Broken \ud83d[\udc49 markdown",
+            "entities": {
+                "urls": [
+                    {
+                        "url": "https://t.co/abc",
+                        "expanded_url": "https://example.com/\ud83d",
+                        "display_url": "example.com/\udc49",
+                    }
+                ]
+            },
+        }
+
+        tweet = Tweet.from_bird_json(data)
+
+        assert tweet.author_handle == "bad\ufffdhandle"
+        assert tweet.author_name == "Bad \ufffd Name"
+        assert tweet.content == "Broken \ufffd[\ufffd markdown"
+        assert tweet.links == [
+            {
+                "url": "https://t.co/abc",
+                "expanded_url": "https://example.com/\ufffd",
+                "display_url": "example.com/\ufffd",
+            }
+        ]
+
+    def test_parse_x_article_replaces_lone_surrogates(self):
+        """Article fields should normalize malformed Unicode from bird JSON."""
+        data = {
+            "id": "304",
+            "author": {"username": "writer"},
+            "text": "Fallback body \ud83d[\udc49 more text",
+            "article": {"title": "Guide \ud83d", "previewText": "Preview \udc49"},
+            "_raw": {
+                "article": {
+                    "article_results": {
+                        "result": {
+                            "plain_text": "Article body \ud83d[\udc49 details",
+                        }
+                    }
+                }
+            },
+        }
+
+        tweet = Tweet.from_bird_json(data)
+
+        assert tweet.article_title == "Guide \ufffd"
+        assert tweet.article_preview == "Preview \ufffd"
+        assert tweet.article_text == "Article body \ufffd[\ufffd details"
 
     def test_parse_retweet_from_nested_raw_retweeted_status_result(self):
         """Parse retweet metadata from Bird --json-full nested _raw legacy payload."""
@@ -807,6 +862,30 @@ class TestReadTweet:
         tweet = read_tweet("123")
 
         assert tweet is None
+
+    def test_read_tweet_with_diagnostics_classifies_not_found_as_non_retryable(self, mock_run_bird):
+        """Not-found dependency failures should be classified as permanent."""
+        mock_run_bird.return_value = ("", "Tweet not found in response", 1)
+
+        result = read_tweet_with_diagnostics("123")
+
+        assert result.tweet is None
+        assert result.failure is not None
+        assert result.failure.retryable is False
+        assert result.failure.auth_related is False
+        assert "tweet unavailable or missing" in result.failure.reason
+
+    def test_read_tweet_with_diagnostics_keeps_auth_failures_retryable(self, mock_run_bird):
+        """Auth-related read failures should stay retryable."""
+        mock_run_bird.return_value = ("", "403 Forbidden: auth token expired", 1)
+
+        result = read_tweet_with_diagnostics("123")
+
+        assert result.tweet is None
+        assert result.failure is not None
+        assert result.failure.retryable is True
+        assert result.failure.auth_related is True
+        assert "authentication/authorization failure" in result.failure.reason
 
 
 # ============================================================================
