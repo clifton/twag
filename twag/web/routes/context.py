@@ -18,6 +18,13 @@ from ...db import (
     upsert_context_command,
 )
 from ...media import build_media_context, parse_media_items
+from ...models.api import (
+    ContextCommandCreateResponse,
+    ContextCommandDeleteResponse,
+    ContextCommandItem,
+    ContextCommandListResponse,
+    ContextCommandToggleResponse,
+)
 from ...processor import ensure_media_analysis
 
 router = APIRouter(tags=["context"])
@@ -38,7 +45,7 @@ class TestCommandRequest(BaseModel):
     tweet_id: str
 
 
-@router.get("/context-commands")
+@router.get("/context-commands", response_model=ContextCommandListResponse)
 async def list_context_commands(
     request: Request,
     enabled_only: bool = False,
@@ -64,7 +71,7 @@ async def list_context_commands(
     }
 
 
-@router.post("/context-commands")
+@router.post("/context-commands", response_model=ContextCommandCreateResponse)
 async def create_context_command(
     request: Request,
     command: ContextCommandCreate,
@@ -89,7 +96,7 @@ async def create_context_command(
     }
 
 
-@router.get("/context-commands/{name}")
+@router.get("/context-commands/{name}", response_model=ContextCommandItem)
 async def get_context_command_by_name(
     request: Request,
     name: str,
@@ -113,7 +120,7 @@ async def get_context_command_by_name(
     }
 
 
-@router.put("/context-commands/{name}")
+@router.put("/context-commands/{name}", response_model=ContextCommandCreateResponse)
 async def update_context_command(
     request: Request,
     name: str,
@@ -139,7 +146,7 @@ async def update_context_command(
     }
 
 
-@router.delete("/context-commands/{name}")
+@router.delete("/context-commands/{name}", response_model=ContextCommandDeleteResponse)
 async def remove_context_command(
     request: Request,
     name: str,
@@ -156,7 +163,7 @@ async def remove_context_command(
     return {"error": "Context command not found"}
 
 
-@router.post("/context-commands/{name}/toggle")
+@router.post("/context-commands/{name}/toggle", response_model=ContextCommandToggleResponse)
 async def toggle_command(
     request: Request,
     name: str,

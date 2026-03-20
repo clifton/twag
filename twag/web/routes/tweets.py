@@ -9,6 +9,12 @@ from fastapi import APIRouter, Query, Request
 
 from ...db import get_connection, get_feed_tweets, get_tweet_by_id, get_tweets_by_ids, parse_time_range
 from ...media import parse_media_items
+from ...models.api import (
+    CategoriesResponse,
+    SingleTweetResponse,
+    TickersResponse,
+    TweetListResponse,
+)
 from ..tweet_utils import (
     decode_html_entities,
     normalize_links_for_display,
@@ -126,7 +132,7 @@ def _build_quote_embed_from_cache(
     return embed
 
 
-@router.get("/tweets")
+@router.get("/tweets", response_model=TweetListResponse)
 async def list_tweets(
     request: Request,
     category: str | None = None,
@@ -367,7 +373,7 @@ async def list_tweets(
     }
 
 
-@router.get("/tweets/{tweet_id}")
+@router.get("/tweets/{tweet_id}", response_model=SingleTweetResponse)
 async def get_tweet(request: Request, tweet_id: str) -> dict[str, Any]:
     """Get a single tweet by ID."""
     db_path = request.app.state.db_path
@@ -462,7 +468,7 @@ async def get_tweet(request: Request, tweet_id: str) -> dict[str, Any]:
     }
 
 
-@router.get("/categories")
+@router.get("/categories", response_model=CategoriesResponse)
 async def list_categories(request: Request) -> dict[str, Any]:
     """Get list of all categories with tweet counts."""
     db_path = request.app.state.db_path
@@ -501,7 +507,7 @@ async def list_categories(request: Request) -> dict[str, Any]:
     return {"categories": [{"name": name, "count": count} for name, count in sorted_cats]}
 
 
-@router.get("/tickers")
+@router.get("/tickers", response_model=TickersResponse)
 async def list_tickers(request: Request, limit: int = 50) -> dict[str, Any]:
     """Get list of mentioned tickers with counts."""
     import json
