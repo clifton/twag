@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Pre-commit hook: run ruff format check and lint on staged Python files
+
+set -euo pipefail
+
+# Get staged Python files (only added/modified, not deleted)
+STAGED_PY_FILES=$(git diff --cached --name-only --diff-filter=ACM -- '*.py' || true)
+
+if [ -z "$STAGED_PY_FILES" ]; then
+    exit 0
+fi
+
+FAILED=0
+
+echo "Running ruff format check on staged Python files..."
+if ! uv run ruff format --check $STAGED_PY_FILES; then
+    echo ""
+    echo "Fix with: uv run ruff format $STAGED_PY_FILES"
+    FAILED=1
+fi
+
+echo "Running ruff lint on staged Python files..."
+if ! uv run ruff check $STAGED_PY_FILES; then
+    echo ""
+    echo "Fix with: uv run ruff check --fix $STAGED_PY_FILES"
+    FAILED=1
+fi
+
+if [ "$FAILED" -ne 0 ]; then
+    echo ""
+    echo "Pre-commit checks failed. Fix the issues above before committing."
+    exit 1
+fi

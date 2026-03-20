@@ -92,6 +92,16 @@ npm run build    # Production build
 npm run dev      # Dev server (port 8080)
 ```
 
+### Git Hooks
+
+Install the commit-msg and pre-commit hooks:
+
+```bash
+bash scripts/install-hooks.sh
+```
+
+This enforces conventional commit format and runs ruff on staged Python files before each commit.
+
 ## Validation Before Commit
 
 1. Format: `uv run ruff format <files>`
