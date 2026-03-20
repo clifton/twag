@@ -1,6 +1,7 @@
 """CLI tests for single-status process behavior."""
 
 from contextlib import contextmanager
+from types import SimpleNamespace
 
 from click.testing import CliRunner
 
@@ -110,3 +111,109 @@ def test_process_status_id_not_found(monkeypatch):
     assert result.exit_code == 1
     assert "Status not found in database: 999" in result.output
     assert "twag fetch 999" in result.output
+
+
+def test_process_skips_notifications_by_default(monkeypatch):
+    """`twag process` should not notify unless `--notify` is passed."""
+    import twag.cli.process as cli_mod
+    import twag.notifier as notifier_mod
+    import twag.processor as processor_mod
+
+    notified: list[str] = []
+
+    class _FakeCursor:
+        def fetchone(self):
+            return {"content": "Google capex", "author_handle": "undrvalue"}
+
+    class _FakeConn:
+        def execute(self, *_args, **_kwargs):
+            return _FakeCursor()
+
+    @contextmanager
+    def _fake_conn_with_execute(readonly=False):
+        yield _FakeConn()
+
+    monkeypatch.setattr(cli_mod, "init_db", lambda: None)
+    monkeypatch.setattr(cli_mod, "get_connection", _fake_conn_with_execute)
+    monkeypatch.setattr(
+        cli_mod,
+        "get_unprocessed_tweets",
+        lambda _conn, limit=250: [
+            {"id": "2019488673935552978", "author_handle": "undrvalue", "content": "Google capex", "processed_at": None}
+        ],
+    )
+    monkeypatch.setattr(
+        processor_mod,
+        "process_unprocessed",
+        lambda **kwargs: [
+            SimpleNamespace(
+                tweet_id="2019488673935552978",
+                score=8.5,
+                categories=["equities"],
+                summary="Google capex is accelerating.",
+                tickers=["GOOGL"],
+            )
+        ],
+    )
+    monkeypatch.setattr(processor_mod, "reprocess_today_quoted", lambda **kwargs: [])
+    monkeypatch.setattr(notifier_mod, "notify_high_signal_tweet", lambda **kwargs: notified.append(kwargs["tweet_id"]))
+
+    runner = CliRunner()
+
+    result = runner.invoke(cli, ["process", "--no-reprocess-quotes"])
+
+    assert result.exit_code == 0
+    assert notified == []
+
+
+def test_process_notifies_when_explicitly_enabled(monkeypatch):
+    """`twag process --notify` should send notifications for high-signal tweets."""
+    import twag.cli.process as cli_mod
+    import twag.notifier as notifier_mod
+    import twag.processor as processor_mod
+
+    notified: list[str] = []
+
+    class _FakeCursor:
+        def fetchone(self):
+            return {"content": "Google capex", "author_handle": "undrvalue"}
+
+    class _FakeConn:
+        def execute(self, *_args, **_kwargs):
+            return _FakeCursor()
+
+    @contextmanager
+    def _fake_conn_with_execute(readonly=False):
+        yield _FakeConn()
+
+    monkeypatch.setattr(cli_mod, "init_db", lambda: None)
+    monkeypatch.setattr(cli_mod, "get_connection", _fake_conn_with_execute)
+    monkeypatch.setattr(
+        cli_mod,
+        "get_unprocessed_tweets",
+        lambda _conn, limit=250: [
+            {"id": "2019488673935552978", "author_handle": "undrvalue", "content": "Google capex", "processed_at": None}
+        ],
+    )
+    monkeypatch.setattr(
+        processor_mod,
+        "process_unprocessed",
+        lambda **kwargs: [
+            SimpleNamespace(
+                tweet_id="2019488673935552978",
+                score=8.5,
+                categories=["equities"],
+                summary="Google capex is accelerating.",
+                tickers=["GOOGL"],
+            )
+        ],
+    )
+    monkeypatch.setattr(processor_mod, "reprocess_today_quoted", lambda **kwargs: [])
+    monkeypatch.setattr(notifier_mod, "notify_high_signal_tweet", lambda **kwargs: notified.append(kwargs["tweet_id"]))
+
+    runner = CliRunner()
+
+    result = runner.invoke(cli, ["process", "--notify", "--no-reprocess-quotes"])
+
+    assert result.exit_code == 0
+    assert notified == ["2019488673935552978"]

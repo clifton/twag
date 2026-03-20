@@ -176,10 +176,10 @@ twag fetch --no-tier1 --no-bookmarks
 ### Process Commands
 
 ```bash
-twag process                    # Process unscored tweets
+twag process                    # Process unscored tweets (no alerts by default)
 twag process --limit 100        # Limit batch size
 twag process --dry-run          # Preview only
-twag process --no-notify        # Skip Telegram alerts
+twag process --notify           # Send Telegram alerts
 
 # Process specific tweet
 twag process 1234567890123456789
@@ -378,7 +378,7 @@ export TELEGRAM_BOT_TOKEN="your_bot_token"
 export TELEGRAM_CHAT_ID="your_chat_id"
 ```
 
-Tweets scoring 8+ will trigger alerts automatically during `twag process`.
+Tweets scoring 8+ will trigger alerts when you run `twag process --notify`.
 
 ## OpenClaw Integration
 

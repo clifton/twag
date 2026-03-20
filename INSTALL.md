@@ -176,7 +176,7 @@ export TELEGRAM_BOT_TOKEN="your_bot_token"
 export TELEGRAM_CHAT_ID="your_chat_id"
 ```
 
-Now tweets scoring 8+ will trigger Telegram alerts during `twag process`.
+Tweets scoring 8+ will trigger Telegram alerts when you run `twag process --notify`.
 
 ## Optional: Automation
 
