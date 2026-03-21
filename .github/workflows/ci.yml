@@ -55,6 +55,27 @@ jobs:
         if: matrix.python-version == '3.12'
         run: uv run python scripts/benchmark_parallelism.py
 
+  dependency-risk:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --group dev
+      - name: Run dependency risk scanner
+        run: uv run python scripts/dependency_risk.py tmp/dependency-risk.json || true
+      - name: Annotate summary
+        if: always()
+        run: |
+          if [ -f tmp/dependency-risk.json ]; then
+            flagged=$(python3 -c "import json; print(json.load(open('tmp/dependency-risk.json'))['flagged_packages'])")
+            total=$(python3 -c "import json; print(json.load(open('tmp/dependency-risk.json'))['total_packages'])")
+            echo "::notice::Dependency Risk: ${flagged}/${total} packages flagged. See job output for details."
+          fi
+
   frontend:
     runs-on: ubuntu-latest
     defaults:
