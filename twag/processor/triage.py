@@ -22,6 +22,7 @@ from ..db import (
     update_tweet_processing,
 )
 from ..media import build_media_context, build_media_summary, parse_media_items
+from ..metrics import TRIAGE_BATCH_DURATION, TRIAGE_ERRORS, TRIAGE_TIER_COUNTS
 from ..scorer import (
     TriageResult,
     analyze_media,
@@ -558,6 +559,8 @@ def _triage_rows(
             else:
                 tier = "noise"
 
+            TRIAGE_TIER_COUNTS.labels(tier=tier).inc()
+
             update_tweet_processing(
                 conn,
                 tweet_id=result.tweet_id,
@@ -681,40 +684,42 @@ def _triage_rows(
                 _submit_article(result.tweet_id, tweet_row)
 
     try:
-        if triage_pool:
-            batch_futures: dict[Any, tuple[int, int]] = {}
-            for i in range(0, total, batch_size):
-                batch_index = (i // batch_size) + 1
-                if status_cb:
-                    status_cb(f"Queue batch {batch_index}/{total_batches}")
-                batch = tweets_for_triage[i : i + batch_size]
-                future = triage_pool.submit(triage_tweets_batch, batch, triage_model, None)
-                batch_futures[future] = (batch_index, len(batch))
-
-            for future in as_completed(batch_futures):
-                batch_index, batch_size_count = batch_futures[future]
-                if status_cb:
-                    status_cb(f"Scored batch {batch_index}/{total_batches}")
-                try:
-                    results = future.result()
-                except Exception:
+        with TRIAGE_BATCH_DURATION.time():
+            if triage_pool:
+                batch_futures: dict[Any, tuple[int, int]] = {}
+                for i in range(0, total, batch_size):
+                    batch_index = (i // batch_size) + 1
                     if status_cb:
-                        status_cb(f"Batch {batch_index} failed")
-                    if progress_cb:
-                        progress_cb(batch_size_count)
-                    results = []
-                all_results.extend(results)
-                if results:
+                        status_cb(f"Queue batch {batch_index}/{total_batches}")
+                    batch = tweets_for_triage[i : i + batch_size]
+                    future = triage_pool.submit(triage_tweets_batch, batch, triage_model, None)
+                    batch_futures[future] = (batch_index, len(batch))
+
+                for future in as_completed(batch_futures):
+                    batch_index, batch_size_count = batch_futures[future]
+                    if status_cb:
+                        status_cb(f"Scored batch {batch_index}/{total_batches}")
+                    try:
+                        results = future.result()
+                    except Exception:
+                        TRIAGE_ERRORS.inc()
+                        if status_cb:
+                            status_cb(f"Batch {batch_index} failed")
+                        if progress_cb:
+                            progress_cb(batch_size_count)
+                        results = []
+                    all_results.extend(results)
+                    if results:
+                        _handle_results(results)
+            else:
+                for i in range(0, total, batch_size):
+                    batch_index = (i // batch_size) + 1
+                    if status_cb:
+                        status_cb(f"Scoring batch {batch_index}/{total_batches}")
+                    batch = tweets_for_triage[i : i + batch_size]
+                    results = triage_tweets_batch(batch, model=triage_model)
+                    all_results.extend(results)
                     _handle_results(results)
-        else:
-            for i in range(0, total, batch_size):
-                batch_index = (i // batch_size) + 1
-                if status_cb:
-                    status_cb(f"Scoring batch {batch_index}/{total_batches}")
-                batch = tweets_for_triage[i : i + batch_size]
-                results = triage_tweets_batch(batch, model=triage_model)
-                all_results.extend(results)
-                _handle_results(results)
 
         # Apply worker results here so DB writes remain serialized on this thread.
         for future in as_completed(list(all_futures.keys())):

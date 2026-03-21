@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from ..metrics import TWEET_INSERTS
 from ..text_utils import sanitize_nested_strings, sanitize_text
 from .connection import execute_with_retry
 
@@ -100,8 +101,10 @@ def insert_tweet(
                 original_content,
             ),
         )
+        TWEET_INSERTS.labels(outcome="new").inc()
         return True
     except sqlite3.IntegrityError:
+        TWEET_INSERTS.labels(outcome="duplicate").inc()
         _merge_duplicate_tweet_payload(
             conn,
             tweet_id=tweet_id,

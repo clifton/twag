@@ -2,16 +2,19 @@
 
 import html
 import os
+import time
 from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from prometheus_client import generate_latest
 
 from ..config import get_database_path
 from ..db import init_db
+from ..metrics import HTTP_REQUEST_DURATION, HTTP_REQUESTS, REGISTRY
 from .routes import context, prompts, reactions, tweets
 
 # Paths
@@ -44,6 +47,31 @@ def create_app() -> FastAPI:
     templates = Jinja2Templates(directory=TEMPLATES_DIR)
     templates.env.filters["unescape"] = lambda s: html.unescape(s) if s else s
     app.state.templates = templates
+
+    # Prometheus metrics middleware
+    @app.middleware("http")
+    async def metrics_middleware(request: Request, call_next):
+        # Skip metrics/health endpoints to avoid self-instrumentation noise
+        if request.url.path in ("/metrics", "/health"):
+            return await call_next(request)
+        start = time.monotonic()
+        response = await call_next(request)
+        duration = time.monotonic() - start
+        route = request.url.path
+        method = request.method
+        status = str(response.status_code)
+        HTTP_REQUEST_DURATION.labels(method=method, route=route, status=status).observe(duration)
+        HTTP_REQUESTS.labels(method=method, route=route, status=status).inc()
+        return response
+
+    # Metrics and health endpoints
+    @app.get("/metrics", include_in_schema=False)
+    async def prometheus_metrics():
+        return Response(content=generate_latest(REGISTRY), media_type="text/plain; version=0.0.4; charset=utf-8")
+
+    @app.get("/health", include_in_schema=False)
+    async def health_check():
+        return {"status": "ok"}
 
     # Include API routers
     app.include_router(tweets.router, prefix="/api")
