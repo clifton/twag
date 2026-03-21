@@ -126,6 +126,7 @@ CREATE INDEX IF NOT EXISTS idx_tweets_author ON tweets(author_handle);
 CREATE INDEX IF NOT EXISTS idx_tweets_signal_tier ON tweets(signal_tier);
 CREATE INDEX IF NOT EXISTS idx_tweets_bookmarked ON tweets(bookmarked) WHERE bookmarked = 1;
 CREATE INDEX IF NOT EXISTS idx_tweets_quote ON tweets(quote_tweet_id) WHERE quote_tweet_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_tweets_reply ON tweets(in_reply_to_tweet_id) WHERE in_reply_to_tweet_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_fetch_log_endpoint ON fetch_log(endpoint, executed_at DESC);
 
 -- User reactions for feedback loop
@@ -206,3 +207,106 @@ CREATE TRIGGER IF NOT EXISTS tweets_au AFTER UPDATE ON tweets BEGIN
     VALUES (NEW.rowid, NEW.content, NEW.summary, NEW.author_handle, NEW.tickers);
 END;
 """
+
+# --------------------------------------------------------------------------- #
+# Versioned migrations
+# --------------------------------------------------------------------------- #
+# Each entry is (version_number, description, list_of_SQL_statements).
+# Migrations are applied in order; user_version is set after each succeeds.
+# When adding a new migration, bump LATEST_VERSION to match.
+
+MIGRATIONS: list[tuple[int, str, list[str]]] = [
+    (
+        1,
+        "Add bookmark columns to tweets",
+        [
+            "ALTER TABLE tweets ADD COLUMN bookmarked INTEGER DEFAULT 0",
+            "ALTER TABLE tweets ADD COLUMN bookmarked_at TIMESTAMP",
+        ],
+    ),
+    (
+        2,
+        "Add content_summary column to tweets",
+        [
+            "ALTER TABLE tweets ADD COLUMN content_summary TEXT",
+        ],
+    ),
+    (
+        3,
+        "Add media_items column to tweets",
+        [
+            "ALTER TABLE tweets ADD COLUMN media_items TEXT",
+        ],
+    ),
+    (
+        4,
+        "Add analysis_json column to tweets",
+        [
+            "ALTER TABLE tweets ADD COLUMN analysis_json TEXT",
+        ],
+    ),
+    (
+        5,
+        "Add retweet columns to tweets",
+        [
+            "ALTER TABLE tweets ADD COLUMN is_retweet INTEGER DEFAULT 0",
+            "ALTER TABLE tweets ADD COLUMN retweeted_by_handle TEXT",
+            "ALTER TABLE tweets ADD COLUMN retweeted_by_name TEXT",
+            "ALTER TABLE tweets ADD COLUMN original_tweet_id TEXT",
+            "ALTER TABLE tweets ADD COLUMN original_author_handle TEXT",
+            "ALTER TABLE tweets ADD COLUMN original_author_name TEXT",
+            "ALTER TABLE tweets ADD COLUMN original_content TEXT",
+        ],
+    ),
+    (
+        6,
+        "Add X Article columns to tweets",
+        [
+            "ALTER TABLE tweets ADD COLUMN is_x_article INTEGER DEFAULT 0",
+            "ALTER TABLE tweets ADD COLUMN article_title TEXT",
+            "ALTER TABLE tweets ADD COLUMN article_preview TEXT",
+            "ALTER TABLE tweets ADD COLUMN article_text TEXT",
+            "ALTER TABLE tweets ADD COLUMN article_summary_short TEXT",
+            "ALTER TABLE tweets ADD COLUMN article_primary_points_json TEXT",
+            "ALTER TABLE tweets ADD COLUMN article_action_items_json TEXT",
+            "ALTER TABLE tweets ADD COLUMN article_top_visual_json TEXT",
+            "ALTER TABLE tweets ADD COLUMN article_processed_at TIMESTAMP",
+        ],
+    ),
+    (
+        7,
+        "Add link and reply tracking columns to tweets",
+        [
+            "ALTER TABLE tweets ADD COLUMN links_json TEXT",
+            "ALTER TABLE tweets ADD COLUMN in_reply_to_tweet_id TEXT",
+            "ALTER TABLE tweets ADD COLUMN conversation_id TEXT",
+            "ALTER TABLE tweets ADD COLUMN links_expanded_at TIMESTAMP",
+            "ALTER TABLE tweets ADD COLUMN quote_reprocessed_at TIMESTAMP",
+        ],
+    ),
+    (
+        8,
+        "Add last_fetched_at column to accounts",
+        [
+            "ALTER TABLE accounts ADD COLUMN last_fetched_at TIMESTAMP",
+        ],
+    ),
+    (
+        9,
+        "Ensure performance indexes exist",
+        [
+            "CREATE INDEX IF NOT EXISTS idx_tweets_processed_score "
+            "ON tweets(processed_at, relevance_score DESC, created_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_tweets_processed_created ON tweets(processed_at, created_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_tweets_author ON tweets(author_handle)",
+            "CREATE INDEX IF NOT EXISTS idx_tweets_signal_tier ON tweets(signal_tier)",
+            "CREATE INDEX IF NOT EXISTS idx_tweets_bookmarked ON tweets(bookmarked) WHERE bookmarked = 1",
+            "CREATE INDEX IF NOT EXISTS idx_tweets_quote ON tweets(quote_tweet_id) WHERE quote_tweet_id IS NOT NULL",
+            "CREATE INDEX IF NOT EXISTS idx_tweets_reply "
+            "ON tweets(in_reply_to_tweet_id) WHERE in_reply_to_tweet_id IS NOT NULL",
+            "CREATE INDEX IF NOT EXISTS idx_fetch_log_endpoint ON fetch_log(endpoint, executed_at DESC)",
+        ],
+    ),
+]
+
+LATEST_VERSION: int = MIGRATIONS[-1][0]

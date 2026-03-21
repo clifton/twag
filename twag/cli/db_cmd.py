@@ -7,7 +7,17 @@ from pathlib import Path
 import rich_click as click
 
 from ..config import get_database_path
-from ..db import dump_sql, get_connection, init_db, rebuild_fts, restore_sql
+from ..db import (
+    LATEST_VERSION,
+    MIGRATIONS,
+    check_schema_drift,
+    dump_sql,
+    get_connection,
+    get_schema_version,
+    init_db,
+    rebuild_fts,
+    restore_sql,
+)
 from ._console import console
 
 
@@ -145,3 +155,57 @@ def db_restore(input_file: str, force: bool):
     except Exception as e:
         console.print(f"[red]Error restoring database: {e}[/red]")
         sys.exit(1)
+
+
+@db.command("schema-version")
+def db_schema_version():
+    """Show the current schema version and available migrations."""
+    db_file = get_database_path()
+    if not db_file.exists():
+        console.print("[red]Database not found. Run 'twag db init' first.[/red]")
+        sys.exit(1)
+
+    with get_connection(readonly=True) as conn:
+        version = get_schema_version(conn)
+
+    console.print(f"Schema version: {version} (latest: {LATEST_VERSION})")
+    if version < LATEST_VERSION:
+        pending = [m for m in MIGRATIONS if m[0] > version]
+        console.print(f"[yellow]{len(pending)} pending migration(s):[/yellow]")
+        for v, desc, _stmts in pending:
+            console.print(f"  v{v}: {desc}")
+    else:
+        console.print("[green]Up to date.[/green]")
+
+
+@db.command("check")
+def db_check():
+    """Check for schema drift between the live database and expected schema."""
+    db_file = get_database_path()
+    if not db_file.exists():
+        console.print("[red]Database not found. Run 'twag db init' first.[/red]")
+        sys.exit(1)
+
+    with get_connection(readonly=True) as conn:
+        version = get_schema_version(conn)
+        drift = check_schema_drift(conn)
+
+    console.print(f"Schema version: {version} (latest: {LATEST_VERSION})")
+
+    has_drift = any(drift.values())
+    if not has_drift:
+        console.print("[green]No schema drift detected.[/green]")
+        return
+
+    if drift["missing_columns"]:
+        console.print(f"[red]Missing columns ({len(drift['missing_columns'])}):[/red]")
+        for col in drift["missing_columns"]:
+            console.print(f"  - {col}")
+
+    if drift["missing_indexes"]:
+        console.print(f"[red]Missing indexes ({len(drift['missing_indexes'])}):[/red]")
+        for idx in drift["missing_indexes"]:
+            console.print(f"  - {idx}")
+
+    console.print("\n[yellow]Run 'twag db init' to apply pending migrations.[/yellow]")
+    sys.exit(1)
