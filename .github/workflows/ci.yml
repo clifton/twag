@@ -13,23 +13,33 @@ concurrency:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'push' ||
+      !contains(join(github.event.pull_request.*.filename, ','), 'twag/web/frontend/') ||
+      contains(join(github.event.pull_request.*.filename, ','), 'twag/') ||
+      contains(join(github.event.pull_request.*.filename, ','), 'tests/') ||
+      contains(join(github.event.pull_request.*.filename, ','), 'scripts/')
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-      - run: uv sync --group dev
-      - run: uv run ruff check twag/ tests/ scripts/
-      - run: uv run ruff format --check twag/ tests/ scripts/
+      - run: uvx ruff check twag/ tests/ scripts/
+      - run: uvx ruff format --check twag/ tests/ scripts/
 
   typecheck:
     runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'push' ||
+      !contains(join(github.event.pull_request.*.filename, ','), 'twag/web/frontend/') ||
+      contains(join(github.event.pull_request.*.filename, ','), 'twag/') ||
+      contains(join(github.event.pull_request.*.filename, ','), 'tests/') ||
+      contains(join(github.event.pull_request.*.filename, ','), 'scripts/')
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-      - run: uv sync --group dev
       - run: uvx ty check --output-format github
 
   test:
@@ -37,7 +47,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version:
+          ${{ github.event_name == 'push' && fromJSON('["3.10", "3.11", "3.12"]') || fromJSON('["3.12"]') }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -57,6 +68,9 @@ jobs:
 
   frontend:
     runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'push' ||
+      contains(join(github.event.pull_request.*.filename, ','), 'twag/web/frontend/')
     defaults:
       run:
         working-directory: twag/web/frontend
