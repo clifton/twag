@@ -2,6 +2,7 @@
 
 import json
 import os
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -166,6 +167,11 @@ def get_memory_dir() -> Path:
 
     DEPRECATED: Use get_data_dir() or get_digests_dir() instead.
     """
+    warnings.warn(
+        "get_memory_dir() is deprecated, use get_data_dir() or get_digests_dir() instead",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     return get_data_dir()
 
 
@@ -175,4 +181,9 @@ def get_workspace_path() -> Path:
 
     DEPRECATED: Use get_data_dir() instead.
     """
+    warnings.warn(
+        "get_workspace_path() is deprecated, use get_data_dir() instead",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     return get_data_dir()
