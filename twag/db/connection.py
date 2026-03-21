@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from ..config import get_database_path
+from ..metrics import DB_LOCK_RETRIES
 from .schema import FTS_SCHEMA, SCHEMA
 
 log = logging.getLogger(__name__)
@@ -50,6 +51,7 @@ def _with_lock_retry(operation: str, fn):
         except sqlite3.OperationalError as exc:
             if not _is_database_locked_error(exc) or attempt + 1 >= _LOCK_RETRY_ATTEMPTS:
                 raise
+            DB_LOCK_RETRIES.inc()
             log.warning(
                 "%s hit a locked database (attempt %d/%d); retrying in %.1fs",
                 operation,

@@ -7,6 +7,7 @@ import httpx
 
 from .config import load_config
 from .fetcher import get_tweet_url
+from .metrics import NOTIFICATION_DURATION, NOTIFICATION_OUTCOMES
 
 
 def is_quiet_hours() -> bool:
@@ -121,20 +122,26 @@ def send_telegram_alert(
     # Send via Telegram API
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
 
-    try:
-        response = httpx.post(
-            url,
-            json={
-                "chat_id": chat_id,
-                "text": message,
-                "parse_mode": "HTML",
-                "disable_web_page_preview": False,
-            },
-            timeout=10,
-        )
-        return response.status_code == 200
-    except Exception:
-        return False
+    with NOTIFICATION_DURATION.time():
+        try:
+            response = httpx.post(
+                url,
+                json={
+                    "chat_id": chat_id,
+                    "text": message,
+                    "parse_mode": "HTML",
+                    "disable_web_page_preview": False,
+                },
+                timeout=10,
+            )
+            if response.status_code == 200:
+                NOTIFICATION_OUTCOMES.labels(outcome="success").inc()
+                return True
+            NOTIFICATION_OUTCOMES.labels(outcome="http_error").inc()
+            return False
+        except Exception:
+            NOTIFICATION_OUTCOMES.labels(outcome="exception").inc()
+            return False
 
 
 def notify_high_signal_tweet(

@@ -12,6 +12,7 @@ from typing import Any
 
 from ..auth import get_auth_env
 from ..config import load_config
+from ..metrics import BIRD_CALL_DURATION, BIRD_OUTCOMES
 from .extractors import Tweet, _looks_truncated_text, _needs_retweet_hydration
 
 log = logging.getLogger(__name__)
@@ -97,10 +98,24 @@ def _run_bird_once(
         return "", "bird CLI not found", 1
 
 
+def _classify_bird_outcome(stderr: str, returncode: int) -> str:
+    """Classify a bird CLI call outcome for metrics."""
+    if returncode == 0:
+        return "success"
+    if _is_rate_limited(stderr):
+        return "rate_limited"
+    if "timed out" in stderr.lower() or "timeout" in stderr.lower():
+        return "timeout"
+    if _is_auth_failure(stderr):
+        return "auth_failure"
+    return "error"
+
+
 def run_bird(args: list[str], timeout: int = 60, *, log_failures: bool = True) -> tuple[str, str, int]:
     """Run bird CLI command with retry on rate limit, returning (stdout, stderr, returncode)."""
     _rate_limit_bird()
     env = get_auth_env()
+    bird_cmd = args[0] if args else "unknown"
 
     # Build command with auth if available
     cmd = ["bird", *args]
@@ -120,29 +135,33 @@ def run_bird(args: list[str], timeout: int = 60, *, log_failures: bool = True) -
     base_seconds = bird_cfg.get("retry_base_seconds", 15.0)
     max_seconds = bird_cfg.get("retry_max_seconds", 120.0)
 
-    for attempt in range(max_attempts):
-        stdout, stderr, returncode = _run_bird_once(cmd, env, args, timeout, log_failures=log_failures)
+    with BIRD_CALL_DURATION.labels(command=bird_cmd).time():
+        for attempt in range(max_attempts):
+            stdout, stderr, returncode = _run_bird_once(cmd, env, args, timeout, log_failures=log_failures)
 
-        if returncode == 0 or not _is_rate_limited(stderr):
-            return stdout, stderr, returncode
+            if returncode == 0 or not _is_rate_limited(stderr):
+                BIRD_OUTCOMES.labels(command=bird_cmd, outcome=_classify_bird_outcome(stderr, returncode)).inc()
+                return stdout, stderr, returncode
 
-        if attempt + 1 >= max_attempts:
-            log.error("bird %s rate-limited after %d attempts, giving up", args[0] if args else "?", max_attempts)
-            return stdout, stderr, returncode
+            if attempt + 1 >= max_attempts:
+                log.error("bird %s rate-limited after %d attempts, giving up", args[0] if args else "?", max_attempts)
+                BIRD_OUTCOMES.labels(command=bird_cmd, outcome="rate_limited").inc()
+                return stdout, stderr, returncode
 
-        delay = min(base_seconds * (2**attempt), max_seconds)
-        jitter = random.uniform(0, delay * 0.25)
-        wait = delay + jitter
-        log.warning(
-            "bird %s rate-limited (attempt %d/%d), retrying in %.0fs",
-            args[0] if args else "?",
-            attempt + 1,
-            max_attempts,
-            wait,
-        )
-        time.sleep(wait)
-        _rate_limit_bird()
+            delay = min(base_seconds * (2**attempt), max_seconds)
+            jitter = random.uniform(0, delay * 0.25)
+            wait = delay + jitter
+            log.warning(
+                "bird %s rate-limited (attempt %d/%d), retrying in %.0fs",
+                args[0] if args else "?",
+                attempt + 1,
+                max_attempts,
+                wait,
+            )
+            time.sleep(wait)
+            _rate_limit_bird()
 
+    BIRD_OUTCOMES.labels(command=bird_cmd, outcome="error").inc()
     return stdout, stderr, returncode
 
 

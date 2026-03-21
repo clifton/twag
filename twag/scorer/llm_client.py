@@ -9,6 +9,7 @@ from anthropic import Anthropic
 
 from twag.auth import get_api_key
 from twag.config import load_config
+from twag.metrics import LLM_CALL_DURATION, LLM_ERRORS, LLM_RETRIES
 
 
 def get_anthropic_client() -> Anthropic:
@@ -126,7 +127,12 @@ def _call_llm(provider: str, model: str, prompt: str, max_tokens: int = 2048, re
             return _call_gemini(model, prompt, max_tokens, reasoning=reasoning)
         return _call_anthropic(model, prompt, max_tokens)
 
-    return _with_retry(_invoke)
+    with LLM_CALL_DURATION.labels(provider=provider, operation="text").time():
+        try:
+            return _with_retry(_invoke)
+        except Exception:
+            LLM_ERRORS.labels(provider=provider, operation="text").inc()
+            raise
 
 
 def _call_llm_vision(provider: str, model: str, image_url: str, prompt: str, max_tokens: int = 1024) -> str:
@@ -137,7 +143,12 @@ def _call_llm_vision(provider: str, model: str, image_url: str, prompt: str, max
             return _call_gemini_vision(model, image_url, prompt, max_tokens)
         return _call_anthropic_vision(model, image_url, prompt, max_tokens)
 
-    return _with_retry(_invoke)
+    with LLM_CALL_DURATION.labels(provider=provider, operation="vision").time():
+        try:
+            return _with_retry(_invoke)
+        except Exception:
+            LLM_ERRORS.labels(provider=provider, operation="vision").inc()
+            raise
 
 
 def _with_retry(fn):
@@ -159,6 +170,7 @@ def _with_retry(fn):
             if retries and attempt >= retries:
                 raise
 
+            LLM_RETRIES.inc()
             delay = min(max_delay, base_delay * (2 ** (attempt - 1)))
             if jitter:
                 delay = max(0.0, delay * (1 + random.uniform(-jitter, jitter)))
