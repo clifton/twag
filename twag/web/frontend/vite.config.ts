@@ -23,7 +23,31 @@ export default defineConfig({
     },
   },
   build: {
+    target: "es2020",
     outDir: "dist",
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ["react", "react-dom", "react-router"],
+          ui: [
+            "@radix-ui/react-dialog",
+            "@radix-ui/react-dropdown-menu",
+            "@radix-ui/react-popover",
+            "@radix-ui/react-select",
+            "@radix-ui/react-slot",
+            "@radix-ui/react-switch",
+            "@radix-ui/react-toast",
+            "@radix-ui/react-tooltip",
+          ],
+          editor: [
+            "codemirror",
+            "@codemirror/lang-markdown",
+            "@codemirror/theme-one-dark",
+            "@uiw/react-codemirror",
+          ],
+        },
+      },
+    },
   },
 });
