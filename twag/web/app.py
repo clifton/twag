@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from .. import __version__
 from ..config import get_database_path
 from ..db import init_db
 from .routes import context, prompts, reactions, tweets
@@ -24,7 +25,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Twag",
         description="Twitter aggregator web interface",
-        version="0.1.0",
+        version=__version__,
     )
 
     app.state.db_path = get_database_path()
