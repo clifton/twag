@@ -1,16 +1,17 @@
 ---
 name: twag
 description: Twitter/X aggregator for market-relevant signals with LLM-powered scoring. Fetches, processes, and curates tweets for market analysis.
-read_when:
-  - Processing Twitter/X feed for market signals
-  - Searching for market-relevant tweets
-  - Generating daily tweet digests
-  - Managing followed Twitter accounts
-  - Finding tweets about specific tickers or topics
-homepage: https://github.com/clifton/twag
+compatibility: Requires Python 3.10+ and bird CLI for Twitter/X access
 metadata:
   openclaw:
     emoji: "📊"
+    homepage: https://github.com/clifton/twag
+    read_when:
+      - Processing Twitter/X feed for market signals
+      - Searching for market-relevant tweets
+      - Generating daily tweet digests
+      - Managing followed Twitter accounts
+      - Finding tweets about specific tickers or topics
     requires:
       bins: ["twag", "bird"]
       env: ["GEMINI_API_KEY", "AUTH_TOKEN", "CT0"]
@@ -31,7 +32,7 @@ metadata:
         bins: ["bird"]
         label: "Install bird CLI (brew)"
         os: ["darwin"]
-allowed-tools: Bash(twag:*), Bash(bird:*)
+allowed-tools: Bash(twag:*) Bash(bird:*)
 ---
 
 # twag — Twitter/X Market Signal Aggregator
