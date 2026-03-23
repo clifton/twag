@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
+from twag.models.taxonomy import Category, SignalTier
+
 
 @dataclass
 class Prompt:
@@ -18,42 +20,45 @@ class Prompt:
     updated_by: str | None
 
 
+_CATEGORY_LIST = ", ".join(c.value for c in list(Category))
+_SIGNAL_TIER_LIST = " | ".join(t.value for t in reversed(list(SignalTier)))
+
 # Default prompts to seed from scorer.py
 DEFAULT_PROMPTS = {
-    "triage": """You are a financial markets triage agent. Score this tweet 0-10 for relevance to macro/investing.
+    "triage": f"""You are a financial markets triage agent. Score this tweet 0-10 for relevance to macro/investing.
 
-Categories (assign 1-3 that apply): fed_policy, inflation, job_market, macro_data, earnings, equities, rates_fx, credit, banks, consumer_spending, capex, commodities, energy, metals_mining, geopolitical, sanctions, tech_business, ai_advancement, crypto, noise
+Categories (assign 1-3 that apply): {_CATEGORY_LIST}
 
-Tweet: {tweet_text}
-Author: @{handle}
+Tweet: {{tweet_text}}
+Author: @{{handle}}
 
 Return JSON only:
-{{"score": 7, "categories": ["fed_policy", "rates_fx"], "summary": "One-liner summary", "tickers": ["TLT", "GLD"]}}""",
-    "batch_triage": """You are a financial markets triage agent. Score these tweets 0-10 for relevance to macro/investing.
+{{{{"score": 7, "categories": ["fed_policy", "rates_fx"], "summary": "One-liner summary", "tickers": ["TLT", "GLD"]}}}}""",
+    "batch_triage": f"""You are a financial markets triage agent. Score these tweets 0-10 for relevance to macro/investing.
 
-Categories (assign 1-3 that apply): fed_policy, inflation, job_market, macro_data, earnings, equities, rates_fx, credit, banks, consumer_spending, capex, commodities, energy, metals_mining, geopolitical, sanctions, tech_business, ai_advancement, crypto, noise
+Categories (assign 1-3 that apply): {_CATEGORY_LIST}
 
 Tweets:
-{tweets}
+{{tweets}}
 
 Return a JSON array with one object per tweet, in order:
-[{{"id": "tweet_id", "score": 7, "categories": ["fed_policy", "rates_fx"], "summary": "One-liner", "tickers": ["TLT"]}}]""",
-    "enrichment": """You are a financial analyst. Analyze this tweet for actionable insights.
+[{{{{"id": "tweet_id", "score": 7, "categories": ["fed_policy", "rates_fx"], "summary": "One-liner", "tickers": ["TLT"]}}}}]""",
+    "enrichment": f"""You are a financial analyst. Analyze this tweet for actionable insights.
 
-Tweet: {tweet_text}
-Author: @{handle} ({author_category})
-Quoted: {quoted_tweet}
-Linked article: {article_summary}
-Media context: {image_description}
+Tweet: {{tweet_text}}
+Author: @{{handle}} ({{author_category}})
+Quoted: {{quoted_tweet}}
+Linked article: {{article_summary}}
+Media context: {{image_description}}
 
 Provide:
-1. Signal tier: high_signal | market_relevant | news | noise
+1. Signal tier: {_SIGNAL_TIER_LIST}
 2. Key insight (1-2 sentences)
 3. Investment implications with specific tickers
 4. Any emerging narratives this connects to
 
 Return JSON:
-{{"signal_tier": "high_signal", "insight": "...", "implications": "...", "narratives": ["Fed pivot"], "tickers": ["TLT"]}}""",
+{{{{"signal_tier": "high_signal", "insight": "...", "implications": "...", "narratives": ["Fed pivot"], "tickers": ["TLT"]}}}}""",
     "summarize": """Summarize this tweet concisely while preserving all key market-relevant information, data points, and actionable insights. Keep ticker symbols and specific numbers.
 
 Tweet by @{handle}:

@@ -47,12 +47,20 @@ from .scoring import (
     VisionResult,
     XArticleSummaryResult,
 )
+from .taxonomy import (
+    SIGNAL_TIER_RANK,
+    Category,
+    PipelineStage,
+    SignalTier,
+)
 from .tweet import TweetData
 
 __all__ = [
+    "SIGNAL_TIER_RANK",
     "AccountsConfig",
     "ActionableItem",
     "BirdConfig",
+    "Category",
     "CategoryCount",
     "ChartAnalysis",
     "ContextCommand",
@@ -67,6 +75,7 @@ __all__ = [
     "MediaItem",
     "NotificationConfig",
     "PathsConfig",
+    "PipelineStage",
     "PrimaryPoint",
     "ProcessingConfig",
     "Prompt",
@@ -74,6 +83,7 @@ __all__ = [
     "Reaction",
     "ScoringConfig",
     "SearchResult",
+    "SignalTier",
     "TableAnalysis",
     "TickerCount",
     "TriageResult",

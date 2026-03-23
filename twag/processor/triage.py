@@ -22,6 +22,7 @@ from ..db import (
     update_tweet_processing,
 )
 from ..media import build_media_context, build_media_summary, parse_media_items
+from ..models.taxonomy import SIGNAL_TIER_RANK, PipelineStage, SignalTier
 from ..scorer import (
     TriageResult,
     analyze_media,
@@ -31,13 +32,6 @@ from ..scorer import (
     summarize_x_article,
     triage_tweets_batch,
 )
-
-_SIGNAL_TIER_RANK = {
-    "noise": 0,
-    "news": 1,
-    "market_relevant": 2,
-    "high_signal": 3,
-}
 
 
 def _normalized_worker_count(value: Any, fallback: int) -> int:
@@ -58,8 +52,8 @@ def _prefer_stronger_signal_tier(existing: str | None, candidate: str | None) ->
     if not candidate:
         return existing
 
-    existing_rank = _SIGNAL_TIER_RANK.get(str(existing), -1)
-    candidate_rank = _SIGNAL_TIER_RANK.get(str(candidate), -1)
+    existing_rank = SIGNAL_TIER_RANK.get(str(existing), -1)
+    candidate_rank = SIGNAL_TIER_RANK.get(str(candidate), -1)
     return candidate if candidate_rank > existing_rank else existing
 
 
@@ -385,7 +379,7 @@ def _triage_rows(
     pending_tasks: dict[str, int] = {}
 
     # Unified future map: Future -> (tag, data)
-    # Tags: "summary", "media", "article", "enrich"
+    # Tags: PipelineStage.SUMMARY, .MEDIA, .ARTICLE, .ENRICH
     all_futures: dict[Any, tuple[str, Any]] = {}
 
     # Worker pools return analysis payloads only; SQLite access stays on the owner thread.
@@ -441,7 +435,7 @@ def _triage_rows(
                 image_description=media_context,
                 model=enrich_model,
             )
-            all_futures[future] = ("enrich", (tweet_id, row))
+            all_futures[future] = (PipelineStage.ENRICH, (tweet_id, row))
         else:
             try:
                 result = enrich_tweet(
@@ -501,7 +495,7 @@ def _triage_rows(
                     enrich_model,
                     media_items,
                 )
-            all_futures[future] = ("article", (tweet_id, row))
+            all_futures[future] = (PipelineStage.ARTICLE, (tweet_id, row))
         else:
             try:
                 if media_items and _needs_media_analysis(media_items):
@@ -550,13 +544,13 @@ def _triage_rows(
                 status_cb(f"Saving @{tweet_row['author_handle']}")
 
             if result.score >= 8:
-                tier = "high_signal"
+                tier = SignalTier.HIGH_SIGNAL
             elif result.score >= 6:
-                tier = "market_relevant"
+                tier = SignalTier.MARKET_RELEVANT
             elif result.score >= 4:
-                tier = "news"
+                tier = SignalTier.NEWS
             else:
-                tier = "noise"
+                tier = SignalTier.NOISE
 
             update_tweet_processing(
                 conn,
@@ -584,7 +578,7 @@ def _triage_rows(
                     if status_cb:
                         status_cb(f"Queue summary @{handle}")
                     future = text_pool.submit(summarize_tweet, content, handle, enrich_model, None)
-                    all_futures[future] = ("summary", result.tweet_id)
+                    all_futures[future] = (PipelineStage.SUMMARY, result.tweet_id)
                     task_count += 1
                 else:
                     try:
@@ -632,7 +626,7 @@ def _triage_rows(
                             vision_model=vision_model,
                             vision_provider=vision_provider,
                         )
-                        all_futures[future] = ("media", result.tweet_id)
+                        all_futures[future] = (PipelineStage.MEDIA, result.tweet_id)
                         task_count += 1
                     else:
                         if status_cb:
@@ -719,7 +713,7 @@ def _triage_rows(
         # Apply worker results here so DB writes remain serialized on this thread.
         for future in as_completed(list(all_futures.keys())):
             tag, data = all_futures.pop(future)
-            if tag == "summary":
+            if tag == PipelineStage.SUMMARY:
                 tweet_id = data
                 try:
                     content_summary = future.result()
@@ -732,7 +726,7 @@ def _triage_rows(
                 except Exception:
                     pass
                 _complete_task(tweet_id)
-            elif tag == "media":
+            elif tag == PipelineStage.MEDIA:
                 tweet_id = data
                 try:
                     updated_items, _ = future.result()
@@ -746,7 +740,7 @@ def _triage_rows(
                 except Exception:
                     pass
                 _complete_task(tweet_id)
-            elif tag == "article":
+            elif tag == PipelineStage.ARTICLE:
                 tweet_id, row = data
                 try:
                     article_result, analyzed_items = future.result()
@@ -777,7 +771,7 @@ def _triage_rows(
                 except Exception:
                     pass
                 _complete_task(tweet_id)
-            elif tag == "enrich":
+            elif tag == PipelineStage.ENRICH:
                 tweet_id, row = data
                 try:
                     result = future.result()
