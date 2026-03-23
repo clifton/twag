@@ -1,4 +1,10 @@
-"""FastAPI application for twag web interface."""
+"""FastAPI application for twag web interface.
+
+Security boundary: This web app is designed for local use only.
+CORS is restricted to localhost/127.0.0.1 origins. There is no built-in
+authentication layer. If exposed beyond localhost, deploy behind a
+reverse proxy with its own auth or add AUTH_HEADER middleware.
+"""
 
 import html
 import os

@@ -280,19 +280,24 @@ async def test_context_command(
             "error": f"Unsubstituted variables: {unsubstituted}",
             "available_variables": list(variables.keys()),
             "command_template": cmd.command_template,
-            "final_command": final_command,
         }
 
     # Run the command
     stdout, stderr, returncode = await _run_command(final_command)
 
+    # Sanitize output to strip env-var-like patterns (API keys, tokens)
+    env_pattern = re.compile(
+        r"(?i)(api[_-]?key|token|secret|password|auth|ct0)\s*[:=]\s*\S+",
+    )
+    sanitized_stdout = env_pattern.sub(r"\1=****", stdout)
+    sanitized_stderr = env_pattern.sub(r"\1=****", stderr)
+
     return {
         "command_name": name,
         "command_template": cmd.command_template,
-        "final_command": final_command,
         "variables_used": variables,
-        "stdout": stdout,
-        "stderr": stderr,
+        "stdout": sanitized_stdout,
+        "stderr": sanitized_stderr,
         "returncode": returncode,
         "success": returncode == 0,
     }

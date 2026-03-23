@@ -14,11 +14,32 @@ def config():
     """Manage configuration."""
 
 
+_SENSITIVE_KEYS = {"telegram_chat_id", "telegram_bot_token", "api_key", "secret"}
+
+
+def _mask_sensitive(
+    obj: dict | list | str | int | float | bool | None,
+) -> dict | list | str | int | float | bool | None:
+    """Recursively mask values whose keys contain sensitive substrings."""
+    if isinstance(obj, dict):
+        masked = {}
+        for k, v in obj.items():
+            if isinstance(v, str) and any(s in k.lower() for s in _SENSITIVE_KEYS) and len(v) > 4:
+                masked[k] = v[:4] + "****"
+            else:
+                masked[k] = _mask_sensitive(v)
+        return masked
+    if isinstance(obj, list):
+        return [_mask_sensitive(item) for item in obj]
+    return obj
+
+
 @config.command("show")
 def config_show():
     """Show current configuration."""
     cfg = load_config()
-    json_str = json.dumps(cfg, indent=2)
+    masked_cfg = _mask_sensitive(cfg)
+    json_str = json.dumps(masked_cfg, indent=2)
     syntax = Syntax(json_str, "json", theme="monokai")
     console.print(syntax)
 
