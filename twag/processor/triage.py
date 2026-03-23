@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
@@ -31,6 +32,8 @@ from ..scorer import (
     summarize_x_article,
     triage_tweets_batch,
 )
+
+log = logging.getLogger(__name__)
 
 _SIGNAL_TIER_RANK = {
     "noise": 0,
@@ -487,7 +490,7 @@ def _triage_rows(
                 )
                 _save_enrichment_result(conn, tweet_id, row, result)
             except Exception:
-                pass
+                log.exception("Enrichment failed for tweet %s", tweet_id)
             _complete_task(tweet_id)
 
     def _submit_article(tweet_id: str, tweet_row: sqlite3.Row) -> None:
@@ -577,7 +580,7 @@ def _triage_rows(
                         media_items=media_items,
                     )
             except Exception:
-                pass
+                log.exception("Article processing failed for tweet %s", tweet_id)
             _complete_task(tweet_id)
 
     def _handle_results(results: list[TriageResult]) -> None:
@@ -633,7 +636,7 @@ def _triage_rows(
                             content_summary=content_summary,
                         )
                     except Exception:
-                        pass
+                        log.exception("Summarization failed for tweet %s", result.tweet_id)
 
             if update_stats:
                 update_account_stats(
@@ -730,6 +733,7 @@ def _triage_rows(
                 try:
                     results = future.result()
                 except Exception:
+                    log.exception("Triage batch %d failed", batch_index)
                     m.inc("pipeline.triage.batch_errors")
                     if status_cb:
                         status_cb(f"Batch {batch_index} failed")
@@ -763,7 +767,7 @@ def _triage_rows(
                             content_summary=content_summary,
                         )
                 except Exception:
-                    pass
+                    log.exception("Summary worker failed for tweet %s", tweet_id)
                 _complete_task(tweet_id)
             elif tag == "media":
                 tweet_id = data
@@ -777,7 +781,7 @@ def _triage_rows(
                         media_items=updated_items,
                     )
                 except Exception:
-                    pass
+                    log.exception("Media worker failed for tweet %s", tweet_id)
                 _complete_task(tweet_id)
             elif tag == "article":
                 tweet_id, row = data
@@ -808,7 +812,7 @@ def _triage_rows(
                             media_items=analyzed_items,
                         )
                 except Exception:
-                    pass
+                    log.exception("Article worker failed for tweet %s", tweet_id)
                 _complete_task(tweet_id)
             elif tag == "enrich":
                 tweet_id, row = data
@@ -816,7 +820,7 @@ def _triage_rows(
                     result = future.result()
                     _save_enrichment_result(conn, tweet_id, row, result)
                 except Exception:
-                    pass
+                    log.exception("Enrich worker failed for tweet %s", tweet_id)
                 _complete_task(tweet_id)
     finally:
         if triage_pool:

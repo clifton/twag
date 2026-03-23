@@ -47,3 +47,14 @@ def sanitize_nested_strings(value: Any) -> Any:
     if isinstance(value, dict):
         return {sanitize_nested_strings(key): sanitize_nested_strings(item) for key, item in value.items()}
     return value
+
+
+_TRUNCATION_SUFFIXES = ("\u2026", "...")
+
+
+def looks_truncated_text(text: str | None) -> bool:
+    """Check if text appears truncated (ends with ellipsis or '...')."""
+    if not text:
+        return False
+    stripped = text.rstrip()
+    return bool(stripped) and stripped.endswith(_TRUNCATION_SUFFIXES)

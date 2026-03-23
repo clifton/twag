@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -168,7 +168,7 @@ def reprocess_today_quoted(
         15,
     )
 
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     with get_connection() as conn:
         if rows is None:
@@ -236,7 +236,7 @@ def reprocess_today_quoted(
         )
 
         # Mark all reprocessed tweets so they aren't reprocessed again
-        now = datetime.now().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         tweet_ids = [row["id"] for row in rows]
         conn.executemany(
             "UPDATE tweets SET quote_reprocessed_at = ? WHERE id = ?",
@@ -360,6 +360,7 @@ def enrich_high_signal(
                             (result.signal_tier, tweet_id),
                         )
                 except Exception:
+                    log.exception("Enrichment failed for tweet %s", tweet_id)
                     continue
         finally:
             if text_pool:

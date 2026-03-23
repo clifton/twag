@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from ..text_utils import looks_truncated_text as _looks_truncated_text
 from ..text_utils import sanitize_nested_strings, sanitize_text
 from .connection import execute_with_retry
 
@@ -301,13 +302,6 @@ def _merge_duplicate_tweet_payload(
 
     params.append(tweet_id)
     execute_with_retry(conn, f"UPDATE tweets SET {', '.join(updates)} WHERE id = ?", params)
-
-
-def _looks_truncated_text(text: str | None) -> bool:
-    if not text:
-        return False
-    stripped = text.rstrip()
-    return bool(stripped) and stripped.endswith(("\u2026", "..."))
 
 
 def _merge_duplicate_retweet_metadata(
