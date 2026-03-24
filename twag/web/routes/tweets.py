@@ -3,7 +3,7 @@
 import json
 import re
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Query, Request
 
@@ -137,7 +137,7 @@ async def list_tweets(
     bookmarked: bool = False,
     since: str | None = None,
     until: str | None = None,
-    sort: str | None = None,
+    sort: Annotated[Literal["relevance", "latest"] | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> dict[str, Any]:

@@ -1,12 +1,13 @@
 """Context command management API routes."""
 
 import asyncio
+import logging
 import re
 import shlex
 from typing import Any
 
 from fastapi import APIRouter, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from ...db import (
     delete_context_command,
@@ -20,7 +21,57 @@ from ...db import (
 from ...media import build_media_context, parse_media_items
 from ...processor import ensure_media_analysis
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(tags=["context"])
+
+# Binaries allowed as the first token in a command template.
+# Extend this tuple to permit additional tools.
+ALLOWED_COMMAND_PREFIXES: tuple[str, ...] = (
+    "curl",
+    "jq",
+    "grep",
+    "awk",
+    "sed",
+    "cat",
+    "echo",
+    "head",
+    "tail",
+    "wc",
+    "sort",
+    "uniq",
+    "cut",
+    "tr",
+    "date",
+    "python",
+    "python3",
+)
+
+# Shell meta-characters that must never appear *unquoted* in a template.
+_SHELL_DANGEROUS_RE = re.compile(r"[;&|`$]")
+
+
+def _validate_command_template(template: str) -> str:
+    """Validate that a command template starts with an allowed binary and has no dangerous shell chars."""
+    try:
+        tokens = shlex.split(template)
+    except ValueError as exc:
+        raise ValueError(f"Malformed command template: {exc}") from exc
+
+    if not tokens:
+        raise ValueError("Command template must not be empty")
+
+    binary = tokens[0].rsplit("/", 1)[-1]  # allow absolute paths, check basename
+    if binary not in ALLOWED_COMMAND_PREFIXES:
+        raise ValueError(f"Binary '{binary}' is not in the allowed list: {', '.join(ALLOWED_COMMAND_PREFIXES)}")
+
+    # Reject unquoted shell metacharacters in the raw template (outside {var} placeholders).
+    # Variable placeholders are shell-escaped at substitution time, so we only check the static parts.
+    static_parts = re.sub(r"\{[^}]+\}", "", template)
+    if _SHELL_DANGEROUS_RE.search(static_parts):
+        raise ValueError("Command template contains disallowed shell metacharacters: ; & | ` $")
+
+    return template
 
 
 class ContextCommandCreate(BaseModel):
@@ -30,6 +81,11 @@ class ContextCommandCreate(BaseModel):
     command_template: str
     description: str | None = None
     enabled: bool = True
+
+    @field_validator("command_template")
+    @classmethod
+    def check_command_template(cls, v: str) -> str:
+        return _validate_command_template(v)
 
 
 class TestCommandRequest(BaseModel):
@@ -71,6 +127,8 @@ async def create_context_command(
 ) -> dict[str, Any]:
     """Create a new context command."""
     db_path = request.app.state.db_path
+
+    logger.info("Creating context command %r with template: %s", command.name, command.command_template)
 
     with get_connection(db_path) as conn:
         cmd_id = upsert_context_command(
@@ -224,7 +282,16 @@ def _extract_tweet_variables(tweet_row) -> dict[str, str]:
 
 
 async def _run_command(command: str, timeout: float = 30.0) -> tuple[str, str, int]:
-    """Run a command and return (stdout, stderr, returncode)."""
+    """Run a shell command and return (stdout, stderr, returncode).
+
+    Security note: This executes an arbitrary command on the host.  The API is
+    designed for localhost-only access (the twag web server binds to 127.0.0.1
+    by default).  Command templates are validated at creation time via
+    ``_validate_command_template`` which restricts the allowed binary and
+    rejects shell metacharacters.  Variable values are shell-escaped by
+    ``_substitute_variables`` before interpolation.
+    """
+    logger.info("Executing command: %s", command)
     try:
         args = shlex.split(command)
         proc = await asyncio.create_subprocess_exec(
