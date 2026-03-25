@@ -10,7 +10,7 @@ git clone https://github.com/clifton/twag.git
 cd twag
 
 # Install with dev dependencies
-pip install -e ".[dev]"
+uv sync --group dev
 
 # Install frontend dependencies
 cd twag/web/frontend

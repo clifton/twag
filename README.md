@@ -480,7 +480,7 @@ twag db restore backup.sql --force
 
 ```bash
 # Install dev dependencies
-pip install -e ".[dev]"
+uv sync --group dev
 
 # Run tests
 pytest
