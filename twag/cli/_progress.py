@@ -28,18 +28,22 @@ class RichProgressReporter:
         self._total = 0
 
     def _description(self) -> str:
+        """Return the fixed-width task description for the progress bar."""
         return f"{self._label:<25s}"
 
     def update_status(self, message: str) -> None:
+        """Update the progress bar description text."""
         self._label = message
         self._progress.update(self._task_id, description=self._description())
 
     def advance(self, step: int = 1) -> None:
+        """Advance the progress bar by *step* units (clamped to total)."""
         step = max(step, 0)
         self._count = min(self._total, self._count + step)
         self._progress.update(self._task_id, advance=step, description=self._description())
 
     def set_total(self, total: int) -> None:
+        """Set the expected total, ensuring it is at least the current count."""
         total = max(total, self._count)
         self._total = total
         self._progress.update(self._task_id, total=total, description=self._description())
@@ -49,13 +53,13 @@ class NullProgressReporter:
     """No-op progress reporter for non-interactive / library use."""
 
     def update_status(self, message: str) -> None:
-        pass
+        """No-op: ignore status updates."""
 
     def advance(self, step: int = 1) -> None:
-        pass
+        """No-op: ignore progress advances."""
 
     def set_total(self, total: int) -> None:
-        pass
+        """No-op: ignore total changes."""
 
 
 def create_progress() -> Progress:

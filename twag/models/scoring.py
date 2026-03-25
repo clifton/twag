@@ -19,6 +19,7 @@ class TriageResult(BaseModel):
     @field_validator("score")
     @classmethod
     def clamp_score(cls, v: float) -> float:
+        """Clamp the relevance score to the 0-10 range."""
         return max(0.0, min(10.0, float(v)))
 
 
@@ -73,6 +74,7 @@ class ActionableItem(BaseModel):
     @field_validator("confidence")
     @classmethod
     def clamp_confidence(cls, v: float) -> float:
+        """Clamp the confidence value to the 0-1 range."""
         return max(0.0, min(1.0, float(v)))
 
 
