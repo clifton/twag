@@ -46,6 +46,7 @@ FETCH → PROCESS → DIGEST
 | `CLAUDE.md` | This file — agent/developer guidance |
 | `TELEGRAM_DIGEST_FORMAT.md` | Telegram output formatting rules |
 | `SUGGESTED_CRON_SCHEDULE.md` | Automation setup guide |
+| `PRIVACY.md` | Data handling and privacy documentation |
 
 ## OpenClaw Skill Context
 
@@ -107,6 +108,7 @@ Keep in sync:
 - `SKILL.md` — OpenClaw-specific quick reference
 - `CLAUDE.md` — Developer/agent operating guidance
 - `INSTALL.md` — Step-by-step installation
+- `PRIVACY.md` — Data handling and privacy (validated by `scripts/check_privacy.py`)
 
 Avoid absolute machine-specific paths in docs.
 

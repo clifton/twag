@@ -242,7 +242,7 @@ def test_build_triage_text_prefers_article_body() -> None:
         "article_preview": "Preview",
         "article_text": "Deep dive " * 800,
     }
-    text = _build_triage_text(row)  # type: ignore[arg-type]
+    text = _build_triage_text(row)  # ty: ignore[invalid-argument-type]
 
     assert text.startswith("Capex note")
     assert "Deep dive" in text
