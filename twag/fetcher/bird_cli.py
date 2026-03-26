@@ -233,8 +233,8 @@ def _parse_bird_output(stdout: str) -> list[Tweet]:
     except json.JSONDecodeError:
         text = stdout.strip()
         # Try NDJSON first (one JSON value per line)
-        for line in text.split("\n"):
-            line = line.strip()
+        for raw_line in text.split("\n"):
+            line = raw_line.strip()
             if not line:
                 continue
             try:
