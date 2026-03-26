@@ -67,6 +67,7 @@ metadata:
 
 ```bash
 pip install -e ".[dev]"
+git config core.hooksPath .githooks
 ```
 
 ### Lint & Format
@@ -163,6 +164,14 @@ If command behavior changes, update `README.md` and `SKILL.md` in the same PR.
 
 ## Commit Hygiene
 
+- **Conventional Commits required** — a `commit-msg` hook in `.githooks/` enforces the format:
+  ```
+  <type>: <description>
+  ```
+  Allowed types: `feat`, `fix`, `chore`, `docs`, `perf`, `refactor`, `test`, `ci`, `build`, `style`
+  Optional scope: `feat(cli): add new command`
+  Breaking changes: `feat!: remove deprecated API`
+  Merge, Revert, fixup!, and squash! commits are exempt.
 - Keep commits focused and atomic
 - Run formatting/lint/tests before committing
 - Don't commit temporary artifacts unless explicitly requested

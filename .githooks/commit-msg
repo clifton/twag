@@ -1,0 +1,35 @@
+#!/bin/sh
+# commit-msg hook: enforce Conventional Commits format
+# Expected: <type>: <description>
+# Allowed types: feat, fix, chore, docs, perf, refactor, test, ci, build, style
+
+commit_msg_file="$1"
+commit_msg=$(head -1 "$commit_msg_file")
+
+# Skip merge commits
+case "$commit_msg" in
+    Merge\ *) exit 0 ;;
+    Revert\ *) exit 0 ;;
+esac
+
+# Skip fixup/squash commits
+case "$commit_msg" in
+    fixup!\ *) exit 0 ;;
+    squash!\ *) exit 0 ;;
+    amend!\ *) exit 0 ;;
+esac
+
+# Validate Conventional Commits format: type(optional-scope): description
+if ! echo "$commit_msg" | grep -qE '^(feat|fix|chore|docs|perf|refactor|test|ci|build|style)(\(.+\))?(!)?: .+'; then
+    echo >&2 "ERROR: Commit message does not follow Conventional Commits format."
+    echo >&2 ""
+    echo >&2 "  Expected: <type>: <description>"
+    echo >&2 "  Got:      $commit_msg"
+    echo >&2 ""
+    echo >&2 "  Allowed types: feat, fix, chore, docs, perf, refactor, test, ci, build, style"
+    echo >&2 "  Optional scope: feat(cli): add new command"
+    echo >&2 "  Breaking change: feat!: remove deprecated API"
+    echo >&2 ""
+    echo >&2 "  Merge, Revert, fixup!, and squash! commits are exempt."
+    exit 1
+fi
