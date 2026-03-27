@@ -55,6 +55,17 @@ jobs:
         if: matrix.python-version == '3.12'
         run: uv run python scripts/benchmark_parallelism.py
 
+  dependency-risk:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv python install 3.12
+      - run: uv run python scripts/dependency_risk.py
+
   frontend:
     runs-on: ubuntu-latest
     defaults:
