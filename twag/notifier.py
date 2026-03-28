@@ -1,12 +1,17 @@
 """Telegram notifications for high-signal tweets."""
 
+import logging
 import os
 from datetime import datetime
 
 import httpx
 
 from .config import load_config
+from .db import get_connection, log_alert
+from .db import get_recent_alert_count as _db_get_recent_alert_count
 from .fetcher import get_tweet_url
+
+log = logging.getLogger(__name__)
 
 
 def is_quiet_hours() -> bool:
@@ -27,10 +32,13 @@ def is_quiet_hours() -> bool:
 
 
 def get_recent_alert_count() -> int:
-    """Get count of alerts sent in the last hour."""
-    # TODO: Track in database
-    # For now, return 0 to allow alerts
-    return 0
+    """Get count of alerts sent in the last hour from the database."""
+    try:
+        with get_connection() as conn:
+            return _db_get_recent_alert_count(conn, minutes=60)
+    except Exception:
+        log.warning("Failed to query alert log; allowing alert")
+        return 0
 
 
 def can_send_alert(score: float = 0) -> bool:
@@ -99,6 +107,7 @@ def format_alert(
 def send_telegram_alert(
     message: str,
     chat_id: str | None = None,
+    tweet_id: str | None = None,
 ) -> bool:
     """Send a Telegram alert. Returns True if successful."""
     config = load_config()
@@ -132,7 +141,15 @@ def send_telegram_alert(
             },
             timeout=10,
         )
-        return response.status_code == 200
+        if response.status_code == 200:
+            try:
+                with get_connection() as conn:
+                    log_alert(conn, tweet_id=tweet_id, chat_id=chat_id)
+                    conn.commit()
+            except Exception:
+                log.warning("Failed to log alert to database")
+            return True
+        return False
     except Exception:
         return False
 
@@ -168,4 +185,4 @@ def notify_high_signal_tweet(
         tickers=tickers,
     )
 
-    return send_telegram_alert(message)
+    return send_telegram_alert(message, tweet_id=tweet_id)

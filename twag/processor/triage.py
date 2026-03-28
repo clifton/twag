@@ -40,6 +40,24 @@ _SIGNAL_TIER_RANK = {
 }
 
 
+def _score_to_signal_tier(score: float, high_threshold: float) -> str:
+    """Derive signal tier from score using config-driven thresholds.
+
+    Tier boundaries are derived from high_signal_threshold (default 7):
+    - high_signal: score >= high_threshold + 1  (default: >= 8)
+    - market_relevant: score >= high_threshold - 1  (default: >= 6)
+    - news: score >= high_threshold - 3  (default: >= 4)
+    - noise: below news threshold
+    """
+    if score >= high_threshold + 1:
+        return "high_signal"
+    if score >= high_threshold - 1:
+        return "market_relevant"
+    if score >= high_threshold - 3:
+        return "news"
+    return "noise"
+
+
 def _normalized_worker_count(value: Any, fallback: int) -> int:
     """Return a positive worker count, falling back on invalid inputs."""
     try:
@@ -549,14 +567,7 @@ def _triage_rows(
             if status_cb and tweet_row:
                 status_cb(f"Saving @{tweet_row['author_handle']}")
 
-            if result.score >= 8:
-                tier = "high_signal"
-            elif result.score >= 6:
-                tier = "market_relevant"
-            elif result.score >= 4:
-                tier = "news"
-            else:
-                tier = "noise"
+            tier = _score_to_signal_tier(result.score, high_threshold)
 
             update_tweet_processing(
                 conn,

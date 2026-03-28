@@ -168,10 +168,20 @@ CREATE TABLE IF NOT EXISTS context_commands (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Alert log: Rate limit tracking for notifications
+CREATE TABLE IF NOT EXISTS alert_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tweet_id TEXT,
+    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    chat_id TEXT,
+    FOREIGN KEY (tweet_id) REFERENCES tweets(id)
+);
+
 -- Additional indexes for new tables
 CREATE INDEX IF NOT EXISTS idx_reactions_tweet ON reactions(tweet_id);
 CREATE INDEX IF NOT EXISTS idx_reactions_type ON reactions(reaction_type);
 CREATE INDEX IF NOT EXISTS idx_prompt_history_name ON prompt_history(prompt_name, version DESC);
+CREATE INDEX IF NOT EXISTS idx_alert_log_sent ON alert_log(sent_at DESC);
 """
 
 # FTS5 schema for full-text search

@@ -11,15 +11,7 @@ from .config import get_digests_dir, load_config
 from .db import get_connection, get_tweet_by_id, get_tweets_for_digest, mark_tweet_in_digest
 from .fetcher import get_tweet_url
 from .link_utils import normalize_tweet_links
-
-
-def _value(tweet: sqlite3.Row | dict, key: str, default=None):
-    if isinstance(tweet, sqlite3.Row):
-        try:
-            return tweet[key]
-        except (IndexError, KeyError):
-            return default
-    return tweet.get(key, default)
+from .text_utils import row_value as _value
 
 
 def _append_labeled_markdown(lines: list[str], label: str, value: str, *, indent: str = "  ") -> None:

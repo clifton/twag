@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import sqlite3
 import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -12,6 +11,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    import sqlite3
     from collections.abc import Callable
 
 from ..db import (
@@ -25,20 +25,12 @@ from ..db import (
 from ..fetcher import Tweet
 from ..fetcher.bird_cli import ReadTweetFailure, read_tweet_with_diagnostics
 from ..link_utils import expand_links_in_place, parse_tweet_status_id
+from ..text_utils import row_value as _row_get
 
 log = logging.getLogger(__name__)
 
 _MAX_INLINE_LINK_FETCHES = 4
 _SKIPPED_DEPENDENCY_FETCHES: dict[str, str] = {}
-
-
-def _row_get(row: sqlite3.Row | dict[str, Any], key: str, default: Any = None) -> Any:
-    if isinstance(row, sqlite3.Row):
-        try:
-            return row[key]
-        except (IndexError, KeyError):
-            return default
-    return row.get(key, default)
 
 
 def _extract_inline_linked_tweet_ids_from_links_json(

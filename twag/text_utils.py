@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from typing import Any
 
 _REPLACEMENT_CHAR = "\ufffd"
@@ -23,6 +24,16 @@ def sanitize_text(value: str | None) -> str | None:
     if value is None:
         return None
     return replace_lone_surrogates(value)
+
+
+def row_value(row: sqlite3.Row | dict[str, Any], key: str, default: Any = None) -> Any:
+    """Safely access a value from an sqlite3.Row or dict."""
+    if isinstance(row, sqlite3.Row):
+        try:
+            return row[key]
+        except (IndexError, KeyError):
+            return default
+    return row.get(key, default)
 
 
 def sanitize_nested_strings(value: Any) -> Any:
