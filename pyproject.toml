@@ -35,7 +35,6 @@ dependencies = [
     "uvicorn[standard]>=0.27.0",
     "jinja2>=3.1.0",
     "python-multipart>=0.0.6",
-    "tabulate>=0.9.0",
     "pydantic>=2.0",
     "rich>=13.0",
     "rich-click>=1.7",
@@ -135,6 +134,13 @@ not-iterable = "ignore"
 # Web layer — CORSMiddleware typing is incompatible with ty
 [[tool.ty.overrides]]
 include = ["twag/web/**"]
+
+[tool.ty.overrides.rules]
+invalid-argument-type = "ignore"
+
+# Tests — dict-as-Row and mock connection stubs cause false positives
+[[tool.ty.overrides]]
+include = ["tests/**"]
 
 [tool.ty.overrides.rules]
 invalid-argument-type = "ignore"

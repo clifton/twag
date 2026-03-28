@@ -66,17 +66,6 @@ def execute_with_retry(conn: sqlite3.Connection, sql: str, params: tuple | list 
     return _with_lock_retry("sqlite execute", lambda: conn.execute(sql, params))
 
 
-def executemany_with_retry(conn: sqlite3.Connection, sql: str, seq_of_params):
-    """Run ``conn.executemany`` with retries when SQLite reports a transient lock."""
-    cached_params = list(seq_of_params)
-    return _with_lock_retry("sqlite executemany", lambda: conn.executemany(sql, cached_params))
-
-
-def commit_with_retry(conn: sqlite3.Connection) -> None:
-    """Commit with retries when SQLite reports a transient lock."""
-    _with_lock_retry("sqlite commit", conn.commit)
-
-
 def _run_migrations(conn: sqlite3.Connection) -> None:
     """Run schema migrations for existing databases."""
     from .prompts import seed_prompts

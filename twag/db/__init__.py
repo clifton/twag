@@ -30,8 +30,6 @@ from .maintenance import (
 from .narratives import (
     archive_stale_narratives,
     get_active_narratives,
-    link_tweet_narrative,
-    upsert_narrative,
 )
 from .prompts import (
     DEFAULT_PROMPTS,
@@ -67,8 +65,6 @@ from .time_utils import (
 )
 from .tweets import (
     get_authors_to_promote,
-    get_bookmark_counts_by_author,
-    get_last_fetch,
     get_processed_counts,
     get_tweet_by_id,
     get_tweet_stats,
@@ -80,7 +76,6 @@ from .tweets import (
     log_fetch,
     mark_tweet_bookmarked,
     mark_tweet_in_digest,
-    migrate_seen_json,
     update_tweet_analysis,
     update_tweet_article,
     update_tweet_enrichment,
@@ -113,11 +108,9 @@ __all__ = [
     "get_all_context_commands",
     "get_all_prompts",
     "get_authors_to_promote",
-    "get_bookmark_counts_by_author",
     "get_connection",
     "get_context_command",
     "get_feed_tweets",
-    "get_last_fetch",
     "get_market_day_cutoff",
     "get_processed_counts",
     "get_prompt",
@@ -134,11 +127,9 @@ __all__ = [
     "insert_reaction",
     "insert_tweet",
     "is_tweet_seen",
-    "link_tweet_narrative",
     "log_fetch",
     "mark_tweet_bookmarked",
     "mark_tweet_in_digest",
-    "migrate_seen_json",
     "mute_account",
     "parse_time_range",
     "promote_account",
@@ -159,6 +150,5 @@ __all__ = [
     "update_tweet_processing",
     "upsert_account",
     "upsert_context_command",
-    "upsert_narrative",
     "upsert_prompt",
 ]

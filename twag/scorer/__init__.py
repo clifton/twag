@@ -19,7 +19,6 @@ from .scoring import (
     summarize_document_text,
     summarize_tweet,
     summarize_x_article,
-    triage_tweet,
     triage_tweets_batch,
 )
 
@@ -40,6 +39,5 @@ __all__ = [
     "summarize_document_text",
     "summarize_tweet",
     "summarize_x_article",
-    "triage_tweet",
     "triage_tweets_batch",
 ]

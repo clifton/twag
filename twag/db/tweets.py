@@ -3,7 +3,6 @@
 import json
 import sqlite3
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 from ..text_utils import sanitize_nested_strings, sanitize_text
@@ -675,20 +674,6 @@ def mark_tweet_bookmarked(conn: sqlite3.Connection, tweet_id: str) -> None:
     )
 
 
-def get_bookmark_counts_by_author(conn: sqlite3.Connection) -> list[tuple[str, int]]:
-    """Get count of bookmarked tweets per author."""
-    cursor = conn.execute(
-        """
-        SELECT author_handle, COUNT(*) as bookmark_count
-        FROM tweets
-        WHERE bookmarked = 1
-        GROUP BY author_handle
-        ORDER BY bookmark_count DESC
-        """
-    )
-    return [(row[0], row[1]) for row in cursor.fetchall()]
-
-
 def get_authors_to_promote(conn: sqlite3.Connection, min_bookmarks: int = 3) -> list[str]:
     """Get authors with enough bookmarks to promote to tier-1."""
     cursor = conn.execute(
@@ -759,45 +744,3 @@ def log_fetch(
             _json_dumps_safe(query_params),
         ),
     )
-
-
-def get_last_fetch(conn: sqlite3.Connection, endpoint: str) -> sqlite3.Row | None:
-    """Get the last fetch for an endpoint."""
-    cursor = conn.execute(
-        """
-        SELECT * FROM fetch_log
-        WHERE endpoint = ?
-        ORDER BY executed_at DESC
-        LIMIT 1
-        """,
-        (endpoint,),
-    )
-    return cursor.fetchone()
-
-
-def migrate_seen_json(conn: sqlite3.Connection, seen_json_path: Path) -> int:
-    """Migrate seen.json to database. Returns count of migrated IDs."""
-    if not seen_json_path.exists():
-        return 0
-
-    with open(seen_json_path) as f:
-        data = json.load(f)
-
-    seen_ids = data.get("seen", [])
-    count = 0
-
-    for tweet_id in seen_ids:
-        try:
-            execute_with_retry(
-                conn,
-                """
-                INSERT INTO tweets (id, author_handle, content, source)
-                VALUES (?, ?, ?, ?)
-                """,
-                (tweet_id, "unknown", "[migrated from seen.json]", "migration"),
-            )
-            count += 1
-        except sqlite3.IntegrityError:
-            pass  # Already exists
-
-    return count
