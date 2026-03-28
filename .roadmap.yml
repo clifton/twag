@@ -1,0 +1,12 @@
+# Roadmap focus-area weights for the entropy detector.
+# Each value represents the expected share of development effort (0.0–1.0).
+# Areas not listed are implicitly weighted at 0 (unexpected work triggers a warning).
+focus_areas:
+  fetcher: 0.15
+  processor: 0.20
+  scorer: 0.15
+  web: 0.15
+  db: 0.10
+  cli: 0.10
+  tests: 0.10
+  docs: 0.05
