@@ -7,6 +7,7 @@ import httpx
 
 from .config import load_config
 from .fetcher import get_tweet_url
+from .taxonomy import Category
 
 
 def is_quiet_hours() -> bool:
@@ -72,7 +73,7 @@ def format_alert(
 
     # Category display - handle list or string
     if isinstance(category, list):
-        cats = [c for c in category if c != "noise"]
+        cats = [c for c in category if c != Category.NOISE]
         cat_display = ", ".join(c.replace("_", " ").upper() for c in cats) if cats else "MARKET"
     else:
         cat_display = category.replace("_", " ").upper() if category else "MARKET"

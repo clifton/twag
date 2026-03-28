@@ -1,26 +1,36 @@
 """Prompt templates for LLM scoring and analysis."""
 
-# Triage prompt for fast scoring
-TRIAGE_PROMPT = """You are a financial markets triage agent. Score this tweet 0-10 for relevance to macro/investing.
+from twag.taxonomy import CATEGORIES_CSV
 
-Categories (assign 1-3 that apply): fed_policy, inflation, job_market, macro_data, earnings, equities, rates_fx, credit, banks, consumer_spending, capex, commodities, energy, metals_mining, geopolitical, sanctions, tech_business, ai_advancement, crypto, noise
+# Triage prompt for fast scoring
+TRIAGE_PROMPT = (
+    """You are a financial markets triage agent. Score this tweet 0-10 for relevance to macro/investing.
+
+Categories (assign 1-3 that apply): """
+    + CATEGORIES_CSV
+    + """
 
 Tweet: {tweet_text}
 Author: @{handle}
 
 Return JSON only:
 {{"score": 7, "categories": ["fed_policy", "rates_fx"], "summary": "One-liner summary", "tickers": ["TLT", "GLD"]}}"""
+)
 
 # Batch triage prompt
-BATCH_TRIAGE_PROMPT = """You are a financial markets triage agent. Score these tweets 0-10 for relevance to macro/investing.
+BATCH_TRIAGE_PROMPT = (
+    """You are a financial markets triage agent. Score these tweets 0-10 for relevance to macro/investing.
 
-Categories (assign 1-3 that apply): fed_policy, inflation, job_market, macro_data, earnings, equities, rates_fx, credit, banks, consumer_spending, capex, commodities, energy, metals_mining, geopolitical, sanctions, tech_business, ai_advancement, crypto, noise
+Categories (assign 1-3 that apply): """
+    + CATEGORIES_CSV
+    + """
 
 Tweets:
 {tweets}
 
 Return a JSON array with one object per tweet, in order:
 [{{"id": "tweet_id", "score": 7, "categories": ["fed_policy", "rates_fx"], "summary": "One-liner", "tickers": ["TLT"]}}]"""
+)
 
 # Enrichment prompt for high-signal tweets
 ENRICHMENT_PROMPT = """You are a financial analyst. Analyze this tweet for actionable insights.

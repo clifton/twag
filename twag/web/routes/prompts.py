@@ -14,6 +14,7 @@ from ...db import (
     rollback_prompt,
     upsert_prompt,
 )
+from ...taxonomy import ReactionType
 
 router = APIRouter(tags=["prompts"])
 
@@ -148,9 +149,9 @@ async def tune_prompt(request: Request, tune_req: TuneRequest) -> dict[str, Any]
             return {"error": f"Prompt '{tune_req.prompt_name}' not found"}
 
         # Get reactions with tweets
-        high_importance = get_reactions_with_tweets(conn, ">>", tune_req.reaction_limit)
-        should_be_higher = get_reactions_with_tweets(conn, ">", tune_req.reaction_limit)
-        less_important = get_reactions_with_tweets(conn, "<", tune_req.reaction_limit)
+        high_importance = get_reactions_with_tweets(conn, ReactionType.BOOST, tune_req.reaction_limit)
+        should_be_higher = get_reactions_with_tweets(conn, ReactionType.UPVOTE, tune_req.reaction_limit)
+        less_important = get_reactions_with_tweets(conn, ReactionType.DOWNVOTE, tune_req.reaction_limit)
 
     if not high_importance and not should_be_higher and not less_important:
         return {"error": "No reactions found. Add reactions to tweets first."}

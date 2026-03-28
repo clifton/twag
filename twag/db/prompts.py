@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
+from twag.taxonomy import CATEGORIES_CSV
+
 
 @dataclass
 class Prompt:
@@ -22,7 +24,9 @@ class Prompt:
 DEFAULT_PROMPTS = {
     "triage": """You are a financial markets triage agent. Score this tweet 0-10 for relevance to macro/investing.
 
-Categories (assign 1-3 that apply): fed_policy, inflation, job_market, macro_data, earnings, equities, rates_fx, credit, banks, consumer_spending, capex, commodities, energy, metals_mining, geopolitical, sanctions, tech_business, ai_advancement, crypto, noise
+Categories (assign 1-3 that apply): """
+    + CATEGORIES_CSV
+    + """
 
 Tweet: {tweet_text}
 Author: @{handle}
@@ -31,7 +35,9 @@ Return JSON only:
 {{"score": 7, "categories": ["fed_policy", "rates_fx"], "summary": "One-liner summary", "tickers": ["TLT", "GLD"]}}""",
     "batch_triage": """You are a financial markets triage agent. Score these tweets 0-10 for relevance to macro/investing.
 
-Categories (assign 1-3 that apply): fed_policy, inflation, job_market, macro_data, earnings, equities, rates_fx, credit, banks, consumer_spending, capex, commodities, energy, metals_mining, geopolitical, sanctions, tech_business, ai_advancement, crypto, noise
+Categories (assign 1-3 that apply): """
+    + CATEGORIES_CSV
+    + """
 
 Tweets:
 {tweets}

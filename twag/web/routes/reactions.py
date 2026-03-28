@@ -14,6 +14,7 @@ from ...db import (
     insert_reaction,
     mute_account,
 )
+from ...taxonomy import ReactionType
 
 router = APIRouter(tags=["reactions"])
 
@@ -42,12 +43,12 @@ async def create_reaction(request: Request, reaction: ReactionCreate) -> dict[st
     db_path = request.app.state.db_path
 
     # Validate reaction type
-    valid_types = {">>", ">", "<", "x_author", "x_topic"}
+    valid_types = set(ReactionType)
     if reaction.reaction_type not in valid_types:
         return {"error": f"Invalid reaction type. Must be one of: {valid_types}"}
 
     # Handle mute actions
-    if reaction.reaction_type == "x_author":
+    if reaction.reaction_type == ReactionType.MUTE_AUTHOR:
         if not reaction.target:
             return {"error": "target (author handle) required for x_author reaction"}
 
