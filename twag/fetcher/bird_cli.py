@@ -2,7 +2,9 @@
 
 import json
 import logging
+import os
 import random
+import re
 import subprocess
 import tempfile
 import threading
@@ -19,6 +21,21 @@ log = logging.getLogger(__name__)
 _BIRD_RATE_LOCK = threading.Lock()
 _BIRD_LAST_CALL = 0.0
 _MAX_RETWEET_HYDRATIONS = 12
+
+# Patterns that may appear in bird stderr and should be redacted before logging
+_SENSITIVE_ENV_VARS = ("AUTH_TOKEN", "CT0", "GEMINI_API_KEY", "ANTHROPIC_API_KEY", "TELEGRAM_BOT_TOKEN")
+
+
+def _redact_stderr(text: str) -> str:
+    """Strip sensitive token values from bird stderr before logging."""
+    redacted = text
+    for var in _SENSITIVE_ENV_VARS:
+        val = os.environ.get(var)
+        if val and len(val) >= 8:
+            redacted = redacted.replace(val, f"[REDACTED {var}]")
+    # Also redact long hex-like tokens that may leak (32+ hex chars)
+    redacted = re.sub(r"[0-9a-fA-F]{32,}", "[REDACTED]", redacted)
+    return redacted
 
 
 @dataclass(frozen=True)
@@ -81,7 +98,8 @@ def _run_bird_once(
             tmp.seek(0)
             stdout = tmp.read()
         if result.stderr.strip():
-            lines = result.stderr.strip().splitlines()
+            redacted = _redact_stderr(result.stderr.strip())
+            lines = redacted.splitlines()
             meaningful = [ln for ln in lines if not ln.strip().startswith("\u2139")]
             if meaningful and log_failures:
                 level = logging.WARNING if result.returncode == 0 else logging.ERROR
@@ -105,7 +123,9 @@ def run_bird(args: list[str], timeout: int = 60, *, log_failures: bool = True) -
     # Build command with auth if available
     cmd = ["bird", *args]
 
-    # Add auth flags if we have the tokens
+    # Note: auth tokens are passed as CLI flags because bird CLI does not read
+    # them from environment variables. This makes them visible in `ps` output,
+    # which is acceptable for a single-user local tool.
     auth_token = env.get("AUTH_TOKEN")
     ct0 = env.get("CT0")
 

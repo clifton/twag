@@ -7,8 +7,8 @@
   "likeCount": 13,
   "conversationId": "2019488673935552978",
   "author": {
-    "username": "undrvalue",
-    "name": "market participant"
+    "username": "test_user_fixture",
+    "name": "Test User"
   },
   "authorId": "2007674507587399680",
   "article": {
@@ -31,8 +31,8 @@
           },
           "core": {
             "created_at": "Sun Jan 04 04:44:43 +0000 2026",
-            "name": "market participant",
-            "screen_name": "undrvalue"
+            "name": "Test User",
+            "screen_name": "test_user_fixture"
           },
           "dm_permissions": {
             "can_dm": false
@@ -43,34 +43,34 @@
           "legacy": {
             "default_profile": true,
             "default_profile_image": false,
-            "description": "Semi-pro investor & analyst. Asymmetric stock picking. $10M+ AUM. Tech, consumer, value.",
+            "description": "Test account bio for fixture data.",
             "entities": {
               "description": {
                 "urls": []
               }
             },
             "fast_followers_count": 0,
-            "favourites_count": 501,
-            "followers_count": 1531,
-            "friends_count": 327,
+            "favourites_count": 100,
+            "followers_count": 100,
+            "friends_count": 50,
             "has_custom_timelines": false,
             "is_translator": false,
-            "listed_count": 33,
-            "media_count": 30,
-            "normal_followers_count": 1531,
+            "listed_count": 5,
+            "media_count": 10,
+            "normal_followers_count": 100,
             "pinned_tweet_ids_str": [
               "2010878894271004909"
             ],
             "possibly_sensitive": false,
             "profile_banner_url": "https://pbs.twimg.com/profile_banners/2007674507587399680/1767506863",
             "profile_interstitial_type": "",
-            "statuses_count": 413,
+            "statuses_count": 50,
             "translator_type": "none",
             "want_retweets": true,
             "withheld_in_countries": []
           },
           "location": {
-            "location": "California"
+            "location": "Test Location"
           },
           "media_permissions": {
             "can_media_tag": true
@@ -78,7 +78,7 @@
           "parody_commentary_fan_label": "None",
           "profile_image_shape": "Circle",
           "profile_bio": {
-            "description": "Semi-pro investor & analyst. Asymmetric stock picking. $10M+ AUM. Tech, consumer, value."
+            "description": "Test account bio for fixture data."
           },
           "privacy": {
             "protected": false

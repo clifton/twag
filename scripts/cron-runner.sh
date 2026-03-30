@@ -73,6 +73,8 @@ ${msg}" >/dev/null 2>&1 && return 0
     fi
 
     # Fallback to direct Telegram API
+    # Note: TELEGRAM_BOT_TOKEN is visible in process listings during curl execution.
+    # This is inherent to the Telegram Bot API URL scheme and cannot be avoided without a proxy.
     if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
         curl -sf --max-time 10 --connect-timeout 5 -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             -d "chat_id=${TELEGRAM_CHAT_ID}" \

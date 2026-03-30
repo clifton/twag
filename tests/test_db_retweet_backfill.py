@@ -215,7 +215,7 @@ def test_insert_tweet_retries_transient_database_lock(monkeypatch):
     monkeypatch.setattr(db_connection_mod.time, "sleep", lambda delay: sleeps.append(delay))
 
     inserted = insert_tweet(
-        conn,  # type: ignore[arg-type]
+        conn,  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
         tweet_id="retry-1",
         author_handle="retry_user",
         content="retry content",
