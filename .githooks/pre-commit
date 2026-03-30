@@ -16,7 +16,7 @@ uv run ruff check . || {
 }
 
 echo "Running ty type check..."
-uvx ty check || {
+uv run ty check || {
     echo "ty type check failed."
     exit 1
 }
