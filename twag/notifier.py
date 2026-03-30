@@ -26,13 +26,6 @@ def is_quiet_hours() -> bool:
     return start <= hour < end
 
 
-def get_recent_alert_count() -> int:
-    """Get count of alerts sent in the last hour."""
-    # TODO: Track in database
-    # For now, return 0 to allow alerts
-    return 0
-
-
 def can_send_alert(score: float = 0) -> bool:
     """Check if we can send an alert now."""
     config = load_config()
@@ -48,11 +41,6 @@ def can_send_alert(score: float = 0) -> bool:
 
     # Check quiet hours
     if is_quiet_hours():
-        return False
-
-    # Check rate limit
-    max_per_hour = notif_config.get("max_alerts_per_hour", 10)
-    if get_recent_alert_count() >= max_per_hour:
         return False
 
     return True

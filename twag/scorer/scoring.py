@@ -39,17 +39,6 @@ class EnrichmentResult:
 
 
 @dataclass
-class VisionResult:
-    """Result of chart/image analysis."""
-
-    chart_type: str
-    description: str
-    insight: str
-    implication: str
-    tickers: list[str] = field(default_factory=list)
-
-
-@dataclass
 class MediaAnalysisResult:
     """Result of image/media analysis."""
 
@@ -303,12 +292,12 @@ def summarize_x_article(
     )
 
 
-def analyze_image(
+def analyze_media(
     image_url: str,
     model: str | None = None,
     provider: str | None = None,
 ) -> MediaAnalysisResult:
-    """Analyze a chart or image from a tweet."""
+    """Analyze any tweet media image with OCR and classification."""
     config = load_config()
     model = model or config["llm"]["vision_model"]
     provider = provider or config["llm"].get("vision_provider", "anthropic")
@@ -348,12 +337,3 @@ def analyze_image(
             "tickers": table.get("tickers", []),
         },
     )
-
-
-def analyze_media(
-    image_url: str,
-    model: str | None = None,
-    provider: str | None = None,
-) -> MediaAnalysisResult:
-    """Analyze any tweet media image with OCR and classification."""
-    return analyze_image(image_url=image_url, model=model, provider=provider)
