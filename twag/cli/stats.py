@@ -102,3 +102,50 @@ def export(fmt: str, days: int):
         tweets = [dict(row) for row in cursor.fetchall()]
 
     click.echo(json.dumps(tweets, indent=2, default=str))
+
+
+@click.command("bus-factor")
+@click.option("--path", "-p", type=click.Path(exists=True), default=".", help="Path to git repo")
+@click.option("--ext", "-e", multiple=True, help="Filter by file extension (e.g. .py .js)")
+@click.option("--top", "-n", type=int, default=20, help="Show top N modules")
+def bus_factor(path: str, ext: tuple[str, ...], top: int):
+    """Analyze code ownership concentration (bus factor)."""
+    from ..bus_factor import analyze_repo
+
+    extensions = set(ext) if ext else None
+    modules, repo_bf = analyze_repo(repo_path=path, extensions=extensions)
+
+    # Show repo-wide bus factor
+    risk_style = {"HIGH": "bold red", "MEDIUM": "yellow", "LOW": "green"}
+    repo_risk = "HIGH" if repo_bf <= 1 else ("MEDIUM" if repo_bf <= 2 else "LOW")
+    console.print(f"\nRepo-wide bus factor: [bold]{repo_bf}[/bold]  [{risk_style[repo_risk]}]{repo_risk}[/]")
+    console.print()
+
+    # Filter to directory-level modules and sort by risk
+    dir_modules = sorted(
+        ((p, s) for p, s in modules.items() if p.endswith("/")),
+        key=lambda x: (x[1].bus_factor, -x[1].total_lines),
+    )[:top]
+
+    table = Table(title="Module ownership concentration")
+    table.add_column("Module", style="bold")
+    table.add_column("Lines", justify="right")
+    table.add_column("Dominant Author")
+    table.add_column("Ownership %", justify="right")
+    table.add_column("Bus Factor", justify="right")
+    table.add_column("Risk")
+
+    for mod_path, mod_stats in dir_modules:
+        author, pct = mod_stats.dominant_author
+        risk = mod_stats.risk_level
+        style = risk_style.get(risk, "")
+        table.add_row(
+            mod_path,
+            str(mod_stats.total_lines),
+            author,
+            f"{pct:.0f}%",
+            str(mod_stats.bus_factor),
+            f"[{style}]{risk}[/]",
+        )
+
+    console.print(table)
