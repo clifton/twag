@@ -59,7 +59,11 @@ def get_accounts(
     else:
         order_clause = "ORDER BY tier ASC, weight DESC"
 
-    limit_clause = f"LIMIT {limit}" if limit else ""
+    if limit:
+        limit_clause = "LIMIT ?"
+        params.append(limit)
+    else:
+        limit_clause = ""
 
     cursor = conn.execute(
         f"""

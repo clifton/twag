@@ -279,8 +279,6 @@ async def test_context_command(
         return {
             "error": f"Unsubstituted variables: {unsubstituted}",
             "available_variables": list(variables.keys()),
-            "command_template": cmd.command_template,
-            "final_command": final_command,
         }
 
     # Run the command
@@ -288,9 +286,6 @@ async def test_context_command(
 
     return {
         "command_name": name,
-        "command_template": cmd.command_template,
-        "final_command": final_command,
-        "variables_used": variables,
         "stdout": stdout,
         "stderr": stderr,
         "returncode": returncode,

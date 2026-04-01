@@ -193,6 +193,10 @@ def search_tweets(
     where_clause = " AND ".join(conditions)
 
     # Order clause
+    _SEARCH_ORDER_ALLOWLIST = {"rank", "score", "time"}
+    if order_by not in _SEARCH_ORDER_ALLOWLIST:
+        raise ValueError(f"Invalid order_by value: {order_by!r}. Must be one of {_SEARCH_ORDER_ALLOWLIST}")
+
     if order_by == "score":
         order_clause = "t.relevance_score DESC NULLS LAST"
     elif order_by == "time":
@@ -331,6 +335,10 @@ def get_feed_tweets(
 
     where_clause = " AND ".join(conditions)
     params.extend([limit, offset])
+
+    _FEED_ORDER_ALLOWLIST = {"relevance", "latest"}
+    if order_by not in _FEED_ORDER_ALLOWLIST:
+        raise ValueError(f"Invalid order_by value: {order_by!r}. Must be one of {_FEED_ORDER_ALLOWLIST}")
 
     if order_by == "latest":
         inner_order = "created_at DESC"
