@@ -215,7 +215,7 @@ def test_insert_tweet_retries_transient_database_lock(monkeypatch):
 
     conn = _LockOnceConnection()
     sleeps: list[float] = []
-    monkeypatch.setattr(db_connection_mod.time, "sleep", lambda delay: sleeps.append(delay))
+    monkeypatch.setattr(db_connection_mod.time, "sleep", sleeps.append)
 
     inserted = insert_tweet(
         conn,

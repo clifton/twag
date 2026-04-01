@@ -133,7 +133,7 @@ def test_field_sets_identical(monkeypatch, tmp_path):
 
 
 def test_single_tweet_reactions_is_list(monkeypatch, tmp_path):
-    """reactions must be a list of strings, not a string or null."""
+    """Reactions must be a list of strings, not a string or null."""
     db_path, app = _setup(monkeypatch, tmp_path)
     with get_connection(db_path) as conn:
         _insert(conn)
@@ -148,7 +148,7 @@ def test_single_tweet_reactions_is_list(monkeypatch, tmp_path):
 
 
 def test_single_tweet_reactions_empty_when_none(monkeypatch, tmp_path):
-    """reactions is an empty list when the tweet has no reactions."""
+    """Reactions is an empty list when the tweet has no reactions."""
     db_path, app = _setup(monkeypatch, tmp_path)
     with get_connection(db_path) as conn:
         _insert(conn)

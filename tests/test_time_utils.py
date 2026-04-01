@@ -12,7 +12,7 @@ class TestGetEtOffset:
         summer = datetime(2025, 7, 15, 12, 0, tzinfo=timezone.utc)
         with patch("twag.db.time_utils.datetime") as mock_dt:
             mock_dt.now.return_value = summer
-            mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+            mock_dt.side_effect = datetime
             result = _get_et_offset()
         assert result == timedelta(hours=-4)
 
@@ -21,7 +21,7 @@ class TestGetEtOffset:
         winter = datetime(2025, 1, 15, 12, 0, tzinfo=timezone.utc)
         with patch("twag.db.time_utils.datetime") as mock_dt:
             mock_dt.now.return_value = winter
-            mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+            mock_dt.side_effect = datetime
             result = _get_et_offset()
         assert result == timedelta(hours=-5)
 

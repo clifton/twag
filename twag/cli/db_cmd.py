@@ -52,7 +52,7 @@ def db_rebuild_fts():
 @click.argument("output", type=click.Path(), default=None, required=False)
 @click.option("--stdout", is_flag=True, help="Output to stdout instead of file")
 def db_dump(output: str | None, stdout: bool):
-    """Dump database to SQL file (FTS5-safe).
+    r"""Dump database to SQL file (FTS5-safe).
 
     \b
     Examples:
@@ -96,7 +96,7 @@ def db_dump(output: str | None, stdout: bool):
 @click.argument("input_file", type=click.Path(exists=True))
 @click.option("--force", is_flag=True, help="Overwrite existing database without prompting")
 def db_restore(input_file: str, force: bool):
-    """Restore database from SQL dump (handles .gz files).
+    r"""Restore database from SQL dump (handles .gz files).
 
     \b
     WARNING: This will replace the existing database!
