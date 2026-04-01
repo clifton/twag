@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint:
+  lint-and-typecheck:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,15 +21,6 @@ jobs:
       - run: uv sync --group dev
       - run: uv run ruff check twag/ tests/ scripts/
       - run: uv run ruff format --check twag/ tests/ scripts/
-
-  typecheck:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-      - run: uv sync --group dev
       - run: uvx ty check --output-format github
 
   test:
