@@ -15,7 +15,7 @@ from ..config import load_config
 from ..db import (
     get_accounts,
     get_connection,
-    get_tweet_by_id,
+    get_tweets_by_ids,
     get_unprocessed_tweets,
 )
 from ..fetcher import read_tweet
@@ -283,6 +283,10 @@ def enrich_high_signal(
             )
             account_categories = {row["handle"]: row["category"] for row in acct_cursor.fetchall()}
 
+        # Batch-fetch all quoted tweets in one query instead of N individual lookups.
+        quote_ids = {tweet["quote_tweet_id"] for tweet in tweets if tweet["has_quote"] and tweet["quote_tweet_id"]}
+        quoted_rows = get_tweets_by_ids(conn, quote_ids) if quote_ids else {}
+
         results: list[EnrichmentResult] = []
         futures = {}
         # Enrichment workers compute results only; DB writes stay on this thread after future resolution.
@@ -294,7 +298,7 @@ def enrich_high_signal(
             for tweet in tweets:
                 quoted_text = ""
                 if tweet["has_quote"] and tweet["quote_tweet_id"]:
-                    quoted_row = get_tweet_by_id(conn, tweet["quote_tweet_id"])
+                    quoted_row = quoted_rows.get(tweet["quote_tweet_id"])
                     if quoted_row:
                         quoted_text = f"@{quoted_row['author_handle']}: {quoted_row['content']}"
                     else:
