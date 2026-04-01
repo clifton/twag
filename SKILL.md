@@ -179,7 +179,7 @@ twag search "query" --format json    # JSON output
 ```bash
 twag fetch                    # Home + tier-1 + bookmarks
 twag fetch --no-tier1         # Home only
-twag fetch -u @handle         # Specific user
+twag fetch --source user -u @handle  # Specific user
 twag fetch --source search -q "query"  # Search tweets
 
 twag process                  # Score unprocessed (no alerts by default)
@@ -219,6 +219,12 @@ twag stats                    # All-time
 twag stats --today            # Today
 twag prune --days 14          # Delete old tweets
 twag export --days 7          # Export recent
+```
+
+### Narratives
+
+```bash
+twag narratives list          # List active narratives
 ```
 
 ### Database

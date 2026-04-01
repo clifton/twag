@@ -261,6 +261,12 @@ twag prune --dry-run            # Preview prune
 twag export --days 7            # Export recent data
 ```
 
+### Narratives
+
+```bash
+twag narratives list            # List active narratives
+```
+
 ### Database Commands
 
 ```bash
