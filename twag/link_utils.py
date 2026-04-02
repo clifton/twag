@@ -29,6 +29,8 @@ _network_expansion_lock = Lock()
 
 @dataclass
 class LinkNormalizationResult:
+    """Result of normalizing a tweet's links: cleaned display text, inline embeds, and external links."""
+
     display_text: str
     inline_tweet_links: list[dict[str, str]]
     external_links: list[dict[str, str]]

@@ -7,6 +7,7 @@ from typing import Any
 
 
 def parse_media_items(raw: str | None) -> list[dict[str, Any]]:
+    """Parse a JSON string of media items into a list of dicts, tolerating missing or malformed input."""
     if not raw:
         return []
     try:
@@ -30,6 +31,7 @@ def parse_media_items(raw: str | None) -> list[dict[str, Any]]:
 
 
 def build_media_summary(items: list[dict[str, Any]]) -> str:
+    """Build a pipe-delimited one-line summary from analyzed media items."""
     parts: list[str] = []
     for item in items:
         prose_summary = (item.get("prose_summary") or "").strip()
@@ -48,6 +50,7 @@ def build_media_summary(items: list[dict[str, Any]]) -> str:
 
 
 def build_media_context(items: list[dict[str, Any]]) -> str:
+    """Build a multi-section text block describing each media item for LLM context."""
     sections: list[str] = []
     for idx, item in enumerate(items, start=1):
         kind = item.get("kind") or "image"

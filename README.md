@@ -216,6 +216,12 @@ twag search "market" --min-score 7          # High-signal only
 - Boolean: `inflation AND fed`, `fed NOT fomc`
 - Prefix: `infla*` (wildcard)
 
+### Narrative Commands
+
+```bash
+twag narratives list            # List active narratives with mention counts
+```
+
 ### Analyze Commands
 
 ```bash
