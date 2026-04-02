@@ -70,3 +70,20 @@ jobs:
       - run: npm ci
       - run: npx biome check .
       - run: npm run build
+
+  dependency-risk:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: twag/web/frontend/package-lock.json
+      - run: uv sync --group dev
+      - run: cd twag/web/frontend && npm ci
+      - run: uv run python scripts/dependency_risk.py
