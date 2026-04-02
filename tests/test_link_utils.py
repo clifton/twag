@@ -1,4 +1,11 @@
-from twag.link_utils import expand_links_in_place, normalize_tweet_links
+from twag.link_utils import (
+    clean_url_candidate,
+    expand_links_in_place,
+    extract_urls_from_text,
+    normalize_tweet_links,
+    parse_tweet_status_id,
+    remove_urls_from_text,
+)
 
 
 def test_normalize_tweet_links_expands_short_urls_without_structured_links(monkeypatch):
@@ -166,3 +173,97 @@ def test_normalize_tweet_links_already_expanded_skips_network_expansion(monkeypa
             "domain": "example.com",
         }
     ]
+
+
+# --- Tests for parse_tweet_status_id ---
+
+
+def test_parse_tweet_status_id_x_url():
+    assert parse_tweet_status_id("https://x.com/user/status/12345") == "12345"
+
+
+def test_parse_tweet_status_id_twitter_url():
+    assert parse_tweet_status_id("https://twitter.com/user/status/67890") == "67890"
+
+
+def test_parse_tweet_status_id_mobile_url():
+    assert parse_tweet_status_id("https://mobile.x.com/user/status/11111") == "11111"
+
+
+def test_parse_tweet_status_id_with_query_params():
+    assert parse_tweet_status_id("https://x.com/user/status/12345?s=20") == "12345"
+
+
+def test_parse_tweet_status_id_none():
+    assert parse_tweet_status_id(None) is None
+
+
+def test_parse_tweet_status_id_non_tweet_url():
+    assert parse_tweet_status_id("https://example.com/page") is None
+
+
+def test_parse_tweet_status_id_empty_string():
+    assert parse_tweet_status_id("") is None
+
+
+# --- Tests for extract_urls_from_text ---
+
+
+def test_extract_urls_from_text_multiple():
+    text = "Visit https://example.com and http://other.org/page"
+    urls = extract_urls_from_text(text)
+    assert "https://example.com" in urls
+    assert "http://other.org/page" in urls
+
+
+def test_extract_urls_from_text_none():
+    assert extract_urls_from_text(None) == []
+
+
+def test_extract_urls_from_text_empty():
+    assert extract_urls_from_text("") == []
+
+
+def test_extract_urls_from_text_no_urls():
+    assert extract_urls_from_text("no links here") == []
+
+
+def test_extract_urls_from_text_deduplicates():
+    text = "https://example.com and again https://example.com"
+    urls = extract_urls_from_text(text)
+    assert len(urls) == 1
+
+
+# --- Tests for remove_urls_from_text ---
+
+
+def test_remove_urls_from_text_removes_matching():
+    text = "before https://example.com after"
+    result = remove_urls_from_text(text, {"https://example.com"})
+    assert "https://example.com" not in result
+    assert "before" in result
+    assert "after" in result
+
+
+def test_remove_urls_from_text_empty_set():
+    text = "keep https://example.com"
+    assert remove_urls_from_text(text, set()) == text
+
+
+def test_remove_urls_from_text_empty_text():
+    assert remove_urls_from_text("", {"https://example.com"}) == ""
+
+
+# --- Tests for clean_url_candidate ---
+
+
+def test_clean_url_candidate_trailing_punctuation():
+    assert clean_url_candidate("https://example.com).") == "https://example.com"
+
+
+def test_clean_url_candidate_clean():
+    assert clean_url_candidate("https://example.com/path") == "https://example.com/path"
+
+
+def test_clean_url_candidate_whitespace():
+    assert clean_url_candidate("  https://example.com  ") == "https://example.com"

@@ -390,3 +390,109 @@ def test_list_tweets_does_not_expand_short_urls_on_request(monkeypatch, tmp_path
     assert response.status_code == 200
     tweet = response.json()["tweets"][0]
     assert tweet["display_content"] == "No runtime expansion https://github.com/example/project"
+
+
+# --- Tests for get_tweet endpoint ---
+
+
+def test_get_tweet_returns_single_tweet(monkeypatch, tmp_path):
+    db_path = tmp_path / "twag_api_get_tweet.db"
+    monkeypatch.setattr("twag.web.app.get_database_path", lambda: db_path)
+    app = create_app()
+
+    with get_connection(db_path) as conn:
+        _insert_processed_tweet(
+            conn,
+            tweet_id="single-1",
+            author_handle="solo_user",
+            content="A single tweet for testing.",
+        )
+        conn.commit()
+
+    client = TestClient(app)
+    response = client.get("/api/tweets/single-1")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["id"] == "single-1"
+    assert data["author_handle"] == "solo_user"
+    assert data["content"] == "A single tweet for testing."
+    assert data["display_content"] == "A single tweet for testing."
+
+
+def test_get_tweet_not_found(monkeypatch, tmp_path):
+    db_path = tmp_path / "twag_api_get_tweet_404.db"
+    monkeypatch.setattr("twag.web.app.get_database_path", lambda: db_path)
+    app = create_app()
+
+    # Initialize the DB schema (no tweets)
+    with get_connection(db_path) as conn:
+        conn.execute("SELECT 1")
+
+    client = TestClient(app)
+    response = client.get("/api/tweets/nonexistent")
+    assert response.status_code == 200
+    assert response.json() == {"error": "Tweet not found"}
+
+
+# --- Tests for list_categories endpoint ---
+
+
+def test_list_categories(monkeypatch, tmp_path):
+    db_path = tmp_path / "twag_api_categories.db"
+    monkeypatch.setattr("twag.web.app.get_database_path", lambda: db_path)
+    app = create_app()
+
+    with get_connection(db_path) as conn:
+        _insert_processed_tweet(conn, tweet_id="cat-1", author_handle="u1", content="Fed policy tweet")
+        _insert_processed_tweet(conn, tweet_id="cat-2", author_handle="u2", content="Equities tweet")
+        _insert_processed_tweet(conn, tweet_id="cat-3", author_handle="u3", content="Another macro")
+        conn.commit()
+
+    client = TestClient(app)
+    response = client.get("/api/categories")
+    assert response.status_code == 200
+    data = response.json()
+    assert "categories" in data
+    # All test tweets have category=["macro"] from _insert_processed_tweet
+    names = [c["name"] for c in data["categories"]]
+    assert "macro" in names
+
+
+# --- Tests for list_tickers endpoint ---
+
+
+def test_list_tickers(monkeypatch, tmp_path):
+    db_path = tmp_path / "twag_api_tickers.db"
+    monkeypatch.setattr("twag.web.app.get_database_path", lambda: db_path)
+    app = create_app()
+
+    with get_connection(db_path) as conn:
+        _insert_processed_tweet(conn, tweet_id="tick-1", author_handle="u1", content="SPX talk")
+        _insert_processed_tweet(conn, tweet_id="tick-2", author_handle="u2", content="More SPX")
+        conn.commit()
+
+    client = TestClient(app)
+    response = client.get("/api/tickers")
+    assert response.status_code == 200
+    data = response.json()
+    assert "tickers" in data
+    # All test tweets have tickers=["SPX"] from _insert_processed_tweet
+    symbols = [t["symbol"] for t in data["tickers"]]
+    assert "SPX" in symbols
+    spx = next(t for t in data["tickers"] if t["symbol"] == "SPX")
+    assert spx["count"] == 2
+
+
+def test_list_tickers_respects_limit(monkeypatch, tmp_path):
+    db_path = tmp_path / "twag_api_tickers_limit.db"
+    monkeypatch.setattr("twag.web.app.get_database_path", lambda: db_path)
+    app = create_app()
+
+    with get_connection(db_path) as conn:
+        _insert_processed_tweet(conn, tweet_id="tl-1", author_handle="u1", content="t1")
+        conn.commit()
+
+    client = TestClient(app)
+    response = client.get("/api/tickers", params={"limit": 1})
+    assert response.status_code == 200
+    assert len(response.json()["tickers"]) <= 1
