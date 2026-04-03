@@ -120,27 +120,47 @@ def _call_gemini_vision(model: str, image_url: str, prompt: str, max_tokens: int
 
 def _call_llm(provider: str, model: str, prompt: str, max_tokens: int = 2048, reasoning: str | None = None) -> str:
     """Call LLM based on provider."""
+    from .. import metrics
+
+    labels = {"provider": provider}
 
     def _invoke() -> str:
         if provider == "gemini":
             return _call_gemini(model, prompt, max_tokens, reasoning=reasoning)
         return _call_anthropic(model, prompt, max_tokens)
 
-    return _with_retry(_invoke)
+    metrics.counter("llm.call_count", labels=labels)
+    try:
+        with metrics.timer("llm.call_total_duration", labels=labels):
+            return _with_retry(_invoke, provider=provider)
+    except Exception:
+        metrics.counter("llm.error_count", labels=labels)
+        raise
 
 
 def _call_llm_vision(provider: str, model: str, image_url: str, prompt: str, max_tokens: int = 1024) -> str:
     """Call LLM with vision based on provider."""
+    from .. import metrics
+
+    labels = {"provider": provider}
 
     def _invoke() -> str:
         if provider == "gemini":
             return _call_gemini_vision(model, image_url, prompt, max_tokens)
         return _call_anthropic_vision(model, image_url, prompt, max_tokens)
 
-    return _with_retry(_invoke)
+    metrics.counter("llm.call_count", labels=labels)
+    try:
+        with metrics.timer("llm.call_total_duration", labels=labels):
+            return _with_retry(_invoke, provider=provider)
+    except Exception:
+        metrics.counter("llm.error_count", labels=labels)
+        raise
 
 
-def _with_retry(fn):
+def _with_retry(fn, *, provider: str = "unknown"):
+    from .. import metrics
+
     config = load_config()
     retries = config.get("llm", {}).get("retry_max_attempts", 4)
     base_delay = config.get("llm", {}).get("retry_base_seconds", 1.0)
@@ -154,8 +174,10 @@ def _with_retry(fn):
         except Exception as exc:
             attempt += 1
             msg = str(exc).lower()
+            # Config errors (missing API key) — not retryable, don't count as retry
             if "not set" in msg and "api" in msg:
                 raise
+            metrics.counter("llm.retry_count", labels={"provider": provider})
             if retries and attempt >= retries:
                 raise
 

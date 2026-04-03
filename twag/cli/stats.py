@@ -86,6 +86,55 @@ def prune(days: int, dry_run: bool):
 
 
 @click.command()
+@click.option("--json", "as_json", is_flag=True, help="Output raw JSON")
+@click.option("--file", "dump_path", type=click.Path(), help="Write JSON to file")
+def metrics(as_json: bool, dump_path: str | None):
+    """Show in-memory pipeline metrics."""
+    from .. import metrics as _metrics
+
+    data = _metrics.get_all_metrics()
+    counters = data.get("counters", {})
+    histograms = data.get("histograms", {})
+
+    if as_json or dump_path:
+        text = _metrics.dump_json(dump_path)
+        if as_json:
+            click.echo(text)
+        if dump_path:
+            console.print(f"Metrics written to {dump_path}")
+        return
+
+    if not counters and not histograms:
+        console.print("No metrics collected yet.")
+        return
+
+    if counters:
+        table = Table(title="Counters", show_header=True)
+        table.add_column("Name", style="bold")
+        table.add_column("Value", justify="right")
+        for name, value in counters.items():
+            table.add_row(name, f"{value:g}")
+        console.print(table)
+
+    if histograms:
+        table = Table(title="Histograms", show_header=True)
+        table.add_column("Name", style="bold")
+        table.add_column("Count", justify="right")
+        table.add_column("Avg", justify="right")
+        table.add_column("Min", justify="right")
+        table.add_column("Max", justify="right")
+        for name, snap in histograms.items():
+            table.add_row(
+                name,
+                str(snap["count"]),
+                f"{snap['avg']:.4f}" if snap["avg"] is not None else "-",
+                f"{snap['min']:.4f}" if snap["min"] is not None else "-",
+                f"{snap['max']:.4f}" if snap["max"] is not None else "-",
+            )
+        console.print(table)
+
+
+@click.command()
 @click.option("--format", "fmt", type=click.Choice(["json"]), default="json")
 @click.option("--days", type=int, default=7, help="Export tweets from last N days")
 def export(fmt: str, days: int):

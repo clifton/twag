@@ -121,6 +121,7 @@ include = ["tests/**"]
 [tool.ty.overrides.rules]
 unsupported-operator = "ignore"
 not-subscriptable = "ignore"
+invalid-argument-type = "ignore"
 
 # Processor — Row|dict union narrowing causes false positives
 [[tool.ty.overrides]]

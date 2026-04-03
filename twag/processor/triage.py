@@ -126,6 +126,9 @@ def _analyze_media_items(
     vision_model: str | None = None,
     vision_provider: str | None = None,
 ) -> tuple[list[dict[str, Any]], bool]:
+    from .. import metrics
+
+    metrics.counter("triage.media_analyses")
     updated = False
     for item in media_items:
         if item.get("kind") or item.get("prose_text") or item.get("short_description"):
@@ -352,6 +355,10 @@ def _triage_rows(
     force_refresh: bool = False,
 ) -> list[TriageResult]:
     """Run triage on provided rows and persist results."""
+    from .. import metrics
+
+    metrics.counter("triage.batch_count")
+    metrics.counter("triage.tweets_triaged", value=len(tweet_rows))
     config = load_config()
     max_text_workers = _normalized_worker_count(config.get("llm", {}).get("max_concurrency_text", 5), 5)
     max_triage_workers = _normalized_worker_count(
@@ -460,6 +467,7 @@ def _triage_rows(
 
     def _submit_article(tweet_id: str, tweet_row: sqlite3.Row) -> None:
         """Prepare article processing and submit to text_pool."""
+        metrics.counter("triage.article_summarizations")
         row = get_tweet_by_id(conn, tweet_id)
         if not row or (row["article_processed_at"] and not force_refresh):
             _complete_task(tweet_id)

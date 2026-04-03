@@ -44,6 +44,8 @@ def process_unprocessed(
     force_refresh: bool = False,
 ) -> list[TriageResult]:
     """Process tweets that haven't been scored yet."""
+    from .. import metrics
+
     config = load_config()
     batch_size = config["scoring"]["batch_size"]
     high_threshold = config["scoring"]["high_signal_threshold"]
@@ -55,11 +57,13 @@ def process_unprocessed(
         15,
     )
 
-    with get_connection() as conn:
+    with get_connection() as conn, metrics.timer("pipeline.process_duration"):
         unprocessed = rows if rows is not None else get_unprocessed_tweets(conn, limit=limit)
 
         if not unprocessed:
             return []
+
+        metrics.counter("pipeline.unprocessed_queue_depth", value=len(unprocessed))
 
         if quote_depth > 0:
             if status_cb:
@@ -75,13 +79,14 @@ def process_unprocessed(
             )
 
         if not dry_run:
-            unprocessed = _expand_links_for_rows(
-                conn,
-                unprocessed,
-                max_workers=url_expansion_workers,
-                quote_depth=max(1, quote_depth),
-                status_cb=status_cb,
-            )
+            with metrics.timer("pipeline.link_expansion_duration"):
+                unprocessed = _expand_links_for_rows(
+                    conn,
+                    unprocessed,
+                    max_workers=url_expansion_workers,
+                    quote_depth=max(1, quote_depth),
+                    status_cb=status_cb,
+                )
 
         if total_cb:
             total_cb(len(unprocessed))
@@ -137,6 +142,7 @@ def process_unprocessed(
             force_refresh=force_refresh,
         )
 
+        metrics.counter("pipeline.triage_result_count", value=len(results))
         conn.commit()
 
     return results

@@ -2,6 +2,7 @@
 
 import html
 import os
+import time
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -9,7 +10,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.base import BaseHTTPMiddleware
 
+from .. import metrics
 from ..config import get_database_path
 from ..db import init_db
 from .routes import context, prompts, reactions, tweets
@@ -17,6 +20,23 @@ from .routes import context, prompts, reactions, tweets
 # Paths
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 FRONTEND_DIST = Path(__file__).parent / "frontend" / "dist"
+
+
+class MetricsMiddleware(BaseHTTPMiddleware):
+    """Record request duration by route template, avoiding per-ID label explosion."""
+
+    async def dispatch(self, request: Request, call_next):
+        start = time.perf_counter()
+        response = await call_next(request)
+        elapsed = time.perf_counter() - start
+
+        # Use the route template path (e.g. /api/tweets/{id}) when available
+        # to avoid unbounded cardinality from parameterized URLs.
+        route = request.scope.get("route")
+        path = getattr(route, "path", None) or request.url.path
+        labels = {"method": request.method, "path": path}
+        metrics.histogram("web.request_duration", elapsed, labels=labels)
+        return response
 
 
 def create_app() -> FastAPI:
@@ -36,6 +56,9 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Request duration metrics (added after CORS so it wraps the inner handler)
+    app.add_middleware(MetricsMiddleware)
 
     # Initialize database
     init_db(app.state.db_path)

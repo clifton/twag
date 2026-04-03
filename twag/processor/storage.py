@@ -44,6 +44,8 @@ def _store_tweets(
     progress_cb: Callable[[int], None] | None = None,
 ) -> tuple[int, int]:
     """Unified storage for fetched/bookmarked tweets."""
+    from .. import metrics
+
     fetched = len(tweets)
     new_count = 0
     seen_quotes: set[str] = set()
@@ -130,6 +132,11 @@ def _store_tweets(
 
         if progress_cb:
             progress_cb(1)
+
+    labels = {"source": source}
+    metrics.counter("fetch.invocations", labels=labels)
+    metrics.counter("fetch.tweets_fetched", value=fetched, labels=labels)
+    metrics.counter("fetch.new_tweets_stored", value=new_count, labels=labels)
 
     log_fetch(
         conn,
