@@ -3,12 +3,12 @@
 import logging
 import sqlite3
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
 from ..config import get_database_path
-from .schema import FTS_SCHEMA, SCHEMA
+from .schema import FTS_SCHEMA, LATEST_SCHEMA_VERSION, SCHEMA
 
 log = logging.getLogger(__name__)
 _LOCK_RETRY_ATTEMPTS = 4
@@ -26,7 +26,18 @@ def init_db(db_path: Path | None = None) -> None:
     for attempt in range(max_attempts):
         try:
             with get_connection(db_path) as conn:
+                # Detect fresh database before applying SCHEMA
+                is_fresh = (
+                    conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='tweets'").fetchone()
+                    is None
+                )
+                if not is_fresh:
+                    # Legacy databases need columns added before SCHEMA indexes
+                    _ensure_tables_exist(conn)
+                    _migrate_v0_legacy(conn)
                 conn.executescript(SCHEMA)
+                if is_fresh:
+                    _set_schema_version(conn, LATEST_SCHEMA_VERSION)
                 _run_migrations(conn)
                 conn.commit()
             return
@@ -77,108 +88,138 @@ def commit_with_retry(conn: sqlite3.Connection) -> None:
     _with_lock_retry("sqlite commit", conn.commit)
 
 
+def _ensure_tables_exist(conn: sqlite3.Connection) -> None:
+    """Execute only CREATE TABLE statements from SCHEMA (skip indexes).
+
+    This is needed before legacy migration so that new tables (like
+    schema_version) exist, but index creation is deferred until after
+    columns are added by the migration.
+    """
+    import re
+
+    for stmt in SCHEMA.split(";"):
+        stmt = stmt.strip()
+        if re.match(r"CREATE\s+(TABLE|VIRTUAL\s+TABLE)", stmt, re.IGNORECASE):
+            conn.execute(stmt)
+
+
+def get_schema_version(conn: sqlite3.Connection) -> int:
+    """Return the current schema version, or 0 if untracked."""
+    cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'")
+    if cursor.fetchone() is None:
+        return 0
+    row = conn.execute("SELECT version FROM schema_version WHERE id = 1").fetchone()
+    return row[0] if row else 0
+
+
+def _set_schema_version(conn: sqlite3.Connection, version: int) -> None:
+    """Set the schema version, creating the table if needed."""
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS schema_version (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            version INTEGER NOT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )"""
+    )
+    conn.execute(
+        "INSERT INTO schema_version (id, version, updated_at) VALUES (1, ?, CURRENT_TIMESTAMP) "
+        "ON CONFLICT(id) DO UPDATE SET version = excluded.version, updated_at = CURRENT_TIMESTAMP",
+        (version,),
+    )
+
+
 def _run_migrations(conn: sqlite3.Connection) -> None:
-    """Run schema migrations for existing databases."""
+    """Run schema migrations for existing databases.
+
+    On a fresh database (schema_version table created by SCHEMA with latest
+    version), this is a no-op beyond seeding prompts and FTS.  On a legacy
+    database without schema_version, we run the legacy column-check migration
+    first (v0 → v1), then apply any newer numbered migrations.
+    """
     from .prompts import seed_prompts
 
-    # Check tweets table columns
-    cursor = conn.execute("PRAGMA table_info(tweets)")
-    tweet_columns = {row[1] for row in cursor.fetchall()}
+    current = get_schema_version(conn)
 
-    if "bookmarked" not in tweet_columns:
-        conn.execute("ALTER TABLE tweets ADD COLUMN bookmarked INTEGER DEFAULT 0")
-        conn.execute("ALTER TABLE tweets ADD COLUMN bookmarked_at TIMESTAMP")
+    # Legacy database: no schema_version table yet
+    if current == 0:
+        _migrate_v0_legacy(conn)
+        _set_schema_version(conn, 0)
+        current = 0
 
-    if "content_summary" not in tweet_columns:
-        conn.execute("ALTER TABLE tweets ADD COLUMN content_summary TEXT")
+    # Numbered migrations: each entry is (version, migrate_fn)
+    migrations: list[tuple[int, Callable]] = [
+        (1, _migrate_v1_narratives_unique),
+    ]
 
-    if "media_items" not in tweet_columns:
-        conn.execute("ALTER TABLE tweets ADD COLUMN media_items TEXT")
+    for version, migrate_fn in migrations:
+        if current < version:
+            log.info("Applying schema migration v%d", version)
+            migrate_fn(conn)
+            _set_schema_version(conn, version)
+            current = version
 
-    if "analysis_json" not in tweet_columns:
-        conn.execute("ALTER TABLE tweets ADD COLUMN analysis_json TEXT")
-
-    if "is_retweet" not in tweet_columns:
-        conn.execute("ALTER TABLE tweets ADD COLUMN is_retweet INTEGER DEFAULT 0")
-
-    if "retweeted_by_handle" not in tweet_columns:
-        conn.execute("ALTER TABLE tweets ADD COLUMN retweeted_by_handle TEXT")
-
-    if "retweeted_by_name" not in tweet_columns:
-        conn.execute("ALTER TABLE tweets ADD COLUMN retweeted_by_name TEXT")
-
-    if "original_tweet_id" not in tweet_columns:
-        conn.execute("ALTER TABLE tweets ADD COLUMN original_tweet_id TEXT")
-
-    if "original_author_handle" not in tweet_columns:
-        conn.execute("ALTER TABLE tweets ADD COLUMN original_author_handle TEXT")
-
-    if "original_author_name" not in tweet_columns:
-        conn.execute("ALTER TABLE tweets ADD COLUMN original_author_name TEXT")
-
-    if "original_content" not in tweet_columns:
-        conn.execute("ALTER TABLE tweets ADD COLUMN original_content TEXT")
-
-    if "is_x_article" not in tweet_columns:
-        conn.execute("ALTER TABLE tweets ADD COLUMN is_x_article INTEGER DEFAULT 0")
-
-    if "article_title" not in tweet_columns:
-        conn.execute("ALTER TABLE tweets ADD COLUMN article_title TEXT")
-
-    if "article_preview" not in tweet_columns:
-        conn.execute("ALTER TABLE tweets ADD COLUMN article_preview TEXT")
-
-    if "article_text" not in tweet_columns:
-        conn.execute("ALTER TABLE tweets ADD COLUMN article_text TEXT")
-
-    if "article_summary_short" not in tweet_columns:
-        conn.execute("ALTER TABLE tweets ADD COLUMN article_summary_short TEXT")
-
-    if "article_primary_points_json" not in tweet_columns:
-        conn.execute("ALTER TABLE tweets ADD COLUMN article_primary_points_json TEXT")
-
-    if "article_action_items_json" not in tweet_columns:
-        conn.execute("ALTER TABLE tweets ADD COLUMN article_action_items_json TEXT")
-
-    if "article_top_visual_json" not in tweet_columns:
-        conn.execute("ALTER TABLE tweets ADD COLUMN article_top_visual_json TEXT")
-
-    if "article_processed_at" not in tweet_columns:
-        conn.execute("ALTER TABLE tweets ADD COLUMN article_processed_at TIMESTAMP")
-
-    if "links_json" not in tweet_columns:
-        conn.execute("ALTER TABLE tweets ADD COLUMN links_json TEXT")
-
-    if "in_reply_to_tweet_id" not in tweet_columns:
-        conn.execute("ALTER TABLE tweets ADD COLUMN in_reply_to_tweet_id TEXT")
-
-    if "conversation_id" not in tweet_columns:
-        conn.execute("ALTER TABLE tweets ADD COLUMN conversation_id TEXT")
-
-    if "links_expanded_at" not in tweet_columns:
-        conn.execute("ALTER TABLE tweets ADD COLUMN links_expanded_at TIMESTAMP")
-
-    if "quote_reprocessed_at" not in tweet_columns:
-        conn.execute("ALTER TABLE tweets ADD COLUMN quote_reprocessed_at TIMESTAMP")
-
-    # Check accounts table columns
-    cursor = conn.execute("PRAGMA table_info(accounts)")
-    account_columns = {row[1] for row in cursor.fetchall()}
-
-    if "last_fetched_at" not in account_columns:
-        conn.execute("ALTER TABLE accounts ADD COLUMN last_fetched_at TIMESTAMP")
-
-    # Initialize FTS5 if not present
+    # Always ensure FTS and prompts are initialized (idempotent)
     _init_fts(conn)
 
-    # Seed prompts if table exists but is empty
     cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='prompts'")
     if cursor.fetchone():
         seeded = seed_prompts(conn)
         if seeded > 0:
             conn.commit()
 
-    # Ensure performance indexes exist on existing databases
+
+def _migrate_v0_legacy(conn: sqlite3.Connection) -> None:
+    """Legacy migration: add columns and indexes that pre-versioned databases may lack."""
+    # Check tweets table columns
+    cursor = conn.execute("PRAGMA table_info(tweets)")
+    tweet_columns = {row[1] for row in cursor.fetchall()}
+
+    _add_columns_if_missing(
+        conn,
+        "tweets",
+        tweet_columns,
+        [
+            ("bookmarked", "INTEGER DEFAULT 0"),
+            ("bookmarked_at", "TIMESTAMP"),
+            ("content_summary", "TEXT"),
+            ("media_items", "TEXT"),
+            ("analysis_json", "TEXT"),
+            ("is_retweet", "INTEGER DEFAULT 0"),
+            ("retweeted_by_handle", "TEXT"),
+            ("retweeted_by_name", "TEXT"),
+            ("original_tweet_id", "TEXT"),
+            ("original_author_handle", "TEXT"),
+            ("original_author_name", "TEXT"),
+            ("original_content", "TEXT"),
+            ("is_x_article", "INTEGER DEFAULT 0"),
+            ("article_title", "TEXT"),
+            ("article_preview", "TEXT"),
+            ("article_text", "TEXT"),
+            ("article_summary_short", "TEXT"),
+            ("article_primary_points_json", "TEXT"),
+            ("article_action_items_json", "TEXT"),
+            ("article_top_visual_json", "TEXT"),
+            ("article_processed_at", "TIMESTAMP"),
+            ("links_json", "TEXT"),
+            ("in_reply_to_tweet_id", "TEXT"),
+            ("conversation_id", "TEXT"),
+            ("links_expanded_at", "TIMESTAMP"),
+            ("quote_reprocessed_at", "TIMESTAMP"),
+        ],
+    )
+
+    # Check accounts table columns
+    cursor = conn.execute("PRAGMA table_info(accounts)")
+    account_columns = {row[1] for row in cursor.fetchall()}
+
+    _add_columns_if_missing(
+        conn,
+        "accounts",
+        account_columns,
+        [("last_fetched_at", "TIMESTAMP")],
+    )
+
+    # Ensure indexes exist on legacy databases
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_tweets_processed_score "
         "ON tweets(processed_at, relevance_score DESC, created_at DESC)"
@@ -194,6 +235,23 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         "ON tweets(in_reply_to_tweet_id) WHERE in_reply_to_tweet_id IS NOT NULL"
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_fetch_log_endpoint ON fetch_log(endpoint, executed_at DESC)")
+
+
+def _add_columns_if_missing(
+    conn: sqlite3.Connection,
+    table: str,
+    existing: set[str],
+    columns: list[tuple[str, str]],
+) -> None:
+    """Add columns to a table if they don't already exist."""
+    for col_name, col_type in columns:
+        if col_name not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_type}")
+
+
+def _migrate_v1_narratives_unique(conn: sqlite3.Connection) -> None:
+    """Add UNIQUE index on narratives.name for existing databases."""
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_narratives_name ON narratives(name)")
 
 
 def _init_fts(conn: sqlite3.Connection) -> None:

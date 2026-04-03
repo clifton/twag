@@ -11,7 +11,7 @@ from .accounts import (
     update_account_stats,
     upsert_account,
 )
-from .connection import get_connection, init_db, rebuild_fts
+from .connection import get_connection, get_schema_version, init_db, rebuild_fts
 from .context_commands import (
     ContextCommand,
     delete_context_command,
@@ -51,7 +51,7 @@ from .reactions import (
     get_reactions_with_tweets,
     insert_reaction,
 )
-from .schema import FTS_SCHEMA, SCHEMA
+from .schema import FTS_SCHEMA, LATEST_SCHEMA_VERSION, SCHEMA
 from .search import (
     EQUITY_KEYWORDS,
     FeedTweet,
@@ -92,6 +92,7 @@ __all__ = [
     "DEFAULT_PROMPTS",
     "EQUITY_KEYWORDS",
     "FTS_SCHEMA",
+    "LATEST_SCHEMA_VERSION",
     "SCHEMA",
     "ContextCommand",
     "FeedTweet",
@@ -125,6 +126,7 @@ __all__ = [
     "get_reactions_for_tweet",
     "get_reactions_summary",
     "get_reactions_with_tweets",
+    "get_schema_version",
     "get_tweet_by_id",
     "get_tweet_stats",
     "get_tweets_by_ids",

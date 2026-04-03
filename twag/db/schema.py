@@ -1,5 +1,8 @@
 """Database schema definitions for twag."""
 
+# Bump this when adding a new migration in connection.py
+LATEST_SCHEMA_VERSION = 1
+
 SCHEMA = """
 -- Tweets: Core storage with deduplication
 CREATE TABLE IF NOT EXISTS tweets (
@@ -85,7 +88,7 @@ CREATE TABLE IF NOT EXISTS accounts (
 -- Narratives: Emerging theme tracking
 CREATE TABLE IF NOT EXISTS narratives (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
+    name TEXT NOT NULL UNIQUE,
     first_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_mentioned_at TIMESTAMP,
     mention_count INTEGER DEFAULT 1,
@@ -172,6 +175,14 @@ CREATE TABLE IF NOT EXISTS context_commands (
 CREATE INDEX IF NOT EXISTS idx_reactions_tweet ON reactions(tweet_id);
 CREATE INDEX IF NOT EXISTS idx_reactions_type ON reactions(reaction_type);
 CREATE INDEX IF NOT EXISTS idx_prompt_history_name ON prompt_history(prompt_name, version DESC);
+CREATE INDEX IF NOT EXISTS idx_tweets_reply ON tweets(in_reply_to_tweet_id) WHERE in_reply_to_tweet_id IS NOT NULL;
+
+-- Schema version tracking
+CREATE TABLE IF NOT EXISTS schema_version (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    version INTEGER NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 # FTS5 schema for full-text search

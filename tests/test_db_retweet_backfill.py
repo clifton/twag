@@ -2,6 +2,7 @@
 
 import json
 import sqlite3
+from typing import Any, cast
 
 import twag.db.connection as db_connection_mod
 from twag.db import get_connection, get_tweet_by_id, init_db, insert_tweet
@@ -210,12 +211,12 @@ def test_insert_tweet_retries_transient_database_lock(monkeypatch):
             self.params = params
             return None
 
-    conn = _LockOnceConnection()
+    conn = cast(Any, _LockOnceConnection())
     sleeps: list[float] = []
     monkeypatch.setattr(db_connection_mod.time, "sleep", lambda delay: sleeps.append(delay))
 
     inserted = insert_tweet(
-        conn,  # type: ignore[arg-type]
+        conn,
         tweet_id="retry-1",
         author_handle="retry_user",
         content="retry content",

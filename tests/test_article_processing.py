@@ -3,6 +3,7 @@
 import json
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, cast
 
 from twag.db import (
     get_connection,
@@ -235,14 +236,17 @@ def test_prefer_stronger_signal_tier_avoids_downgrade() -> None:
 
 
 def test_build_triage_text_prefers_article_body() -> None:
-    row = {
-        "content": "Short teaser",
-        "is_x_article": 1,
-        "article_title": "Capex note",
-        "article_preview": "Preview",
-        "article_text": "Deep dive " * 800,
-    }
-    text = _build_triage_text(row)  # type: ignore[arg-type]
+    row = cast(
+        Any,
+        {
+            "content": "Short teaser",
+            "is_x_article": 1,
+            "article_title": "Capex note",
+            "article_preview": "Preview",
+            "article_text": "Deep dive " * 800,
+        },
+    )
+    text = _build_triage_text(row)
 
     assert text.startswith("Capex note")
     assert "Deep dive" in text

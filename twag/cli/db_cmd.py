@@ -7,7 +7,8 @@ from pathlib import Path
 import rich_click as click
 
 from ..config import get_database_path
-from ..db import dump_sql, get_connection, init_db, rebuild_fts, restore_sql
+from ..db import dump_sql, get_connection, get_schema_version, init_db, rebuild_fts, restore_sql
+from ..db.schema import LATEST_SCHEMA_VERSION
 from ._console import console
 
 
@@ -36,6 +37,18 @@ def db_init():
     """Initialize/reset the database."""
     init_db()
     console.print(f"Database initialized at: {get_database_path()}")
+
+
+@db.command("schema-version")
+def db_schema_version():
+    """Show current schema version."""
+    db_file = get_database_path()
+    if not db_file.exists():
+        console.print("[red]Database not found. Run 'twag db init' first.[/red]")
+        return
+    with get_connection(readonly=True) as conn:
+        version = get_schema_version(conn)
+    console.print(f"Schema version: {version} (latest: {LATEST_SCHEMA_VERSION})")
 
 
 @db.command("rebuild-fts")
