@@ -1,5 +1,6 @@
 """Telegram notifications for high-signal tweets."""
 
+import logging
 import os
 from datetime import datetime
 
@@ -7,6 +8,8 @@ import httpx
 
 from .config import load_config
 from .fetcher import get_tweet_url
+
+log = logging.getLogger(__name__)
 
 
 def is_quiet_hours() -> bool:
@@ -134,6 +137,7 @@ def send_telegram_alert(
         )
         return response.status_code == 200
     except Exception:
+        log.error("Telegram alert delivery failed", exc_info=True)
         return False
 
 

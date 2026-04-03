@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -29,6 +30,8 @@ from .dependencies import (
     _fetch_quote_chain,
     _fetch_reply_chain,
 )
+
+log = logging.getLogger(__name__)
 
 
 def _store_tweets(
@@ -91,6 +94,7 @@ def _store_tweets(
 
         if inserted:
             new_count += 1
+            log.debug("Stored new tweet %s from @%s", tweet.id, tweet.author_handle)
 
         if bookmarked:
             mark_tweet_bookmarked(conn, tweet.id)

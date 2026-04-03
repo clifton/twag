@@ -1,5 +1,8 @@
 """CLI entry point for twag."""
 
+import logging
+import os
+
 import rich_click as click
 
 from .. import __version__
@@ -27,10 +30,23 @@ from .analyze import _echo_wrapped as _echo_wrapped
 from .analyze import _print_status_analysis as _print_status_analysis
 
 
+def _configure_logging() -> None:
+    """Set up root logger with stderr handler, level from TWAG_LOG_LEVEL."""
+    level_name = os.environ.get("TWAG_LOG_LEVEL", "WARNING").upper()
+    level = getattr(logging, level_name, logging.WARNING)
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(asctime)s %(name)s %(levelname)s %(message)s"))
+    root = logging.getLogger("twag")
+    root.setLevel(level)
+    if not root.handlers:
+        root.addHandler(handler)
+
+
 @click.group()
 @click.version_option(version=__version__)
 def cli():
     """Twitter aggregator for market-relevant signals."""
+    _configure_logging()
 
 
 # Register commands

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
@@ -31,6 +32,8 @@ from ..scorer import (
     summarize_x_article,
     triage_tweets_batch,
 )
+
+log = logging.getLogger(__name__)
 
 _SIGNAL_TIER_RANK = {
     "noise": 0,
@@ -136,6 +139,7 @@ def _analyze_media_items(
         try:
             result = analyze_media(url, model=vision_model, provider=vision_provider)
         except Exception:
+            log.warning("Media analysis failed for %s", url, exc_info=True)
             continue
 
         item["kind"] = result.kind
@@ -187,6 +191,7 @@ def _merge_document_media(media_items: list[dict[str, Any]]) -> bool:
     try:
         combined_summary = summarize_document_text(combined_text)
     except Exception:
+        log.warning("Document summarization failed, using fallback", exc_info=True)
         combined_summary = (media_items[doc_entries[0][1]].get("prose_summary") or "").strip()
 
     primary_idx = doc_entries[0][1]
@@ -455,7 +460,7 @@ def _triage_rows(
                 )
                 _save_enrichment_result(conn, tweet_id, row, result)
             except Exception:
-                pass
+                log.warning("Enrichment failed for tweet %s", tweet_id, exc_info=True)
             _complete_task(tweet_id)
 
     def _submit_article(tweet_id: str, tweet_row: sqlite3.Row) -> None:
@@ -540,7 +545,7 @@ def _triage_rows(
                         media_items=media_items,
                     )
             except Exception:
-                pass
+                log.warning("Article processing failed for tweet %s", tweet_id, exc_info=True)
             _complete_task(tweet_id)
 
     def _handle_results(results: list[TriageResult]) -> None:
@@ -601,7 +606,7 @@ def _triage_rows(
                             content_summary=content_summary,
                         )
                     except Exception:
-                        pass
+                        log.warning("Summarization failed for tweet %s", result.tweet_id, exc_info=True)
 
             if update_stats:
                 update_account_stats(
@@ -698,6 +703,7 @@ def _triage_rows(
                 try:
                     results = future.result()
                 except Exception:
+                    log.error("Triage batch %d failed", batch_index, exc_info=True)
                     if status_cb:
                         status_cb(f"Batch {batch_index} failed")
                     if progress_cb:
@@ -730,7 +736,7 @@ def _triage_rows(
                             content_summary=content_summary,
                         )
                 except Exception:
-                    pass
+                    log.warning("Summary worker failed for tweet %s", tweet_id, exc_info=True)
                 _complete_task(tweet_id)
             elif tag == "media":
                 tweet_id = data
@@ -744,7 +750,7 @@ def _triage_rows(
                         media_items=updated_items,
                     )
                 except Exception:
-                    pass
+                    log.warning("Media worker failed for tweet %s", tweet_id, exc_info=True)
                 _complete_task(tweet_id)
             elif tag == "article":
                 tweet_id, row = data
@@ -775,7 +781,7 @@ def _triage_rows(
                             media_items=analyzed_items,
                         )
                 except Exception:
-                    pass
+                    log.warning("Article worker failed for tweet %s", tweet_id, exc_info=True)
                 _complete_task(tweet_id)
             elif tag == "enrich":
                 tweet_id, row = data
@@ -783,7 +789,7 @@ def _triage_rows(
                     result = future.result()
                     _save_enrichment_result(conn, tweet_id, row, result)
                 except Exception:
-                    pass
+                    log.warning("Enrichment worker failed for tweet %s", tweet_id, exc_info=True)
                 _complete_task(tweet_id)
     finally:
         if triage_pool:

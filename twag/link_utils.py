@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from functools import lru_cache
 from threading import Lock
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
+
+log = logging.getLogger(__name__)
 
 _URL_RE = re.compile(r"https?://[^\s<>()]+", re.IGNORECASE)
 _TRAILING_PUNCT_RE = re.compile(r"[)\],.?!:;]+$")
@@ -114,6 +117,7 @@ def _expand_short_url(url: str) -> str:
                 if resolved:
                     return resolved
         except Exception:
+            log.debug("URL expansion failed for %s (%s)", cleaned, method, exc_info=True)
             continue
     return cleaned
 

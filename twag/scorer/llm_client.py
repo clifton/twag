@@ -1,6 +1,7 @@
 """LLM client infrastructure: provider dispatch, retry logic, JSON parsing."""
 
 import json
+import logging
 import random
 import time
 from typing import Any
@@ -9,6 +10,8 @@ from anthropic import Anthropic
 
 from twag.auth import get_api_key
 from twag.config import load_config
+
+log = logging.getLogger(__name__)
 
 
 def get_anthropic_client() -> Anthropic:
@@ -157,8 +160,10 @@ def _with_retry(fn):
             if "not set" in msg and "api" in msg:
                 raise
             if retries and attempt >= retries:
+                log.warning("LLM call failed after %d attempts: %s", attempt, exc)
                 raise
 
+            log.info("LLM retry attempt %d/%d: %s", attempt, retries, exc)
             delay = min(max_delay, base_delay * (2 ** (attempt - 1)))
             if jitter:
                 delay = max(0.0, delay * (1 + random.uniform(-jitter, jitter)))
