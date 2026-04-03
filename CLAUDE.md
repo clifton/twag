@@ -166,4 +166,6 @@ If command behavior changes, update `README.md` and `SKILL.md` in the same PR.
 - Keep commits focused and atomic
 - Run formatting/lint/tests before committing
 - Don't commit temporary artifacts unless explicitly requested
-- Write descriptive commit messages
+- Use [Conventional Commits](https://www.conventionalcommits.org/) format: `type[(scope)][!]: description`
+- Allowed types: `feat`, `fix`, `docs`, `chore`, `refactor`, `perf`, `test`, `ci`, `security`
+- A `.githooks/commit-msg` hook enforces this automatically

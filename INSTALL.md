@@ -113,6 +113,7 @@ pip install twag
 git clone https://github.com/clifton/twag.git
 cd twag
 pip install -e .
+git config core.hooksPath .githooks
 ```
 
 ### Using uv
