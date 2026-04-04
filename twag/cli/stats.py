@@ -2,6 +2,7 @@
 
 import json
 from datetime import datetime
+from pathlib import Path
 
 import rich_click as click
 from rich.table import Table
@@ -102,3 +103,34 @@ def export(fmt: str, days: int):
         tweets = [dict(row) for row in cursor.fetchall()]
 
     click.echo(json.dumps(tweets, indent=2, default=str))
+
+
+@click.command("bus-factor")
+@click.option("--output", "-o", type=click.Path(), help="Save JSON report to file")
+def bus_factor(output: str | None):
+    """Analyze code ownership concentration (bus factor)."""
+    from ..bus_factor import analyze_repo, format_report_json
+
+    repo_dir = str(Path(__file__).resolve().parent.parent.parent)
+    report = analyze_repo(repo_dir)
+
+    console.print(f"Bus factor: [bold]{report['bus_factor']}[/bold]")
+    console.print(f"Total lines: {report['total_lines']:,}")
+    console.print(f"Total files: {report['total_files']}")
+    console.print(f"Unique authors: {report['unique_authors']}")
+
+    if report["high_risk_files"]:
+        console.print(f"\n[yellow]High-risk files ({len(report['high_risk_files'])}):[/yellow]")
+        table = Table(show_header=True)
+        table.add_column("File")
+        table.add_column("Lines", justify="right")
+        table.add_column("Top Author")
+        table.add_column("%", justify="right")
+        for f in report["high_risk_files"][:20]:
+            table.add_row(f["path"], str(f["total_lines"]), f["top_author"], f"{f['top_author_pct']:.0f}%")
+        console.print(table)
+
+    if output:
+        Path(output).parent.mkdir(parents=True, exist_ok=True)
+        Path(output).write_text(format_report_json(report))
+        console.print(f"\nReport saved to {output}")
