@@ -6,6 +6,8 @@ from typing import Any
 
 from pydantic import BaseModel, field_validator
 
+from ..taxonomy import MediaKind, SignalTier
+
 
 class TriageResult(BaseModel):
     """Result of tweet triage scoring."""
@@ -25,7 +27,7 @@ class TriageResult(BaseModel):
 class EnrichmentResult(BaseModel):
     """Result of tweet enrichment analysis."""
 
-    signal_tier: str = "noise"
+    signal_tier: str = SignalTier.NOISE
     insight: str = ""
     implications: str = ""
     narratives: list[str] = []
@@ -45,7 +47,7 @@ class VisionResult(BaseModel):
 class MediaAnalysisResult(BaseModel):
     """Result of image/media analysis."""
 
-    kind: str = "other"
+    kind: str = MediaKind.OTHER
     short_description: str = ""
     prose_text: str = ""
     prose_summary: str = ""

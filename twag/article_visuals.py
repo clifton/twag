@@ -5,7 +5,9 @@ from __future__ import annotations
 import re
 from typing import Any
 
-_DATA_KINDS = {"chart", "table", "document", "screenshot"}
+from .taxonomy import MediaKind
+
+_DATA_KINDS = {MediaKind.CHART, MediaKind.TABLE, MediaKind.DOCUMENT, MediaKind.SCREENSHOT}
 _TEXTUAL_DATA_PATTERN = re.compile(
     r"\b(chart|graph|table|capex|revenue|margin|growth|yoy|qoq|forecast|projection|run[-\s]?rate|backlog|roi|ebitda|eps)\b"
 )
@@ -32,9 +34,9 @@ def _infer_kind(item: dict[str, Any]) -> str:
     if isinstance(item.get("chart"), dict) and (
         item["chart"].get("description") or item["chart"].get("insight") or item["chart"].get("implication")
     ):
-        return "chart"
+        return MediaKind.CHART
     if isinstance(item.get("table"), dict) and (item["table"].get("columns") or item["table"].get("summary")):
-        return "table"
+        return MediaKind.TABLE
     text_blob = _text_blob(
         item.get("short_description"),
         item.get("prose_summary"),
@@ -42,20 +44,20 @@ def _infer_kind(item: dict[str, Any]) -> str:
         item.get("alt_text"),
     )
     if _looks_data_text(text_blob):
-        return "chart"
+        return MediaKind.CHART
     return kind
 
 
 def _extract_takeaway(item: dict[str, Any], kind: str) -> str:
-    if kind == "chart":
+    if kind == MediaKind.CHART:
         raw_chart = item.get("chart")
         chart = raw_chart if isinstance(raw_chart, dict) else {}
         return str(chart.get("insight") or chart.get("implication") or chart.get("description") or "").strip()
-    if kind == "table":
+    if kind == MediaKind.TABLE:
         raw_table = item.get("table")
         table = raw_table if isinstance(raw_table, dict) else {}
         return str(table.get("summary") or table.get("description") or "").strip()
-    if kind in {"document", "screenshot"}:
+    if kind in {MediaKind.DOCUMENT, MediaKind.SCREENSHOT}:
         return str(item.get("prose_summary") or item.get("short_description") or "").strip()
     return str(item.get("short_description") or "").strip()
 
@@ -96,7 +98,7 @@ def build_article_visuals(
                 visuals.append(
                     {
                         "url": top_url,
-                        "kind": top_kind if top_kind in _DATA_KINDS else "chart",
+                        "kind": top_kind if top_kind in _DATA_KINDS else MediaKind.CHART,
                         "is_top": True,
                         "why_important": why_important,
                         "key_takeaway": key_takeaway,
@@ -116,8 +118,14 @@ def build_article_visuals(
             if not _is_relevant_visual(item, kind):
                 continue
             takeaway = _extract_takeaway(item, kind)
-            normalized_kind = kind if kind in _DATA_KINDS else "chart"
-            priority = {"chart": 0, "table": 1, "screenshot": 2, "document": 3}.get(normalized_kind, 9)
+            normalized_kind = kind if kind in _DATA_KINDS else MediaKind.CHART
+            _kind_priority: dict[str, int] = {
+                MediaKind.CHART: 0,
+                MediaKind.TABLE: 1,
+                MediaKind.SCREENSHOT: 2,
+                MediaKind.DOCUMENT: 3,
+            }
+            priority = _kind_priority.get(normalized_kind, 9)
             extras.append(
                 (
                     priority,

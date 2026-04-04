@@ -31,13 +31,7 @@ from ..scorer import (
     summarize_x_article,
     triage_tweets_batch,
 )
-
-_SIGNAL_TIER_RANK = {
-    "noise": 0,
-    "news": 1,
-    "market_relevant": 2,
-    "high_signal": 3,
-}
+from ..taxonomy import SIGNAL_TIER_RANK, MediaKind, score_to_signal_tier
 
 
 def _normalized_worker_count(value: Any, fallback: int) -> int:
@@ -58,8 +52,8 @@ def _prefer_stronger_signal_tier(existing: str | None, candidate: str | None) ->
     if not candidate:
         return existing
 
-    existing_rank = _SIGNAL_TIER_RANK.get(str(existing), -1)
-    candidate_rank = _SIGNAL_TIER_RANK.get(str(candidate), -1)
+    existing_rank = SIGNAL_TIER_RANK.get(str(existing), -1)
+    candidate_rank = SIGNAL_TIER_RANK.get(str(candidate), -1)
     return candidate if candidate_rank > existing_rank else existing
 
 
@@ -165,7 +159,7 @@ def _merge_document_media(media_items: list[dict[str, Any]]) -> bool:
     doc_entries: list[tuple[int | None, int, str]] = []
     for idx, item in enumerate(media_items):
         kind = (item.get("kind") or "").lower()
-        if kind not in {"document", "screenshot"}:
+        if kind not in {MediaKind.DOCUMENT, MediaKind.SCREENSHOT}:
             continue
         text = (item.get("prose_text") or "").strip()
         if not text:
@@ -270,27 +264,27 @@ def _select_article_top_visual(
         if not candidate_text:
             continue
 
-        if kind in {"meme", "photo", "other", ""}:
+        if kind in {MediaKind.MEME, MediaKind.PHOTO, MediaKind.OTHER, ""}:
             continue
 
         has_numbers = bool(re.search(r"\d", candidate_text))
         overlap = len(_tokenize_for_overlap(candidate_text) & context_tokens) if context_tokens else 0
 
         # Gate non-chart visuals heavily to avoid irrelevant picks.
-        if kind in {"document", "screenshot"} and (overlap < 2 or not has_numbers):
+        if kind in {MediaKind.DOCUMENT, MediaKind.SCREENSHOT} and (overlap < 2 or not has_numbers):
             continue
-        if kind not in {"chart", "table", "document", "screenshot"}:
+        if kind not in {MediaKind.CHART, MediaKind.TABLE, MediaKind.DOCUMENT, MediaKind.SCREENSHOT}:
             continue
-        if kind in {"chart", "table"} and overlap == 0 and not has_numbers:
+        if kind in {MediaKind.CHART, MediaKind.TABLE} and overlap == 0 and not has_numbers:
             continue
 
-        base = 100.0 if kind in {"chart", "table"} else 70.0
+        base = 100.0 if kind in {MediaKind.CHART, MediaKind.TABLE} else 70.0
         score = base + (10.0 if has_numbers else 0.0) + float(overlap * 5)
 
         takeaway = ""
-        if kind == "chart":
+        if kind == MediaKind.CHART:
             takeaway = str(chart.get("insight") or chart.get("description") or "").strip()
-        elif kind == "table":
+        elif kind == MediaKind.TABLE:
             takeaway = str(table.get("summary") or table.get("description") or "").strip()
         if not takeaway:
             takeaway = str(item.get("prose_summary") or item.get("short_description") or "").strip()
@@ -549,14 +543,7 @@ def _triage_rows(
             if status_cb and tweet_row:
                 status_cb(f"Saving @{tweet_row['author_handle']}")
 
-            if result.score >= 8:
-                tier = "high_signal"
-            elif result.score >= 6:
-                tier = "market_relevant"
-            elif result.score >= 4:
-                tier = "news"
-            else:
-                tier = "noise"
+            tier = score_to_signal_tier(result.score)
 
             update_tweet_processing(
                 conn,

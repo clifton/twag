@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from twag.config import load_config
+from twag.taxonomy import Category, MediaKind, SignalTier
 
 from .llm_client import _call_llm, _call_llm_vision, _parse_json_response
 from .prompts import (
@@ -91,7 +92,7 @@ def triage_tweet(
         data = data[0]
 
     # Handle both old "category" (string) and new "categories" (array) format
-    categories = data.get("categories") or [data.get("category", "noise")]
+    categories = data.get("categories") or [data.get("category", Category.NOISE)]
     if isinstance(categories, str):
         categories = [categories]
 
@@ -185,7 +186,7 @@ def enrich_tweet(
         data = data[0]
 
     return EnrichmentResult(
-        signal_tier=data.get("signal_tier", "noise"),
+        signal_tier=data.get("signal_tier", SignalTier.NOISE),
         insight=data.get("insight", ""),
         implications=data.get("implications", ""),
         narratives=data.get("narratives", []),
@@ -362,7 +363,7 @@ def analyze_image(
         table = {}
 
     return MediaAnalysisResult(
-        kind=(data.get("kind", "other") or "other").lower(),
+        kind=(data.get("kind", MediaKind.OTHER) or MediaKind.OTHER).lower(),
         short_description=(data.get("short_description") or "").strip(),
         prose_text=(data.get("prose_text") or "").strip(),
         prose_summary=(data.get("prose_summary") or "").strip(),

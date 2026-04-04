@@ -11,6 +11,7 @@ from .config import get_digests_dir, load_config
 from .db import get_connection, get_tweet_by_id, get_tweets_for_digest, mark_tweet_in_digest
 from .fetcher import get_tweet_url
 from .link_utils import normalize_tweet_links
+from .taxonomy import SignalTier
 
 
 def _value(tweet: sqlite3.Row | dict, key: str, default=None):
@@ -55,12 +56,12 @@ def render_digest(
         news = []
 
         for tweet in tweets:
-            tier = tweet["signal_tier"] or "noise"
-            if tier == "high_signal":
+            tier = tweet["signal_tier"] or SignalTier.NOISE
+            if tier == SignalTier.HIGH_SIGNAL:
                 high_signal.append(tweet)
-            elif tier == "market_relevant":
+            elif tier == SignalTier.MARKET_RELEVANT:
                 market_relevant.append(tweet)
-            elif tier == "news":
+            elif tier == SignalTier.NEWS:
                 news.append(tweet)
 
         # Render markdown

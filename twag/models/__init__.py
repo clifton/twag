@@ -2,6 +2,14 @@
 
 from __future__ import annotations
 
+from ..taxonomy import (
+    SIGNAL_TIER_RANK,
+    Category,
+    MediaKind,
+    ReactionType,
+    SignalTier,
+    score_to_signal_tier,
+)
 from .api import (
     CategoryCount,
     QuoteEmbed,
@@ -50,9 +58,11 @@ from .scoring import (
 from .tweet import TweetData
 
 __all__ = [
+    "SIGNAL_TIER_RANK",
     "AccountsConfig",
     "ActionableItem",
     "BirdConfig",
+    "Category",
     "CategoryCount",
     "ChartAnalysis",
     "ContextCommand",
@@ -65,6 +75,7 @@ __all__ = [
     "LinkNormalizationResult",
     "MediaAnalysisResult",
     "MediaItem",
+    "MediaKind",
     "NotificationConfig",
     "PathsConfig",
     "PrimaryPoint",
@@ -72,8 +83,10 @@ __all__ = [
     "Prompt",
     "QuoteEmbed",
     "Reaction",
+    "ReactionType",
     "ScoringConfig",
     "SearchResult",
+    "SignalTier",
     "TableAnalysis",
     "TickerCount",
     "TriageResult",
@@ -84,4 +97,5 @@ __all__ = [
     "TweetResponse",
     "VisionResult",
     "XArticleSummaryResult",
+    "score_to_signal_tier",
 ]
