@@ -11,7 +11,6 @@ from .scoring import (
     EnrichmentResult,
     MediaAnalysisResult,
     TriageResult,
-    VisionResult,
     XArticleSummaryResult,
     analyze_image,
     analyze_media,
@@ -19,7 +18,6 @@ from .scoring import (
     summarize_document_text,
     summarize_tweet,
     summarize_x_article,
-    triage_tweet,
     triage_tweets_batch,
 )
 
@@ -27,7 +25,6 @@ __all__ = [
     "EnrichmentResult",
     "MediaAnalysisResult",
     "TriageResult",
-    "VisionResult",
     "XArticleSummaryResult",
     "_call_llm",
     "_call_llm_vision",
@@ -40,6 +37,5 @@ __all__ = [
     "summarize_document_text",
     "summarize_tweet",
     "summarize_x_article",
-    "triage_tweet",
     "triage_tweets_batch",
 ]

@@ -13,7 +13,6 @@ from .prompts import (
     ENRICHMENT_PROMPT,
     MEDIA_PROMPT,
     SUMMARIZE_PROMPT,
-    TRIAGE_PROMPT,
 )
 
 
@@ -40,17 +39,6 @@ class EnrichmentResult:
 
 
 @dataclass
-class VisionResult:
-    """Result of chart/image analysis."""
-
-    chart_type: str
-    description: str
-    insight: str
-    implication: str
-    tickers: list[str] = field(default_factory=list)
-
-
-@dataclass
 class MediaAnalysisResult:
     """Result of image/media analysis."""
 
@@ -69,39 +57,6 @@ class XArticleSummaryResult:
     short_summary: str
     primary_points: list[dict[str, Any]] = field(default_factory=list)
     actionable_items: list[dict[str, Any]] = field(default_factory=list)
-
-
-def triage_tweet(
-    tweet_id: str,
-    tweet_text: str,
-    handle: str,
-    model: str | None = None,
-    provider: str | None = None,
-) -> TriageResult:
-    """Score a single tweet for relevance."""
-    config = load_config()
-    model = model or config["llm"]["triage_model"]
-    provider = provider or config["llm"].get("triage_provider", "anthropic")
-
-    prompt = TRIAGE_PROMPT.format(tweet_text=tweet_text, handle=handle)
-    text = _call_llm(provider, model, prompt, max_tokens=512)
-    data = _parse_json_response(text)
-
-    if isinstance(data, list):
-        data = data[0]
-
-    # Handle both old "category" (string) and new "categories" (array) format
-    categories = data.get("categories") or [data.get("category", "noise")]
-    if isinstance(categories, str):
-        categories = [categories]
-
-    return TriageResult(
-        tweet_id=tweet_id,
-        score=float(data.get("score", 0)),
-        categories=categories,
-        summary=data.get("summary", ""),
-        tickers=data.get("tickers", []),
-    )
 
 
 def triage_tweets_batch(

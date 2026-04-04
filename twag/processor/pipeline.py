@@ -22,7 +22,6 @@ from ..fetcher import read_tweet
 from ..media import build_media_context
 from ..scorer import EnrichmentResult, TriageResult, enrich_tweet
 from .dependencies import _expand_links_for_rows, _expand_unprocessed_with_dependencies
-from .storage import fetch_and_store
 from .triage import (
     _normalized_worker_count,
     _triage_rows,
@@ -358,56 +357,3 @@ def enrich_high_signal(
         conn.commit()
 
     return results
-
-
-def run_full_cycle(
-    fetch_home: bool = True,
-    fetch_tier1: bool = True,
-    process: bool = True,
-    enrich: bool = True,
-) -> dict:
-    """Run a full fetch/process/enrich cycle."""
-    stats = {
-        "home_fetched": 0,
-        "home_new": 0,
-        "tier1_fetched": 0,
-        "tier1_new": 0,
-        "processed": 0,
-        "enriched": 0,
-    }
-
-    # Fetch home timeline
-    if fetch_home:
-        fetched, new = fetch_and_store(source="home", count=100)
-        stats["home_fetched"] = fetched
-        stats["home_new"] = new
-
-    # Fetch tier-1 accounts
-    if fetch_tier1:
-        with get_connection() as conn:
-            tier1 = get_accounts(conn, tier=1)
-
-        for account in tier1:
-            try:
-                fetched, new = fetch_and_store(
-                    source="user",
-                    handle=account["handle"],
-                    count=20,
-                )
-                stats["tier1_fetched"] += fetched
-                stats["tier1_new"] += new
-            except Exception:
-                # Log but continue
-                pass
-
-    # Process unprocessed tweets
-    if process:
-        results = process_unprocessed(limit=100)
-        stats["processed"] = len(results)
-
-    # Enrich high-signal tweets
-    if enrich:
-        results = enrich_high_signal(limit=20)
-        stats["enriched"] = len(results)
-
-    return stats
