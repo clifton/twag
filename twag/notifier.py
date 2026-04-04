@@ -151,6 +151,7 @@ def send_telegram_alert(
             return True
         return False
     except Exception:
+        log.warning("Telegram send failed", exc_info=True)
         return False
 
 

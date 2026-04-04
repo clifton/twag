@@ -1,8 +1,11 @@
 """Tests for twag.notifier — alert formatting and send-gating logic."""
 
+import logging
 from unittest.mock import patch
 
-from twag.notifier import can_send_alert, format_alert
+import httpx
+
+from twag.notifier import can_send_alert, format_alert, send_telegram_alert
 
 
 class TestFormatAlert:
@@ -154,3 +157,42 @@ class TestCanSendAlert:
             patch("twag.notifier.get_recent_alert_count", return_value=0),
         ):
             assert can_send_alert(score=7) is True
+
+
+def test_send_telegram_alert_logs_on_exception(monkeypatch, caplog):
+    """Verify that send_telegram_alert logs a warning when the HTTP call raises."""
+    monkeypatch.setattr(
+        "twag.notifier.load_config",
+        lambda: {"notifications": {"telegram_chat_id": "123"}},
+    )
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "fake-token")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "123")
+
+    def mock_post(*args, **kwargs):
+        raise httpx.ConnectError("connection refused")
+
+    monkeypatch.setattr("twag.notifier.httpx.post", mock_post)
+
+    with caplog.at_level(logging.WARNING, logger="twag.notifier"):
+        result = send_telegram_alert("test message")
+
+    assert result is False
+    assert "Telegram send failed" in caplog.text
+
+
+def test_send_telegram_alert_returns_true_on_success(monkeypatch):
+    """Verify that send_telegram_alert returns True on 200 response."""
+    monkeypatch.setattr(
+        "twag.notifier.load_config",
+        lambda: {"notifications": {"telegram_chat_id": "123"}},
+    )
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "fake-token")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "123")
+
+    class FakeResponse:
+        status_code = 200
+
+    monkeypatch.setattr("twag.notifier.httpx.post", lambda *a, **kw: FakeResponse())
+
+    result = send_telegram_alert("test message")
+    assert result is True

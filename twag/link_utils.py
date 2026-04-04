@@ -7,7 +7,8 @@ from dataclasses import dataclass
 from functools import lru_cache
 from threading import Lock
 from urllib.parse import urlparse
-from urllib.request import Request, urlopen
+
+import httpx
 
 _URL_RE = re.compile(r"https?://[^\s<>()]+", re.IGNORECASE)
 _TRAILING_PUNCT_RE = re.compile(r"[)\],.?!:;]+$")
@@ -110,11 +111,10 @@ def _expand_short_url(url: str) -> str:
     )
     for method, timeout in attempts:
         try:
-            request = Request(cleaned, method=method, headers=headers)
-            with urlopen(request, timeout=timeout) as response:
-                resolved = clean_url_candidate(response.geturl() or cleaned)
-                if resolved:
-                    return resolved
+            response = httpx.request(method, cleaned, headers=headers, timeout=timeout, follow_redirects=True)
+            resolved = clean_url_candidate(str(response.url) or cleaned)
+            if resolved:
+                return resolved
         except Exception:
             continue
     return cleaned

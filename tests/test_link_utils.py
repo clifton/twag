@@ -1,4 +1,8 @@
-from twag.link_utils import expand_links_in_place, normalize_tweet_links
+from unittest.mock import MagicMock
+
+import httpx
+
+from twag.link_utils import _expand_short_url, expand_links_in_place, normalize_tweet_links
 
 
 def test_normalize_tweet_links_expands_short_urls_without_structured_links(monkeypatch):
@@ -137,6 +141,39 @@ def test_expand_links_in_place_limits_short_url_expansions(monkeypatch):
     assert expanded[0]["expanded_url"] == "https://expanded.example/one"
     assert expanded[1]["expanded_url"] == "https://expanded.example/two"
     assert expanded[2]["expanded_url"] == "https://t.co/three"
+
+
+def test_expand_short_url_uses_httpx(monkeypatch):
+    """Verify _expand_short_url resolves via httpx (not urllib)."""
+    _expand_short_url.cache_clear()
+    monkeypatch.setattr("twag.link_utils._network_expansion_attempts", 0)
+
+    mock_response = MagicMock()
+    mock_response.url = httpx.URL("https://example.com/final")
+
+    def mock_request(method, url, **kwargs):
+        return mock_response
+
+    monkeypatch.setattr("twag.link_utils.httpx.request", mock_request)
+
+    result = _expand_short_url("https://t.co/abc123")
+    assert result == "https://example.com/final"
+    _expand_short_url.cache_clear()
+
+
+def test_expand_short_url_falls_back_on_httpx_error(monkeypatch):
+    """Verify _expand_short_url returns original URL when httpx raises."""
+    _expand_short_url.cache_clear()
+    monkeypatch.setattr("twag.link_utils._network_expansion_attempts", 0)
+
+    def mock_request(method, url, **kwargs):
+        raise httpx.ConnectError("connection refused")
+
+    monkeypatch.setattr("twag.link_utils.httpx.request", mock_request)
+
+    result = _expand_short_url("https://t.co/fail456")
+    assert result == "https://t.co/fail456"
+    _expand_short_url.cache_clear()
 
 
 def test_normalize_tweet_links_already_expanded_skips_network_expansion(monkeypatch):
