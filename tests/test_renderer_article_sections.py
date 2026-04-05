@@ -11,13 +11,14 @@ from twag.db import (
 )
 from twag.renderer import render_digest
 
+_FIXED_TS = datetime(2025, 6, 15, 12, 0, tzinfo=timezone.utc)
+
 
 def test_render_digest_uses_labeled_article_sections(monkeypatch, tmp_path):
     db_path = tmp_path / "twag_renderer_article_sections.db"
     init_db(db_path)
 
-    now = datetime.now(timezone.utc)
-    digest_date = now.strftime("%Y-%m-%d")
+    digest_date = _FIXED_TS.strftime("%Y-%m-%d")
 
     with get_connection(db_path) as conn:
         inserted = insert_tweet(
@@ -25,7 +26,7 @@ def test_render_digest_uses_labeled_article_sections(monkeypatch, tmp_path):
             tweet_id="31001",
             author_handle="test_user",
             content="Google's $180B AI capex guidance is a regime shift.",
-            created_at=now,
+            created_at=_FIXED_TS,
             source="test",
             has_link=True,
             is_x_article=True,
@@ -79,7 +80,7 @@ def test_render_digest_uses_labeled_article_sections(monkeypatch, tmp_path):
                 "key_takeaway": "Capex trend inflects sharply after 2023 and spikes in 2026.",
             },
             set_top_visual=True,
-            processed_at=now.isoformat(),
+            processed_at=_FIXED_TS.isoformat(),
         )
         conn.commit()
 

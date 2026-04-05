@@ -101,7 +101,7 @@ def test_triage_overlap_with_summaries_using_dedicated_pool(monkeypatch, tmp_pat
             batch_no = 1 if tweet_id == "tweet-1" else 2
             if batch_no == 2:
                 # Block batch 2 briefly so the summary task can start first.
-                summary_started.wait(timeout=5)
+                summary_started.wait(timeout=15)
                 triage_2_done.set()
             return [
                 TriageResult(

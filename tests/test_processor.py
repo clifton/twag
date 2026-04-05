@@ -3,11 +3,23 @@
 import json
 from datetime import datetime, timezone
 
+import pytest
+
 import twag.processor.dependencies as deps_mod
 import twag.processor.pipeline as pipeline_mod
 from twag.db import get_connection, get_tweet_by_id, init_db, insert_tweet, update_tweet_processing
 from twag.fetcher import Tweet
 from twag.fetcher.bird_cli import ReadTweetFailure, ReadTweetResult
+
+_FIXED_TS = datetime(2025, 6, 15, 12, 0, tzinfo=timezone.utc)
+
+
+@pytest.fixture(autouse=True)
+def _clear_skipped_dependency_fetches():
+    """Reset module-level skip cache before each test to prevent cross-test contamination."""
+    deps_mod._SKIPPED_DEPENDENCY_FETCHES.clear()
+    yield
+    deps_mod._SKIPPED_DEPENDENCY_FETCHES.clear()
 
 
 def test_process_unprocessed_expands_links_and_persists_before_triage(monkeypatch, tmp_path) -> None:
@@ -20,7 +32,7 @@ def test_process_unprocessed_expands_links_and_persists_before_triage(monkeypatc
             tweet_id="1001",
             author_handle="root_user",
             content="Interesting thread https://t.co/ext",
-            created_at=datetime.now(timezone.utc),
+            created_at=_FIXED_TS,
             source="test",
             has_link=True,
             links=[{"url": "https://t.co/ext", "expanded_url": "https://t.co/ext"}],
@@ -94,7 +106,7 @@ def test_process_unprocessed_skips_already_expanded_links(monkeypatch, tmp_path)
             tweet_id="1002",
             author_handle="root_user",
             content="Already expanded https://github.com/example/project",
-            created_at=datetime.now(timezone.utc),
+            created_at=_FIXED_TS,
             source="test",
             has_link=True,
             links=[
@@ -106,7 +118,7 @@ def test_process_unprocessed_skips_already_expanded_links(monkeypatch, tmp_path)
             ],
         )
         assert inserted is True
-        expanded_at = datetime.now(timezone.utc).isoformat()
+        expanded_at = _FIXED_TS.isoformat()
         conn.execute(
             "UPDATE tweets SET links_expanded_at = ? WHERE id = ?",
             (expanded_at, "1002"),
@@ -152,7 +164,7 @@ def test_reprocess_today_quoted_expands_quote_row_links(monkeypatch, tmp_path) -
             tweet_id="q1",
             author_handle="quoted_user",
             content="Quoted text https://t.co/ext",
-            created_at=datetime.now(timezone.utc),
+            created_at=_FIXED_TS,
             source="test",
             has_link=True,
             links=[{"url": "https://t.co/ext", "expanded_url": "https://t.co/ext"}],
@@ -173,7 +185,7 @@ def test_reprocess_today_quoted_expands_quote_row_links(monkeypatch, tmp_path) -
             tweet_id="r1",
             author_handle="root_user",
             content="Root text",
-            created_at=datetime.now(timezone.utc),
+            created_at=_FIXED_TS,
             source="test",
             has_quote=True,
             quote_tweet_id="q1",
@@ -242,7 +254,7 @@ def test_process_unprocessed_adds_reply_parent_to_processing_stack(monkeypatch, 
             tweet_id="p1",
             author_handle="parent_user",
             content="Parent in thread",
-            created_at=datetime.now(timezone.utc),
+            created_at=_FIXED_TS,
             source="test",
         )
         assert inserted_parent is True
@@ -252,7 +264,7 @@ def test_process_unprocessed_adds_reply_parent_to_processing_stack(monkeypatch, 
             tweet_id="r1",
             author_handle="root_user",
             content="Reply child",
-            created_at=datetime.now(timezone.utc),
+            created_at=_FIXED_TS,
             source="test",
             in_reply_to_tweet_id="p1",
             conversation_id="c1",
@@ -300,7 +312,7 @@ def test_process_unprocessed_adds_thread_linked_tweet_to_processing_stack(monkey
             tweet_id="10001",
             author_handle="thread_user",
             content="Earlier thread post",
-            created_at=datetime.now(timezone.utc),
+            created_at=_FIXED_TS,
             source="test",
         )
         assert inserted_linked is True
@@ -310,7 +322,7 @@ def test_process_unprocessed_adds_thread_linked_tweet_to_processing_stack(monkey
             tweet_id="r2",
             author_handle="root_user",
             content="Continuation https://t.co/thread1",
-            created_at=datetime.now(timezone.utc),
+            created_at=_FIXED_TS,
             source="test",
             has_link=True,
             links=[
@@ -364,7 +376,7 @@ def test_process_unprocessed_fetches_dependency_with_malformed_unicode_without_c
             tweet_id="root-1",
             author_handle="root_user",
             content="Root text",
-            created_at=datetime.now(timezone.utc),
+            created_at=_FIXED_TS,
             source="test",
             has_quote=True,
             quote_tweet_id="dep-\ud83d",
@@ -396,7 +408,7 @@ def test_process_unprocessed_fetches_dependency_with_malformed_unicode_without_c
                 author_handle="dep_user\ud83d",
                 author_name="Dep \udc49 User",
                 content="Dependency \ud83d[\udc49 content",
-                created_at=datetime.now(timezone.utc),
+                created_at=_FIXED_TS,
                 has_quote=False,
                 quote_tweet_id=None,
                 in_reply_to_tweet_id=None,
@@ -453,7 +465,6 @@ def test_process_unprocessed_fetches_dependency_with_malformed_unicode_without_c
 def test_dependency_fetch_skips_repeated_non_retryable_failures_in_same_run(monkeypatch, tmp_path, caplog) -> None:
     db_path = tmp_path / "twag_dependency_skip_non_retryable.db"
     init_db(db_path)
-    deps_mod._SKIPPED_DEPENDENCY_FETCHES.clear()
 
     failure = ReadTweetFailure(reason="tweet unavailable or missing: Tweet not found in response", retryable=False)
     calls = {"count": 0}
@@ -475,7 +486,6 @@ def test_dependency_fetch_skips_repeated_non_retryable_failures_in_same_run(monk
 def test_dependency_fetch_does_not_cache_auth_failures(monkeypatch, tmp_path, caplog) -> None:
     db_path = tmp_path / "twag_dependency_keep_auth_retryable.db"
     init_db(db_path)
-    deps_mod._SKIPPED_DEPENDENCY_FETCHES.clear()
 
     failure = ReadTweetFailure(
         reason="authentication/authorization failure: 403 Forbidden: auth token expired",
