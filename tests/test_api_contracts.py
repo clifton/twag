@@ -1,60 +1,20 @@
-"""Contract tests: single-tweet and list-tweet endpoints return the same field set."""
+"""Contract tests: API responses match expected shapes and Pydantic models."""
 
+import re
 from datetime import datetime, timezone
 
 from fastapi.testclient import TestClient
 
 from twag.db import get_connection, insert_tweet, update_tweet_processing
 from twag.db.reactions import insert_reaction
+from twag.models.api import TweetResponse
 from twag.web.app import create_app
 
+# ISO 8601 pattern (with or without timezone)
+ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}")
+
 # Fields that both /api/tweets and /api/tweets/{id} must return.
-SHARED_FIELDS = {
-    "id",
-    "author_handle",
-    "author_name",
-    "display_author_handle",
-    "display_author_name",
-    "display_tweet_id",
-    "content",
-    "content_summary",
-    "summary",
-    "created_at",
-    "relevance_score",
-    "categories",
-    "signal_tier",
-    "tickers",
-    "bookmarked",
-    "has_quote",
-    "quote_tweet_id",
-    "has_media",
-    "media_analysis",
-    "media_items",
-    "has_link",
-    "link_summary",
-    "is_x_article",
-    "article_title",
-    "article_preview",
-    "article_text",
-    "article_summary_short",
-    "article_primary_points",
-    "article_action_items",
-    "article_top_visual",
-    "article_processed_at",
-    "is_retweet",
-    "retweeted_by_handle",
-    "retweeted_by_name",
-    "original_tweet_id",
-    "original_author_handle",
-    "original_author_name",
-    "original_content",
-    "reactions",
-    "quote_embed",
-    "inline_quote_embeds",
-    "reference_links",
-    "external_links",
-    "display_content",
-}
+SHARED_FIELDS = set(TweetResponse.model_fields.keys())
 
 
 def _setup(monkeypatch, tmp_path, db_name="contract.db"):
@@ -85,7 +45,7 @@ def _insert(conn, tweet_id="t1", author_handle="alice", content="hello world", *
     )
 
 
-# ── Field parity ──────────────────────────────────────────────
+# ── Field parity against TweetResponse model ────────────────
 
 
 def test_single_tweet_has_all_shared_fields(monkeypatch, tmp_path):
@@ -127,6 +87,68 @@ def test_field_sets_identical(monkeypatch, tmp_path):
     single = client.get("/api/tweets/t1").json()
     listed = client.get("/api/tweets", params={"since": "30d"}).json()["tweets"][0]
     assert set(single.keys()) == set(listed.keys())
+
+
+def test_response_fields_match_pydantic_model(monkeypatch, tmp_path):
+    """Both endpoints return exactly the fields defined in TweetResponse."""
+    db_path, app = _setup(monkeypatch, tmp_path)
+    with get_connection(db_path) as conn:
+        _insert(conn)
+        conn.commit()
+
+    client = TestClient(app)
+    single_keys = set(client.get("/api/tweets/t1").json().keys())
+    list_keys = set(client.get("/api/tweets", params={"since": "30d"}).json()["tweets"][0].keys())
+
+    model_fields = set(TweetResponse.model_fields.keys())
+    assert single_keys == model_fields, (
+        f"Single drift: extra={single_keys - model_fields}, missing={model_fields - single_keys}"
+    )
+    assert list_keys == model_fields, (
+        f"List drift: extra={list_keys - model_fields}, missing={model_fields - list_keys}"
+    )
+
+
+# ── Date format consistency ──────────────────────────────────
+
+
+def test_created_at_iso_format_both_endpoints(monkeypatch, tmp_path):
+    """created_at must be ISO 8601 on both endpoints."""
+    db_path, app = _setup(monkeypatch, tmp_path)
+    with get_connection(db_path) as conn:
+        _insert(conn)
+        conn.commit()
+
+    client = TestClient(app)
+    single = client.get("/api/tweets/t1").json()
+    listed = client.get("/api/tweets", params={"since": "30d"}).json()["tweets"][0]
+
+    assert single["created_at"] is not None
+    assert ISO_DATE_RE.match(single["created_at"]), f"Not ISO: {single['created_at']}"
+    assert listed["created_at"] is not None
+    assert ISO_DATE_RE.match(listed["created_at"]), f"Not ISO: {listed['created_at']}"
+
+
+def test_article_processed_at_iso_when_present(monkeypatch, tmp_path):
+    """article_processed_at must be ISO 8601 when set, on both endpoints."""
+    db_path, app = _setup(monkeypatch, tmp_path)
+    with get_connection(db_path) as conn:
+        _insert(conn)
+        # Simulate article processing by setting article_processed_at
+        conn.execute(
+            "UPDATE tweets SET article_processed_at = ? WHERE id = ?",
+            (datetime.now(timezone.utc).isoformat(), "t1"),
+        )
+        conn.commit()
+
+    client = TestClient(app)
+    single = client.get("/api/tweets/t1").json()
+    listed = client.get("/api/tweets", params={"since": "30d"}).json()["tweets"][0]
+
+    assert single["article_processed_at"] is not None
+    assert ISO_DATE_RE.match(single["article_processed_at"]), f"Not ISO: {single['article_processed_at']}"
+    assert listed["article_processed_at"] is not None
+    assert ISO_DATE_RE.match(listed["article_processed_at"]), f"Not ISO: {listed['article_processed_at']}"
 
 
 # ── Reactions type ────────────────────────────────────────────
@@ -270,3 +292,165 @@ def test_single_tweet_no_links_json(monkeypatch, tmp_path):
     client = TestClient(app)
     body = client.get("/api/tweets/t1").json()
     assert "links_json" not in body
+
+
+# ── Categories endpoint ──────────────────────────────────────
+
+
+def test_categories_response_shape(monkeypatch, tmp_path):
+    """GET /api/categories returns {categories: [{name: str, count: int}]}."""
+    db_path, app = _setup(monkeypatch, tmp_path)
+    with get_connection(db_path) as conn:
+        _insert(conn, tweet_id="t1")
+        _insert(conn, tweet_id="t2", author_handle="bob", content="another")
+        conn.commit()
+
+    client = TestClient(app)
+    body = client.get("/api/categories").json()
+    assert "categories" in body
+    assert isinstance(body["categories"], list)
+    for cat in body["categories"]:
+        assert "name" in cat and isinstance(cat["name"], str)
+        assert "count" in cat and isinstance(cat["count"], int)
+
+
+def test_categories_returns_aggregated_counts(monkeypatch, tmp_path):
+    """Categories endpoint aggregates across tweets."""
+    db_path, app = _setup(monkeypatch, tmp_path)
+    with get_connection(db_path) as conn:
+        _insert(conn, tweet_id="t1")
+        _insert(conn, tweet_id="t2", author_handle="bob", content="another")
+        conn.commit()
+
+    client = TestClient(app)
+    body = client.get("/api/categories").json()
+    macro = next((c for c in body["categories"] if c["name"] == "macro"), None)
+    assert macro is not None
+    assert macro["count"] >= 2
+
+
+# ── Tickers endpoint ─────────────────────────────────────────
+
+
+def test_tickers_response_shape(monkeypatch, tmp_path):
+    """GET /api/tickers returns {tickers: [{symbol: str, count: int}]}."""
+    db_path, app = _setup(monkeypatch, tmp_path)
+    with get_connection(db_path) as conn:
+        _insert(conn, tweet_id="t1")
+        conn.commit()
+
+    client = TestClient(app)
+    body = client.get("/api/tickers").json()
+    assert "tickers" in body
+    assert isinstance(body["tickers"], list)
+    for ticker in body["tickers"]:
+        assert "symbol" in ticker and isinstance(ticker["symbol"], str)
+        assert "count" in ticker and isinstance(ticker["count"], int)
+
+
+def test_tickers_returns_aggregated_counts(monkeypatch, tmp_path):
+    """Tickers endpoint aggregates across tweets."""
+    db_path, app = _setup(monkeypatch, tmp_path)
+    with get_connection(db_path) as conn:
+        _insert(conn, tweet_id="t1")
+        _insert(conn, tweet_id="t2", author_handle="bob", content="spx talk")
+        conn.commit()
+
+    client = TestClient(app)
+    body = client.get("/api/tickers").json()
+    spx = next((t for t in body["tickers"] if t["symbol"] == "SPX"), None)
+    assert spx is not None
+    assert spx["count"] >= 2
+
+
+# ── Reactions CRUD endpoints ─────────────────────────────────
+
+
+def test_react_creates_reaction(monkeypatch, tmp_path):
+    """POST /api/react creates a reaction and returns id + tweet_id."""
+    db_path, app = _setup(monkeypatch, tmp_path)
+    with get_connection(db_path) as conn:
+        _insert(conn)
+        conn.commit()
+
+    client = TestClient(app)
+    resp = client.post("/api/react", json={"tweet_id": "t1", "reaction_type": ">>"})
+    body = resp.json()
+    assert "id" in body
+    assert body["tweet_id"] == "t1"
+    assert body["reaction_type"] == ">>"
+
+
+def test_react_invalid_type_returns_error(monkeypatch, tmp_path):
+    """POST /api/react with invalid type returns error."""
+    db_path, app = _setup(monkeypatch, tmp_path)
+    with get_connection(db_path) as conn:
+        _insert(conn)
+        conn.commit()
+
+    client = TestClient(app)
+    resp = client.post("/api/react", json={"tweet_id": "t1", "reaction_type": "invalid"})
+    body = resp.json()
+    assert "error" in body
+
+
+def test_get_reactions_for_tweet(monkeypatch, tmp_path):
+    """GET /api/reactions/{tweet_id} returns reactions list."""
+    db_path, app = _setup(monkeypatch, tmp_path)
+    with get_connection(db_path) as conn:
+        _insert(conn)
+        insert_reaction(conn, tweet_id="t1", reaction_type=">>")
+        conn.commit()
+
+    client = TestClient(app)
+    body = client.get("/api/reactions/t1").json()
+    assert body["tweet_id"] == "t1"
+    assert isinstance(body["reactions"], list)
+    assert len(body["reactions"]) >= 1
+    r = body["reactions"][0]
+    assert "id" in r
+    assert "reaction_type" in r
+
+
+def test_delete_reaction(monkeypatch, tmp_path):
+    """DELETE /api/reactions/{id} removes the reaction."""
+    db_path, app = _setup(monkeypatch, tmp_path)
+    with get_connection(db_path) as conn:
+        _insert(conn)
+        rid = insert_reaction(conn, tweet_id="t1", reaction_type=">>")
+        conn.commit()
+
+    client = TestClient(app)
+    resp = client.delete(f"/api/reactions/{rid}")
+    assert resp.json()["message"] == "Reaction deleted"
+
+
+def test_reactions_summary_not_shadowed(monkeypatch, tmp_path):
+    """GET /api/reactions/summary is not captured by the {tweet_id} route."""
+    db_path, app = _setup(monkeypatch, tmp_path)
+    with get_connection(db_path) as conn:
+        _insert(conn)
+        insert_reaction(conn, tweet_id="t1", reaction_type=">>")
+        conn.commit()
+
+    client = TestClient(app)
+    body = client.get("/api/reactions/summary").json()
+    # Must have 'summary' key, NOT 'tweet_id' (which would mean it hit the wrong route)
+    assert "summary" in body
+    assert "tweet_id" not in body
+
+
+def test_reactions_export_not_shadowed(monkeypatch, tmp_path):
+    """GET /api/reactions/export is not captured by the {tweet_id} route."""
+    db_path, app = _setup(monkeypatch, tmp_path)
+    with get_connection(db_path) as conn:
+        _insert(conn)
+        insert_reaction(conn, tweet_id="t1", reaction_type=">>")
+        conn.commit()
+
+    client = TestClient(app)
+    body = client.get("/api/reactions/export").json()
+    # Must have 'count' and 'reactions' keys, NOT 'tweet_id'
+    assert "count" in body
+    assert "reactions" in body
+    assert "tweet_id" not in body

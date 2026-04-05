@@ -17,6 +17,18 @@ from ..tweet_utils import (
 
 router = APIRouter(tags=["tweets"])
 MAX_QUOTE_DEPTH = 3
+
+
+def _parse_iso(raw: str | None) -> str | None:
+    """Parse a raw datetime string from SQLite and return consistent ISO format."""
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw).isoformat()
+    except (ValueError, TypeError):
+        return raw
+
+
 LEGACY_RETWEET_RE = re.compile(r"^\s*RT\s+@([A-Za-z0-9_]{1,15}):\s*(.+)$")
 
 
@@ -527,7 +539,7 @@ async def get_tweet(request: Request, tweet_id: str) -> dict[str, Any]:
         "content": content,
         "content_summary": tweet["content_summary"],
         "summary": tweet["summary"],
-        "created_at": tweet["created_at"],
+        "created_at": _parse_iso(tweet["created_at"]),
         "relevance_score": tweet["relevance_score"],
         "categories": categories,
         "signal_tier": tweet["signal_tier"],
@@ -548,7 +560,7 @@ async def get_tweet(request: Request, tweet_id: str) -> dict[str, Any]:
         "article_primary_points": article_primary_points,
         "article_action_items": article_action_items,
         "article_top_visual": article_top_visual,
-        "article_processed_at": tweet["article_processed_at"],
+        "article_processed_at": _parse_iso(tweet["article_processed_at"]),
         "is_retweet": is_retweet,
         "retweeted_by_handle": retweeted_by_handle,
         "retweeted_by_name": retweeted_by_name,
