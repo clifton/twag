@@ -9,8 +9,8 @@ from twag.fetcher import Tweet
 def _sample_tweet() -> Tweet:
     return Tweet(
         id="2019488673935552978",
-        author_handle="undrvalue",
-        author_name="market participant",
+        author_handle="test_user",
+        author_name="Test User",
         content="Google's $180 Billion Bet",
         created_at=None,
         has_quote=False,
