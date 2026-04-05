@@ -607,6 +607,50 @@ def is_tweet_seen(conn: sqlite3.Connection, tweet_id: str) -> bool:
     return cursor.fetchone() is not None
 
 
+def get_cost_attribution_counts(conn: sqlite3.Connection, date: str | None = None) -> dict[str, int]:
+    """Count LLM calls by type for cost estimation.
+
+    Returns dict with: tweets_triaged, tweets_enriched, tweets_with_media_analysis,
+    tweets_summarized, articles_processed.
+    """
+    if date:
+        where = "WHERE date(created_at) = ?"
+        params: tuple[str, ...] = (date,)
+    else:
+        where = ""
+        params = ()
+
+    cursor = conn.execute(
+        f"""
+        SELECT
+            SUM(CASE WHEN processed_at IS NOT NULL THEN 1 ELSE 0 END) as tweets_triaged,
+            SUM(CASE WHEN processed_at IS NOT NULL AND relevance_score >= 7 THEN 1 ELSE 0 END) as tweets_enriched,
+            SUM(CASE WHEN media_analysis IS NOT NULL THEN 1 ELSE 0 END) as tweets_with_media_analysis,
+            SUM(CASE WHEN content_summary IS NOT NULL THEN 1 ELSE 0 END) as tweets_summarized,
+            SUM(CASE WHEN article_processed_at IS NOT NULL THEN 1 ELSE 0 END) as articles_processed
+        FROM tweets
+        {where}
+        """,
+        params,
+    )
+    row = cursor.fetchone()
+    if row:
+        return {
+            "tweets_triaged": row["tweets_triaged"] or 0,
+            "tweets_enriched": row["tweets_enriched"] or 0,
+            "tweets_with_media_analysis": row["tweets_with_media_analysis"] or 0,
+            "tweets_summarized": row["tweets_summarized"] or 0,
+            "articles_processed": row["articles_processed"] or 0,
+        }
+    return {
+        "tweets_triaged": 0,
+        "tweets_enriched": 0,
+        "tweets_with_media_analysis": 0,
+        "tweets_summarized": 0,
+        "articles_processed": 0,
+    }
+
+
 def get_tweet_stats(conn: sqlite3.Connection, date: str | None = None) -> dict[str, Any]:
     """Get tweet processing statistics."""
     if date:

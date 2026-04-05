@@ -68,6 +68,7 @@ from .time_utils import (
 from .tweets import (
     get_authors_to_promote,
     get_bookmark_counts_by_author,
+    get_cost_attribution_counts,
     get_last_fetch,
     get_processed_counts,
     get_tweet_by_id,
@@ -116,6 +117,7 @@ __all__ = [
     "get_bookmark_counts_by_author",
     "get_connection",
     "get_context_command",
+    "get_cost_attribution_counts",
     "get_feed_tweets",
     "get_last_fetch",
     "get_market_day_cutoff",

@@ -6,9 +6,11 @@ from datetime import datetime
 import rich_click as click
 from rich.table import Table
 
+from ..costs import estimate_costs, total_cost
 from ..db import (
     archive_stale_narratives,
     get_connection,
+    get_cost_attribution_counts,
     get_processed_counts,
     get_tweet_stats,
     prune_old_tweets,
@@ -102,3 +104,63 @@ def export(fmt: str, days: int):
         tweets = [dict(row) for row in cursor.fetchall()]
 
     click.echo(json.dumps(tweets, indent=2, default=str))
+
+
+def _fmt_tokens(n: int) -> str:
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}M"
+    if n >= 1_000:
+        return f"{n / 1_000:.1f}K"
+    return str(n)
+
+
+@click.command()
+@click.option("--date", "-d", help="Date to estimate costs for (YYYY-MM-DD)")
+@click.option("--today", is_flag=True, help="Estimate today's costs")
+@click.option("--model-prices", type=str, default=None, help="JSON override for model pricing")
+def costs(date: str | None, today: bool, model_prices: str | None):
+    """Estimate LLM API costs by pipeline component."""
+    if today:
+        date = datetime.now().strftime("%Y-%m-%d")
+
+    price_overrides = None
+    if model_prices:
+        price_overrides = json.loads(model_prices)
+
+    with get_connection(readonly=True) as conn:
+        counts = get_cost_attribution_counts(conn, date=date)
+
+    components = estimate_costs(counts, model_prices=price_overrides)
+    total = total_cost(components)
+
+    period = f"for {date}" if date else "all time"
+    table = Table(title=f"Estimated LLM costs ({period})")
+    table.add_column("Component", style="bold")
+    table.add_column("Calls", justify="right")
+    table.add_column("Input tokens", justify="right")
+    table.add_column("Output tokens", justify="right")
+    table.add_column("Est. cost", justify="right", style="green")
+
+    for c in components:
+        table.add_row(
+            c.component,
+            str(c.call_count),
+            _fmt_tokens(c.input_tokens),
+            _fmt_tokens(c.output_tokens),
+            f"${c.cost_usd:.4f}",
+        )
+
+    table.add_section()
+    total_in = sum(c.input_tokens for c in components)
+    total_out = sum(c.output_tokens for c in components)
+    total_calls = sum(c.call_count for c in components)
+    table.add_row(
+        "TOTAL",
+        str(total_calls),
+        _fmt_tokens(total_in),
+        _fmt_tokens(total_out),
+        f"${total:.4f}",
+        style="bold",
+    )
+
+    console.print(table)
