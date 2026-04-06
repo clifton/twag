@@ -49,7 +49,7 @@ def test_insert_tweet_duplicate_backfills_retweet_metadata(tmp_path):
                 original_content
             FROM tweets
             WHERE id = 'rt-1'
-            """
+            """,
         ).fetchone()
 
     assert row is not None
@@ -150,7 +150,11 @@ def test_insert_tweet_sanitizes_malformed_unicode_across_text_and_json_fields(tm
             media_items=[{"url": "https://example.com/\ud83d.png", "type": "photo\udc49"}],
             has_link=True,
             links=[
-                {"url": "https://t.co/\ud83d", "expanded_url": "https://example.com/\udc49", "display_url": "bad\ud83d"}
+                {
+                    "url": "https://t.co/\ud83d",
+                    "expanded_url": "https://example.com/\udc49",
+                    "display_url": "bad\ud83d",
+                },
             ],
             is_x_article=True,
             article_title="Title \ud83d",
@@ -193,7 +197,7 @@ def test_insert_tweet_sanitizes_malformed_unicode_across_text_and_json_fields(tm
             "url": "https://t.co/\ufffd",
             "expanded_url": "https://example.com/\ufffd",
             "display_url": "bad\ufffd",
-        }
+        },
     ]
 
 

@@ -215,7 +215,9 @@ def _summarize_read_failure(stderr: str, *, code: int) -> ReadTweetFailure:
 
     if _is_auth_failure(message):
         return ReadTweetFailure(
-            reason=f"authentication/authorization failure: {normalized}", retryable=True, auth_related=True
+            reason=f"authentication/authorization failure: {normalized}",
+            retryable=True,
+            auth_related=True,
         )
     if _is_retryable_read_failure(message):
         return ReadTweetFailure(reason=f"transient bird/X failure: {normalized}", retryable=True)

@@ -39,7 +39,7 @@ def test_build_article_visuals_infers_chart_kind_from_payload() -> None:
         {
             "url": "https://example.com/inferred-chart.jpg",
             "chart": {"description": "Revenue by quarter"},
-        }
+        },
     ]
     visuals = build_article_visuals(top_visual=None, media_items=media, max_items=3)
     assert len(visuals) == 1
@@ -80,7 +80,7 @@ def test_build_article_visuals_skips_non_data_top_visual() -> None:
             "url": "https://example.com/relevant-chart.jpg",
             "kind": "chart",
             "chart": {"insight": "Revenue acceleration by quarter"},
-        }
+        },
     ]
     visuals = build_article_visuals(top_visual=top, media_items=media, max_items=4)
 

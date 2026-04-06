@@ -245,8 +245,8 @@ class TestTweetFromBirdJson:
                         "url": "https://t.co/abc",
                         "expanded_url": "https://x.com/other/status/999",
                         "display_url": "x.com/other/status/999",
-                    }
-                ]
+                    },
+                ],
             },
         }
         tweet = Tweet.from_bird_json(data)
@@ -257,7 +257,7 @@ class TestTweetFromBirdJson:
                 "url": "https://t.co/abc",
                 "expanded_url": "https://x.com/other/status/999",
                 "display_url": "x.com/other/status/999",
-            }
+            },
         ]
 
     def test_parse_x_article_uses_content_when_plain_text_missing(self):
@@ -393,8 +393,8 @@ class TestTweetFromBirdJson:
                         "url": "https://t.co/abc",
                         "expanded_url": "https://example.com/\ud83d",
                         "display_url": "example.com/\udc49",
-                    }
-                ]
+                    },
+                ],
             },
         }
 
@@ -408,7 +408,7 @@ class TestTweetFromBirdJson:
                 "url": "https://t.co/abc",
                 "expanded_url": "https://example.com/\ufffd",
                 "display_url": "example.com/\ufffd",
-            }
+            },
         ]
 
     def test_parse_x_article_replaces_lone_surrogates(self):
@@ -423,9 +423,9 @@ class TestTweetFromBirdJson:
                     "article_results": {
                         "result": {
                             "plain_text": "Article body \ud83d[\udc49 details",
-                        }
-                    }
-                }
+                        },
+                    },
+                },
             },
         }
 
@@ -456,9 +456,9 @@ class TestTweetFromBirdJson:
                                             "AI is going to become the home screen of a ludicrously high percentage of "
                                             "white collar workers in the next two years and parallel agents will be deployed "
                                             "in the battlefield of knowledge work at downright Soviet levels"
-                                        )
-                                    }
-                                }
+                                        ),
+                                    },
+                                },
                             },
                             "core": {
                                 "user_results": {
@@ -466,9 +466,9 @@ class TestTweetFromBirdJson:
                                         "core": {
                                             "screen_name": "DKThomp",
                                             "name": "Derek Thompson",
-                                        }
-                                    }
-                                }
+                                        },
+                                    },
+                                },
                             },
                             "legacy": {
                                 "full_text": (
@@ -476,11 +476,11 @@ class TestTweetFromBirdJson:
                                     "and the odds that we're actually quite under-built for the necessary levels "
                                     "of inference/usage went significantly up in that period \n\nbasically I think "
                                     "AI is going to become the home screen of a"
-                                )
+                                ),
                             },
-                        }
-                    }
-                }
+                        },
+                    },
+                },
             },
         }
 

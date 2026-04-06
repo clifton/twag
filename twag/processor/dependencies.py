@@ -42,7 +42,9 @@ def _row_get(row: sqlite3.Row | dict[str, Any], key: str, default: Any = None) -
 
 
 def _extract_inline_linked_tweet_ids_from_links_json(
-    links_json: str | None, *, skip_id: str | None = None
+    links_json: str | None,
+    *,
+    skip_id: str | None = None,
 ) -> list[str]:
     if not links_json:
         return []

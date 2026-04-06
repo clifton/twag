@@ -7,7 +7,7 @@ from typing import Any
 
 _DATA_KINDS = {"chart", "table", "document", "screenshot"}
 _TEXTUAL_DATA_PATTERN = re.compile(
-    r"\b(chart|graph|table|capex|revenue|margin|growth|yoy|qoq|forecast|projection|run[-\s]?rate|backlog|roi|ebitda|eps)\b"
+    r"\b(chart|graph|table|capex|revenue|margin|growth|yoy|qoq|forecast|projection|run[-\s]?rate|backlog|roi|ebitda|eps)\b",
 )
 _NUMERIC_DATA_PATTERN = re.compile(r"(\$|\b\d+(\.\d+)?%|\b\d+(\.\d+)?\s?(b|m|bn|mn|trillion|billion|million)\b)")
 _NOISE_PATTERN = re.compile(r"\b(meme|reaction image|shitpost|joke|selfie|portrait)\b")
@@ -100,7 +100,7 @@ def build_article_visuals(
                         "is_top": True,
                         "why_important": why_important,
                         "key_takeaway": key_takeaway,
-                    }
+                    },
                 )
                 seen_urls.add(top_url)
 
@@ -128,7 +128,7 @@ def build_article_visuals(
                         "why_important": "",
                         "key_takeaway": takeaway,
                     },
-                )
+                ),
             )
             seen_urls.add(url)
 

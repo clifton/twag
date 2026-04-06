@@ -177,7 +177,7 @@ async def export_reactions(
                     "categories": categories,
                     "signal_tier": tweet["signal_tier"],
                 },
-            }
+            },
         )
 
     return {

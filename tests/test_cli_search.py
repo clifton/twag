@@ -366,7 +366,7 @@ def test_browse_json_article_fields(monkeypatch):
             _make_feed_tweet(
                 is_x_article=True,
                 article_summary_short="Key takeaways from the report",
-            )
+            ),
         ]
 
     monkeypatch.setattr(cli_mod, "get_connection", _fake_connection)
