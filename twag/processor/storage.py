@@ -14,7 +14,6 @@ from ..db import (
     insert_tweet,
     log_fetch,
     mark_tweet_bookmarked,
-    promote_account,
     upsert_account,
 )
 from ..fetcher import (
@@ -228,15 +227,16 @@ def fetch_and_store_bookmarks(count: int = 100) -> tuple[int, int]:
 
 def auto_promote_bookmarked_authors(min_bookmarks: int = 3) -> list[str]:
     """Promote authors with enough bookmarks to tier-1. Returns promoted handles."""
-    promoted = []
-
     with get_connection() as conn:
         authors = get_authors_to_promote(conn, min_bookmarks=min_bookmarks)
+        if not authors:
+            return []
 
-        for handle in authors:
-            promote_account(conn, handle)
-            promoted.append(handle)
-
+        placeholders = ",".join("?" for _ in authors)
+        conn.execute(
+            f"UPDATE accounts SET tier = 1 WHERE handle IN ({placeholders})",
+            authors,
+        )
         conn.commit()
 
-    return promoted
+    return authors

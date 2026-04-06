@@ -18,7 +18,6 @@ from ..db import (
     get_tweet_by_id,
     get_tweets_by_ids,
     insert_tweet,
-    is_tweet_seen,
     update_tweet_links_expanded,
     upsert_account,
 )
@@ -29,6 +28,7 @@ from ..link_utils import expand_links_in_place, parse_tweet_status_id
 log = logging.getLogger(__name__)
 
 _MAX_INLINE_LINK_FETCHES = 4
+_MAX_SKIPPED_CACHE_SIZE = 10_000
 _SKIPPED_DEPENDENCY_FETCHES: dict[str, str] = {}
 
 
@@ -127,6 +127,8 @@ def _read_dependency_tweet(tweet_id: str) -> Tweet | None:
     if result.failure:
         _warn_dependency_fetch_failure(tweet_id, result.failure)
         if not result.failure.retryable and not result.failure.auth_related:
+            if len(_SKIPPED_DEPENDENCY_FETCHES) >= _MAX_SKIPPED_CACHE_SIZE:
+                _SKIPPED_DEPENDENCY_FETCHES.clear()
             _SKIPPED_DEPENDENCY_FETCHES[tweet_id] = result.failure.reason
         return None
 
@@ -357,12 +359,12 @@ def _fetch_quote_by_id(
         return 0
     seen.add(quote_id)
 
-    if is_tweet_seen(conn, quote_id):
-        row = get_tweet_by_id(conn, quote_id)
-        if row and row["has_quote"] and row["quote_tweet_id"]:
+    existing_row = get_tweet_by_id(conn, quote_id)
+    if existing_row:
+        if existing_row["has_quote"] and existing_row["quote_tweet_id"]:
             return _fetch_quote_by_id(
                 conn,
-                row["quote_tweet_id"],
+                existing_row["quote_tweet_id"],
                 source=source,
                 remaining_depth=remaining_depth - 1,
                 delay=delay,

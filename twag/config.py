@@ -1,5 +1,6 @@
 """Configuration management for twag."""
 
+import functools
 import json
 import os
 from pathlib import Path
@@ -87,8 +88,9 @@ def get_config_path() -> Path:
     return get_xdg_config_home() / APP_NAME / "config.json"
 
 
-def load_config() -> dict[str, Any]:
-    """Load configuration, merging with defaults."""
+@functools.lru_cache(maxsize=1)
+def _load_config_cached() -> dict[str, Any]:
+    """Cached inner loader — call load_config() publicly."""
     config = DEFAULT_CONFIG.copy()
     config_path = get_config_path()
 
@@ -100,6 +102,16 @@ def load_config() -> dict[str, Any]:
     return config
 
 
+def load_config() -> dict[str, Any]:
+    """Load configuration, merging with defaults. Results are cached."""
+    return _load_config_cached()
+
+
+def invalidate_config_cache() -> None:
+    """Clear the cached config so the next load_config() re-reads from disk."""
+    _load_config_cached.cache_clear()
+
+
 def save_config(config: dict[str, Any]) -> None:
     """Save configuration to file."""
     config_path = get_config_path()
@@ -107,6 +119,8 @@ def save_config(config: dict[str, Any]) -> None:
 
     with open(config_path, "w") as f:
         json.dump(config, f, indent=2)
+
+    invalidate_config_cache()
 
 
 def deep_merge(base: dict, override: dict) -> dict:

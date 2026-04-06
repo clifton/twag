@@ -249,6 +249,7 @@ def get_connection(db_path: Path | None = None, readonly: bool = False) -> Itera
         # Open in readonly mode using URI syntax
         uri = f"file:{db_path}?mode=ro"
         conn = sqlite3.connect(uri, uri=True, timeout=30)
+        conn.execute("PRAGMA busy_timeout=30000")
     else:
         conn = sqlite3.connect(db_path, timeout=30)
         conn.execute("PRAGMA journal_mode=WAL")
