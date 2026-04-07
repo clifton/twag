@@ -11,6 +11,8 @@ if TYPE_CHECKING:
     import sqlite3
     from collections.abc import Callable
 
+import time as _time
+
 from ..config import load_config
 from ..db import (
     get_accounts,
@@ -20,6 +22,7 @@ from ..db import (
 )
 from ..fetcher import read_tweet
 from ..media import build_media_context
+from ..metrics import get_collector
 from ..scorer import EnrichmentResult, TriageResult, enrich_tweet
 from .dependencies import _expand_links_for_rows, _expand_unprocessed_with_dependencies
 from .storage import fetch_and_store
@@ -44,6 +47,8 @@ def process_unprocessed(
     force_refresh: bool = False,
 ) -> list[TriageResult]:
     """Process tweets that haven't been scored yet."""
+    metrics = get_collector()
+    _start = _time.monotonic()
     config = load_config()
     batch_size = config["scoring"]["batch_size"]
     high_threshold = config["scoring"]["high_signal_threshold"]
@@ -139,6 +144,8 @@ def process_unprocessed(
 
         conn.commit()
 
+    metrics.observe("pipeline_process_duration_seconds", _time.monotonic() - _start)
+    metrics.inc("pipeline_tweets_processed", len(results))
     return results
 
 
@@ -367,6 +374,8 @@ def run_full_cycle(
     enrich: bool = True,
 ) -> dict:
     """Run a full fetch/process/enrich cycle."""
+    metrics = get_collector()
+    _cycle_start = _time.monotonic()
     stats = {
         "home_fetched": 0,
         "home_new": 0,
@@ -410,4 +419,6 @@ def run_full_cycle(
         results = enrich_high_signal(limit=20)
         stats["enriched"] = len(results)
 
+    metrics.observe("pipeline_full_cycle_duration_seconds", _time.monotonic() - _cycle_start)
+    metrics.inc("pipeline_full_cycles_total")
     return stats

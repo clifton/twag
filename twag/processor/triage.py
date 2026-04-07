@@ -22,6 +22,7 @@ from ..db import (
     update_tweet_processing,
 )
 from ..media import build_media_context, build_media_summary, parse_media_items
+from ..metrics import get_collector
 from ..scorer import (
     TriageResult,
     analyze_media,
@@ -544,10 +545,16 @@ def _triage_rows(
             _complete_task(tweet_id)
 
     def _handle_results(results: list[TriageResult]) -> None:
+        _metrics = get_collector()
         for result in results:
             tweet_row = tweet_map.get(result.tweet_id)
             if status_cb and tweet_row:
                 status_cb(f"Saving @{tweet_row['author_handle']}")
+            _metrics.inc("triage_scored_total")
+            if result.score >= 4:
+                _metrics.inc("triage_passed_total")
+            else:
+                _metrics.inc("triage_filtered_total")
 
             if result.score >= 8:
                 tier = "high_signal"
@@ -698,6 +705,7 @@ def _triage_rows(
                 try:
                     results = future.result()
                 except Exception:
+                    get_collector().inc("triage_batch_errors_total")
                     if status_cb:
                         status_cb(f"Batch {batch_index} failed")
                     if progress_cb:

@@ -9,6 +9,7 @@ from anthropic import Anthropic
 
 from twag.auth import get_api_key
 from twag.config import load_config
+from twag.metrics import get_collector
 
 
 def get_anthropic_client() -> Anthropic:
@@ -34,34 +35,61 @@ def _extract_anthropic_text(content_blocks: list[Any]) -> str:
 
 def _call_anthropic(model: str, prompt: str, max_tokens: int = 2048) -> str:
     """Call Anthropic API and return text response."""
-    client = get_anthropic_client()
-    response = client.messages.create(
-        model=model,
-        max_tokens=max_tokens,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return _extract_anthropic_text(response.content)
+    metrics = get_collector()
+    labels = {"provider": "anthropic", "model": model}
+    metrics.inc("llm_calls_total", labels=labels)
+    start = time.monotonic()
+    try:
+        client = get_anthropic_client()
+        response = client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        elapsed = time.monotonic() - start
+        metrics.observe("llm_call_duration_seconds", elapsed, labels=labels)
+        if hasattr(response, "usage") and response.usage:
+            if response.usage.input_tokens:
+                metrics.inc("llm_tokens_total", response.usage.input_tokens, labels={**labels, "direction": "input"})
+            if response.usage.output_tokens:
+                metrics.inc("llm_tokens_total", response.usage.output_tokens, labels={**labels, "direction": "output"})
+        metrics.inc("llm_calls_success", labels=labels)
+        return _extract_anthropic_text(response.content)
+    except Exception:
+        metrics.inc("llm_calls_errors", labels=labels)
+        raise
 
 
 def _call_gemini(model: str, prompt: str, max_tokens: int = 2048, reasoning: str | None = None) -> str:
     """Call Gemini API and return text response."""
     from google.genai import types
 
-    client = get_gemini_client()
+    metrics = get_collector()
+    labels = {"provider": "gemini", "model": model}
+    metrics.inc("llm_calls_total", labels=labels)
+    start = time.monotonic()
+    try:
+        client = get_gemini_client()
 
-    config_kwargs: dict = {"max_output_tokens": max_tokens}
+        config_kwargs: dict = {"max_output_tokens": max_tokens}
 
-    # Add thinking config if reasoning is specified
-    if reasoning:
-        # Gemini 3+ uses thinking_level (string: "low", "medium", "high")
-        config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_level=reasoning)  # ty: ignore[invalid-argument-type]
+        # Add thinking config if reasoning is specified
+        if reasoning:
+            # Gemini 3+ uses thinking_level (string: "low", "medium", "high")
+            config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_level=reasoning)  # ty: ignore[invalid-argument-type]
 
-    response = client.models.generate_content(
-        model=model,
-        contents=prompt,
-        config=types.GenerateContentConfig(**config_kwargs),
-    )
-    return response.text
+        response = client.models.generate_content(
+            model=model,
+            contents=prompt,
+            config=types.GenerateContentConfig(**config_kwargs),
+        )
+        elapsed = time.monotonic() - start
+        metrics.observe("llm_call_duration_seconds", elapsed, labels=labels)
+        metrics.inc("llm_calls_success", labels=labels)
+        return response.text
+    except Exception:
+        metrics.inc("llm_calls_errors", labels=labels)
+        raise
 
 
 def _call_anthropic_vision(model: str, image_url: str, prompt: str, max_tokens: int = 1024) -> str:
@@ -146,6 +174,7 @@ def _with_retry(fn):
     base_delay = config.get("llm", {}).get("retry_base_seconds", 1.0)
     max_delay = config.get("llm", {}).get("retry_max_seconds", 20.0)
     jitter = config.get("llm", {}).get("retry_jitter", 0.3)
+    metrics = get_collector()
 
     attempt = 0
     while True:
@@ -153,6 +182,7 @@ def _with_retry(fn):
             return fn()
         except Exception as exc:
             attempt += 1
+            metrics.inc("llm_retries_total")
             msg = str(exc).lower()
             if "not set" in msg and "api" in msg:
                 raise

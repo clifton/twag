@@ -178,6 +178,16 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         if seeded > 0:
             conn.commit()
 
+    # Ensure metrics table exists
+    cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='metrics'")
+    if not cursor.fetchone():
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS metrics ("
+            "name TEXT NOT NULL, type TEXT NOT NULL, value REAL NOT NULL, "
+            "labels_json TEXT, recorded_at TEXT NOT NULL)"
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_metrics_name ON metrics(name, recorded_at DESC)")
+
     # Ensure performance indexes exist on existing databases
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_tweets_processed_score "

@@ -2,6 +2,7 @@
 
 import html
 import os
+import time
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -9,14 +10,32 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from ..config import get_database_path
 from ..db import init_db
+from ..metrics import get_collector
 from .routes import context, prompts, reactions, tweets
+from .routes import metrics as metrics_routes
 
 # Paths
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 FRONTEND_DIST = Path(__file__).parent / "frontend" / "dist"
+
+
+class _MetricsMiddleware(BaseHTTPMiddleware):
+    """Record request count and latency per route."""
+
+    async def dispatch(self, request: Request, call_next):
+        start = time.monotonic()
+        response = await call_next(request)
+        elapsed = time.monotonic() - start
+        route = request.url.path
+        labels = {"method": request.method, "route": route, "status": str(response.status_code)}
+        collector = get_collector()
+        collector.inc("http_requests_total", labels=labels)
+        collector.observe("http_request_duration_seconds", elapsed, labels=labels)
+        return response
 
 
 def create_app() -> FastAPI:
@@ -37,6 +56,9 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    # Metrics middleware
+    app.add_middleware(_MetricsMiddleware)
+
     # Initialize database
     init_db(app.state.db_path)
 
@@ -50,6 +72,7 @@ def create_app() -> FastAPI:
     app.include_router(reactions.router, prefix="/api")
     app.include_router(prompts.router, prefix="/api")
     app.include_router(context.router, prefix="/api")
+    app.include_router(metrics_routes.router, prefix="/api")
 
     # In dev mode (TWAG_DEV=1), skip SPA serving — Vite dev server handles frontend
     dev_mode = os.environ.get("TWAG_DEV") == "1"

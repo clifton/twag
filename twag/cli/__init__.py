@@ -16,6 +16,7 @@ from . import db_cmd as _db_mod
 from . import digest as _digest_mod
 from . import fetch as _fetch_mod
 from . import init_cmd as _init_mod
+from . import metrics_cmd as _metrics_mod
 from . import narratives as _narratives_mod
 from . import process as _process_mod
 from . import search as _search_mod
@@ -49,6 +50,7 @@ cli.add_command(_config_mod.config)
 cli.add_command(_db_mod.db)
 cli.add_command(_search_mod.search)
 cli.add_command(_web_mod.web)
+cli.add_command(_metrics_mod.metrics)
 
 
 if __name__ == "__main__":

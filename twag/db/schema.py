@@ -168,10 +168,20 @@ CREATE TABLE IF NOT EXISTS context_commands (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Metrics: lightweight instrumentation persistence
+CREATE TABLE IF NOT EXISTS metrics (
+    name TEXT NOT NULL,
+    type TEXT NOT NULL,
+    value REAL NOT NULL,
+    labels_json TEXT,
+    recorded_at TEXT NOT NULL
+);
+
 -- Additional indexes for new tables
 CREATE INDEX IF NOT EXISTS idx_reactions_tweet ON reactions(tweet_id);
 CREATE INDEX IF NOT EXISTS idx_reactions_type ON reactions(reaction_type);
 CREATE INDEX IF NOT EXISTS idx_prompt_history_name ON prompt_history(prompt_name, version DESC);
+CREATE INDEX IF NOT EXISTS idx_metrics_name ON metrics(name, recorded_at DESC);
 """
 
 # FTS5 schema for full-text search

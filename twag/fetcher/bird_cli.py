@@ -12,6 +12,7 @@ from typing import Any
 
 from ..auth import get_auth_env
 from ..config import load_config
+from ..metrics import get_collector
 from .extractors import Tweet, _looks_truncated_text, _needs_retweet_hydration
 
 log = logging.getLogger(__name__)
@@ -99,6 +100,12 @@ def _run_bird_once(
 
 def run_bird(args: list[str], timeout: int = 60, *, log_failures: bool = True) -> tuple[str, str, int]:
     """Run bird CLI command with retry on rate limit, returning (stdout, stderr, returncode)."""
+    metrics = get_collector()
+    cmd_name = args[0] if args else "unknown"
+    labels = {"command": cmd_name}
+    metrics.inc("fetch_calls_total", labels=labels)
+    _fetch_start = time.monotonic()
+
     _rate_limit_bird()
     env = get_auth_env()
 
@@ -124,12 +131,18 @@ def run_bird(args: list[str], timeout: int = 60, *, log_failures: bool = True) -
         stdout, stderr, returncode = _run_bird_once(cmd, env, args, timeout, log_failures=log_failures)
 
         if returncode == 0 or not _is_rate_limited(stderr):
+            metrics.observe("fetch_duration_seconds", time.monotonic() - _fetch_start, labels=labels)
+            if returncode != 0:
+                metrics.inc("fetch_errors_total", labels=labels)
             return stdout, stderr, returncode
 
         if attempt + 1 >= max_attempts:
             log.error("bird %s rate-limited after %d attempts, giving up", args[0] if args else "?", max_attempts)
+            metrics.observe("fetch_duration_seconds", time.monotonic() - _fetch_start, labels=labels)
+            metrics.inc("fetch_errors_total", labels=labels)
             return stdout, stderr, returncode
 
+        metrics.inc("fetch_retries_total", labels=labels)
         delay = min(base_seconds * (2**attempt), max_seconds)
         jitter = random.uniform(0, delay * 0.25)
         wait = delay + jitter
@@ -143,6 +156,7 @@ def run_bird(args: list[str], timeout: int = 60, *, log_failures: bool = True) -
         time.sleep(wait)
         _rate_limit_bird()
 
+    metrics.observe("fetch_duration_seconds", time.monotonic() - _fetch_start, labels=labels)
     return stdout, stderr, returncode
 
 
