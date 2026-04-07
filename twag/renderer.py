@@ -78,7 +78,7 @@ def render_digest(
                     "",
                     "## 🔥 High Signal",
                     "",
-                ]
+                ],
             )
             for tweet in high_signal:
                 lines.extend(_render_tweet(conn, tweet))
@@ -91,7 +91,7 @@ def render_digest(
                     "",
                     "## 📈 Market Relevant",
                     "",
-                ]
+                ],
             )
             for tweet in market_relevant:
                 lines.extend(_render_tweet(conn, tweet))
@@ -104,7 +104,7 @@ def render_digest(
                     "",
                     "## 📰 News/Context",
                     "",
-                ]
+                ],
             )
             for tweet in news:
                 lines.extend(_render_tweet(conn, tweet, compact=True))

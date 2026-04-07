@@ -139,7 +139,12 @@ def test_process_skips_notifications_by_default(monkeypatch):
         cli_mod,
         "get_unprocessed_tweets",
         lambda _conn, limit=250: [
-            {"id": "2019488673935552978", "author_handle": "test_user", "content": "Google capex", "processed_at": None}
+            {
+                "id": "2019488673935552978",
+                "author_handle": "test_user",
+                "content": "Google capex",
+                "processed_at": None,
+            },
         ],
     )
     monkeypatch.setattr(
@@ -152,7 +157,7 @@ def test_process_skips_notifications_by_default(monkeypatch):
                 categories=["equities"],
                 summary="Google capex is accelerating.",
                 tickers=["GOOGL"],
-            )
+            ),
         ],
     )
     monkeypatch.setattr(processor_mod, "reprocess_today_quoted", lambda **kwargs: [])
@@ -192,7 +197,12 @@ def test_process_notifies_when_explicitly_enabled(monkeypatch):
         cli_mod,
         "get_unprocessed_tweets",
         lambda _conn, limit=250: [
-            {"id": "2019488673935552978", "author_handle": "test_user", "content": "Google capex", "processed_at": None}
+            {
+                "id": "2019488673935552978",
+                "author_handle": "test_user",
+                "content": "Google capex",
+                "processed_at": None,
+            },
         ],
     )
     monkeypatch.setattr(
@@ -205,7 +215,7 @@ def test_process_notifies_when_explicitly_enabled(monkeypatch):
                 categories=["equities"],
                 summary="Google capex is accelerating.",
                 tickers=["GOOGL"],
-            )
+            ),
         ],
     )
     monkeypatch.setattr(processor_mod, "reprocess_today_quoted", lambda **kwargs: [])

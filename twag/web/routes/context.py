@@ -119,7 +119,7 @@ async def list_context_commands(
                 "created_at": cmd.created_at.isoformat() if cmd.created_at else None,
             }
             for cmd in commands
-        ]
+        ],
     }
 
 

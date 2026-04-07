@@ -53,11 +53,11 @@ def test_x_article_text_fallback_from_blocks() -> None:
                                 {"text": "Paragraph one."},
                                 {"text": "  "},
                                 {"text": "Paragraph two."},
-                            ]
+                            ],
                         },
-                    }
-                }
-            }
+                    },
+                },
+            },
         },
     }
 
@@ -288,7 +288,7 @@ def test_summarize_x_article_falls_back_to_triage_provider(monkeypatch) -> None:
                 "enrichment_provider": "anthropic",
                 "triage_model": "gemini-3-flash-preview",
                 "triage_provider": "gemini",
-            }
+            },
         },
     )
 

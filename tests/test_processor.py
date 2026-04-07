@@ -52,7 +52,7 @@ def test_process_unprocessed_expands_links_and_persists_before_triage(monkeypatc
                 "url": "https://t.co/ext",
                 "expanded_url": "https://github.com/example/project",
                 "display_url": "github.com/example/project",
-            }
+            },
         ]
 
     captured_rows: list[dict] = []
@@ -102,7 +102,7 @@ def test_process_unprocessed_skips_already_expanded_links(monkeypatch, tmp_path)
                     "url": "https://t.co/ext",
                     "expanded_url": "https://github.com/example/project",
                     "display_url": "github.com/example/project",
-                }
+                },
             ],
         )
         assert inserted is True
@@ -216,7 +216,7 @@ def test_reprocess_today_quoted_expands_quote_row_links(monkeypatch, tmp_path) -
                 "url": "https://t.co/ext",
                 "expanded_url": "https://github.com/example/project",
                 "display_url": "github.com/example/project",
-            }
+            },
         ],
     )
     monkeypatch.setattr(pipeline_mod, "_triage_rows", lambda _conn, **_kwargs: [])
@@ -318,7 +318,7 @@ def test_process_unprocessed_adds_thread_linked_tweet_to_processing_stack(monkey
                     "url": "https://t.co/thread1",
                     "expanded_url": "https://x.com/thread_user/status/10001",
                     "display_url": "x.com/thread_user/status/10001",
-                }
+                },
             ],
         )
         assert inserted_root is True
@@ -421,9 +421,9 @@ def test_process_unprocessed_fetches_dependency_with_malformed_unicode_without_c
                         "url": "https://t.co/\ud83d",
                         "expanded_url": "https://example.com/\udc49",
                         "display_url": "bad\ud83d",
-                    }
+                    },
                 ],
-            )
+            ),
         ),
     )
 
