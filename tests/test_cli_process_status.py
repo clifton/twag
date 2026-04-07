@@ -33,7 +33,7 @@ def test_process_status_id_fast_path(monkeypatch):
         calls["limit"] = limit
         calls["rows"] = rows
         if status_cb:
-            status_cb("Saving @undrvalue")
+            status_cb("Saving @test_user")
         if progress_cb:
             progress_cb(1)
         return []
@@ -45,7 +45,7 @@ def test_process_status_id_fast_path(monkeypatch):
         "get_tweet_by_id",
         lambda _conn, tweet_id: {
             "id": tweet_id,
-            "author_handle": "undrvalue",
+            "author_handle": "test_user",
             "content": "Google capex",
             "processed_at": None,
         },
@@ -76,7 +76,7 @@ def test_process_status_url_normalized(monkeypatch):
         seen["tweet_id"] = tweet_id
         return {
             "id": tweet_id,
-            "author_handle": "undrvalue",
+            "author_handle": "test_user",
             "content": "Google capex",
             "processed_at": None,
         }
@@ -91,7 +91,7 @@ def test_process_status_url_normalized(monkeypatch):
     )
 
     runner = CliRunner()
-    result = runner.invoke(cli, ["process", "https://x.com/undrvalue/status/2019488673935552978"])
+    result = runner.invoke(cli, ["process", "https://x.com/test_user/status/2019488673935552978"])
 
     assert result.exit_code == 0
     assert seen["tweet_id"] == "2019488673935552978"
@@ -123,7 +123,7 @@ def test_process_skips_notifications_by_default(monkeypatch):
 
     class _FakeCursor:
         def fetchone(self):
-            return {"content": "Google capex", "author_handle": "undrvalue"}
+            return {"content": "Google capex", "author_handle": "test_user"}
 
     class _FakeConn:
         def execute(self, *_args, **_kwargs):
@@ -139,7 +139,7 @@ def test_process_skips_notifications_by_default(monkeypatch):
         cli_mod,
         "get_unprocessed_tweets",
         lambda _conn, limit=250: [
-            {"id": "2019488673935552978", "author_handle": "undrvalue", "content": "Google capex", "processed_at": None}
+            {"id": "2019488673935552978", "author_handle": "test_user", "content": "Google capex", "processed_at": None}
         ],
     )
     monkeypatch.setattr(
@@ -176,7 +176,7 @@ def test_process_notifies_when_explicitly_enabled(monkeypatch):
 
     class _FakeCursor:
         def fetchone(self):
-            return {"content": "Google capex", "author_handle": "undrvalue"}
+            return {"content": "Google capex", "author_handle": "test_user"}
 
     class _FakeConn:
         def execute(self, *_args, **_kwargs):
@@ -192,7 +192,7 @@ def test_process_notifies_when_explicitly_enabled(monkeypatch):
         cli_mod,
         "get_unprocessed_tweets",
         lambda _conn, limit=250: [
-            {"id": "2019488673935552978", "author_handle": "undrvalue", "content": "Google capex", "processed_at": None}
+            {"id": "2019488673935552978", "author_handle": "test_user", "content": "Google capex", "processed_at": None}
         ],
     )
     monkeypatch.setattr(

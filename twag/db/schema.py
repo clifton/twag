@@ -117,6 +117,7 @@ CREATE TABLE IF NOT EXISTS fetch_log (
 CREATE INDEX IF NOT EXISTS idx_tweets_created ON tweets(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tweets_score ON tweets(relevance_score DESC);
 CREATE INDEX IF NOT EXISTS idx_tweets_unprocessed ON tweets(processed_at) WHERE processed_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_tweets_processed_at_not_null ON tweets(processed_at) WHERE processed_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_accounts_tier ON accounts(tier, weight DESC);
 
 -- Feed query and filter indexes

@@ -149,7 +149,7 @@ FETCH → PROCESS → DIGEST
 
 ```bash
 twag init              # Initialize config and database
-twag init --force      # Reinitialize (destructive)
+twag init --force      # Overwrite existing config file
 twag doctor            # Check dependencies and environment
 ```
 
@@ -171,6 +171,10 @@ twag fetch --source search --query "Fed Powell rate" --count 30
 
 # Control sources
 twag fetch --no-tier1 --no-bookmarks
+
+# Tier-1 rotation and pacing
+twag fetch --stagger 5          # Only fetch 5 least-recent tier-1 accounts
+twag fetch --delay 5.0          # 5s delay between tier-1 fetches (default: 3s)
 ```
 
 ### Process Commands
@@ -180,6 +184,10 @@ twag process                    # Process unscored tweets (no alerts by default)
 twag process --limit 100        # Limit batch size
 twag process --dry-run          # Preview only
 twag process --notify           # Send Telegram alerts
+
+# Quote/reply reprocessing
+twag process --no-reprocess-quotes       # Skip reprocessing dependency tweets
+twag process --reprocess-min-score 5     # Min score for reprocessing (default: 3)
 
 # Process specific tweet
 twag process 1234567890123456789
@@ -208,6 +216,11 @@ twag search "fed" --format json             # JSON output
 
 # Score threshold
 twag search "market" --min-score 7          # High-signal only
+
+# Additional filters
+twag search --bookmarks                     # Only bookmarked tweets
+twag search "fed" --tier 1                  # Filter by signal tier
+twag search "fed" --order score             # Sort by: rank, score, or time
 ```
 
 **Query syntax:**
@@ -215,6 +228,12 @@ twag search "market" --min-score 7          # High-signal only
 - Phrase: `"rate hike"` (exact match)
 - Boolean: `inflation AND fed`, `fed NOT fomc`
 - Prefix: `infla*` (wildcard)
+
+### Narrative Commands
+
+```bash
+twag narratives list            # List active narratives with mention counts
+```
 
 ### Analyze Commands
 
@@ -261,6 +280,12 @@ twag prune --dry-run            # Preview prune
 twag export --days 7            # Export recent data
 ```
 
+### Narratives
+
+```bash
+twag narratives list            # List active narratives
+```
+
 ### Database Commands
 
 ```bash
@@ -281,6 +306,7 @@ twag web                        # Start web UI (localhost:5173)
 twag web --host 127.0.0.1       # Bind to localhost only
 twag web --port 8080            # Custom port
 twag web --dev                  # Dev mode (Vite + hot reload)
+twag web --no-reload            # Disable auto-reload on code changes
 ```
 
 ⚠️ **Security:** The web interface has no authentication. Only run on trusted networks or bind to localhost.

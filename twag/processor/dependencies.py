@@ -29,6 +29,7 @@ from ..link_utils import expand_links_in_place, parse_tweet_status_id
 log = logging.getLogger(__name__)
 
 _MAX_INLINE_LINK_FETCHES = 4
+_MAX_SKIPPED_CACHE_SIZE = 2000
 _SKIPPED_DEPENDENCY_FETCHES: dict[str, str] = {}
 
 
@@ -127,6 +128,11 @@ def _read_dependency_tweet(tweet_id: str) -> Tweet | None:
     if result.failure:
         _warn_dependency_fetch_failure(tweet_id, result.failure)
         if not result.failure.retryable and not result.failure.auth_related:
+            if len(_SKIPPED_DEPENDENCY_FETCHES) >= _MAX_SKIPPED_CACHE_SIZE:
+                # Evict oldest entries (dict preserves insertion order in Python 3.7+).
+                excess = len(_SKIPPED_DEPENDENCY_FETCHES) - _MAX_SKIPPED_CACHE_SIZE + 1
+                for _ in range(excess):
+                    _SKIPPED_DEPENDENCY_FETCHES.pop(next(iter(_SKIPPED_DEPENDENCY_FETCHES)))
             _SKIPPED_DEPENDENCY_FETCHES[tweet_id] = result.failure.reason
         return None
 

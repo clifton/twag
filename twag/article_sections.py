@@ -17,11 +17,13 @@ def _json_list(value: str | None) -> list[Any]:
 
 
 def normalize_horizon(value: Any) -> str:
+    """Normalize a time-horizon value by replacing underscores with spaces."""
     text = str(value or "").strip()
     return text.replace("_", " ") if text else ""
 
 
 def format_confidence(value: Any) -> str:
+    """Format a confidence value as a compact string (bool, numeric, or raw text)."""
     if value is None:
         return ""
     if isinstance(value, bool):
@@ -32,6 +34,7 @@ def format_confidence(value: Any) -> str:
 
 
 def parse_primary_points(value: str | None, *, limit: int | None = None) -> list[dict[str, str]]:
+    """Parse a JSON string of primary points into dicts with point, reasoning, and evidence."""
     points: list[dict[str, str]] = []
     for item in _json_list(value):
         if not isinstance(item, dict):
@@ -52,6 +55,7 @@ def parse_primary_points(value: str | None, *, limit: int | None = None) -> list
 
 
 def parse_action_items(value: str | None, *, limit: int | None = None) -> list[dict[str, str]]:
+    """Parse a JSON string of action items into dicts with action, trigger, horizon, confidence, and tickers."""
     actions: list[dict[str, str]] = []
     for item in _json_list(value):
         if not isinstance(item, dict):

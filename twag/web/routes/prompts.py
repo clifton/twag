@@ -1,5 +1,6 @@
 """Prompt management API routes."""
 
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -14,6 +15,8 @@ from ...db import (
     rollback_prompt,
     upsert_prompt,
 )
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["prompts"])
 
@@ -254,8 +257,9 @@ SUGGESTED PROMPT:
             },
         }
 
-    except Exception as e:
-        return {"error": f"LLM call failed: {e!s}"}
+    except Exception:
+        log.exception("Prompt tuning LLM call failed for %s", tune_req.prompt_name)
+        return {"error": "Prompt tuning failed due to an internal error"}
 
 
 @router.post("/prompts/{name}/apply-suggestion")

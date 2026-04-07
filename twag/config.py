@@ -1,5 +1,6 @@
 """Configuration management for twag."""
 
+import copy
 import json
 import os
 from pathlib import Path
@@ -87,17 +88,37 @@ def get_config_path() -> Path:
     return get_xdg_config_home() / APP_NAME / "config.json"
 
 
+_config_cache: tuple[float, dict[str, Any]] | None = None
+
+
 def load_config() -> dict[str, Any]:
-    """Load configuration, merging with defaults."""
-    config = DEFAULT_CONFIG.copy()
+    """Load configuration, merging with defaults.
+
+    Caches the result keyed on config file mtime to avoid redundant reads
+    during batch processing. Returns a deep copy so callers cannot corrupt
+    the cache.
+    """
+    global _config_cache
+
     config_path = get_config_path()
 
-    if config_path.exists():
+    try:
+        mtime = config_path.stat().st_mtime
+    except OSError:
+        # Config file doesn't exist — use defaults.
+        mtime = 0.0
+
+    if _config_cache is not None and _config_cache[0] == mtime:
+        return copy.deepcopy(_config_cache[1])
+
+    config = DEFAULT_CONFIG.copy()
+    if mtime > 0:
         with open(config_path) as f:
             user_config = json.load(f)
             config = deep_merge(config, user_config)
 
-    return config
+    _config_cache = (mtime, config)
+    return copy.deepcopy(config)
 
 
 def save_config(config: dict[str, Any]) -> None:
