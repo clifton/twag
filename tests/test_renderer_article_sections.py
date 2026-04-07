@@ -23,7 +23,7 @@ def test_render_digest_uses_labeled_article_sections(monkeypatch, tmp_path):
         inserted = insert_tweet(
             conn,
             tweet_id="31001",
-            author_handle="undrvalue",
+            author_handle="test_user",
             content="Google's $180B AI capex guidance is a regime shift.",
             created_at=now,
             source="test",

@@ -1,6 +1,7 @@
 """Context command management API routes."""
 
 import asyncio
+import logging
 import re
 import shlex
 from typing import Any
@@ -19,6 +20,8 @@ from ...db import (
 )
 from ...media import build_media_context, parse_media_items
 from ...processor import ensure_media_analysis
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["context"])
 
@@ -406,5 +409,6 @@ Return your analysis in a structured format."""
             "analysis": analysis,
         }
 
-    except Exception as e:
-        return {"error": f"Analysis failed: {e!s}"}
+    except Exception:
+        log.exception("Context-enriched analysis failed for tweet %s", tweet_id)
+        return {"error": "Analysis failed due to an internal error"}

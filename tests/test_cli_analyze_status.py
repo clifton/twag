@@ -12,8 +12,8 @@ from twag.fetcher import Tweet
 def _sample_tweet() -> Tweet:
     return Tweet(
         id="2019488673935552978",
-        author_handle="undrvalue",
-        author_name="market participant",
+        author_handle="test_user",
+        author_name="Test User",
         content="Google's $180 Billion Bet",
         created_at=None,
         has_quote=False,
@@ -46,7 +46,7 @@ def _fake_connection(readonly=False):
 def _sample_row(processed_at: str | None = None) -> dict:
     return {
         "id": "2019488673935552978",
-        "author_handle": "undrvalue",
+        "author_handle": "test_user",
         "relevance_score": 8.1,
         "signal_tier": "high_signal",
         "category": json.dumps(["equities", "macro"]),
@@ -130,7 +130,7 @@ def test_analyze_status_success(monkeypatch):
     monkeypatch.setattr(analyze_mod, "get_tweet_by_id", lambda _conn, _tweet_id: row)
 
     runner = CliRunner()
-    result = runner.invoke(cli, ["analyze", "https://x.com/undrvalue/status/2019488673935552978"])
+    result = runner.invoke(cli, ["analyze", "https://x.com/test_user/status/2019488673935552978"])
 
     assert result.exit_code == 0
     assert "Analyzing status 2019488673935552978..." in result.output
