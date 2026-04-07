@@ -5,13 +5,14 @@ from datetime import datetime, timezone
 from twag.db import get_connection, init_db, insert_tweet, update_tweet_processing
 from twag.renderer import render_digest
 
+_FIXED_TS = datetime(2025, 6, 15, 12, 0, tzinfo=timezone.utc)
+
 
 def test_render_digest_removes_self_links_and_renders_external_and_inline(monkeypatch, tmp_path):
     db_path = tmp_path / "twag_renderer_links.db"
     init_db(db_path)
 
-    now = datetime.now(timezone.utc)
-    digest_date = now.strftime("%Y-%m-%d")
+    digest_date = _FIXED_TS.strftime("%Y-%m-%d")
 
     with get_connection(db_path) as conn:
         # Linked tweet is present in DB but intentionally not processed for digest inclusion.
@@ -20,7 +21,7 @@ def test_render_digest_removes_self_links_and_renders_external_and_inline(monkey
             tweet_id="2001",
             author_handle="child_user",
             content="child linked content",
-            created_at=now,
+            created_at=_FIXED_TS,
             source="test",
         )
         assert inserted is True
@@ -30,7 +31,7 @@ def test_render_digest_removes_self_links_and_renders_external_and_inline(monkey
             tweet_id="1001",
             author_handle="root_user",
             content="Interesting thread https://t.co/self https://t.co/child https://t.co/ext",
-            created_at=now,
+            created_at=_FIXED_TS,
             source="test",
             has_link=True,
             links=[
@@ -81,8 +82,7 @@ def test_render_digest_does_not_expand_short_urls_at_render_time(monkeypatch, tm
     db_path = tmp_path / "twag_renderer_no_runtime_expansion.db"
     init_db(db_path)
 
-    now = datetime.now(timezone.utc)
-    digest_date = now.strftime("%Y-%m-%d")
+    digest_date = _FIXED_TS.strftime("%Y-%m-%d")
 
     with get_connection(db_path) as conn:
         inserted = insert_tweet(
@@ -90,7 +90,7 @@ def test_render_digest_does_not_expand_short_urls_at_render_time(monkeypatch, tm
             tweet_id="3001",
             author_handle="root_user",
             content="Interesting link https://t.co/ext",
-            created_at=now,
+            created_at=_FIXED_TS,
             source="test",
             has_link=True,
             links=[

@@ -16,6 +16,8 @@ from twag.fetcher import Tweet
 from twag.processor import _build_triage_text, _prefer_stronger_signal_tier, _select_article_top_visual
 from twag.scorer import summarize_x_article
 
+_FIXED_TS = datetime(2025, 6, 15, 12, 0, tzinfo=timezone.utc)
+
 
 def _load_real_article_fixture() -> dict:
     fixture_path = Path(__file__).parent / "fixtures" / "tweet_2019488673935552978.json"
@@ -132,7 +134,7 @@ def test_article_fields_round_trip_in_feed(tmp_path) -> None:
             tweet_id="article-1",
             author_handle="analyst",
             content="Long-form article tweet",
-            created_at=datetime.now(timezone.utc),
+            created_at=_FIXED_TS,
             source="test",
             has_link=True,
             is_x_article=True,
@@ -159,7 +161,7 @@ def test_article_fields_round_trip_in_feed(tmp_path) -> None:
             actionable_items=[{"action": "Monitor GOOGL", "trigger": "Q/Q cloud growth > 40%"}],
             top_visual=None,
             set_top_visual=True,
-            processed_at=datetime.now(timezone.utc).isoformat(),
+            processed_at=_FIXED_TS.isoformat(),
         )
         conn.commit()
 
@@ -186,7 +188,7 @@ def test_duplicate_insert_upgrades_article_payload(tmp_path) -> None:
             tweet_id="dup-1",
             author_handle="analyst",
             content="Short teaser",
-            created_at=datetime.now(timezone.utc),
+            created_at=_FIXED_TS,
             source="status",
             has_link=True,
             is_x_article=True,
@@ -202,7 +204,7 @@ def test_duplicate_insert_upgrades_article_payload(tmp_path) -> None:
             tweet_id="dup-1",
             author_handle="analyst",
             content="Longer full article body " * 100,
-            created_at=datetime.now(timezone.utc),
+            created_at=_FIXED_TS,
             source="status",
             has_link=True,
             is_x_article=True,

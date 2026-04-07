@@ -8,6 +8,8 @@ from twag.db import get_connection, insert_tweet, update_tweet_processing
 from twag.db.reactions import insert_reaction
 from twag.web.app import create_app
 
+_FIXED_TS = datetime(2025, 6, 15, 12, 0, tzinfo=timezone.utc)
+
 # Fields that both /api/tweets and /api/tweets/{id} must return.
 SHARED_FIELDS = {
     "id",
@@ -70,7 +72,7 @@ def _insert(conn, tweet_id="t1", author_handle="alice", content="hello world", *
         tweet_id=tweet_id,
         author_handle=author_handle,
         content=content,
-        created_at=datetime.now(timezone.utc),
+        created_at=_FIXED_TS,
         source="test",
         **kw,
     )
@@ -110,7 +112,7 @@ def test_list_tweet_has_all_shared_fields(monkeypatch, tmp_path):
         conn.commit()
 
     client = TestClient(app)
-    tweets = client.get("/api/tweets", params={"since": "30d"}).json()["tweets"]
+    tweets = client.get("/api/tweets", params={"since": "9999d"}).json()["tweets"]
     assert len(tweets) >= 1
     missing = SHARED_FIELDS - set(tweets[0].keys())
     assert not missing, f"List-tweet response missing fields: {missing}"
@@ -125,7 +127,7 @@ def test_field_sets_identical(monkeypatch, tmp_path):
 
     client = TestClient(app)
     single = client.get("/api/tweets/t1").json()
-    listed = client.get("/api/tweets", params={"since": "30d"}).json()["tweets"][0]
+    listed = client.get("/api/tweets", params={"since": "9999d"}).json()["tweets"][0]
     assert set(single.keys()) == set(listed.keys())
 
 
@@ -168,7 +170,7 @@ def test_list_tweet_reactions_is_list(monkeypatch, tmp_path):
         conn.commit()
 
     client = TestClient(app)
-    tweets = client.get("/api/tweets", params={"since": "30d"}).json()["tweets"]
+    tweets = client.get("/api/tweets", params={"since": "9999d"}).json()["tweets"]
     t = next(tw for tw in tweets if tw["id"] == "t1")
     assert isinstance(t["reactions"], list)
     assert ">>" in t["reactions"]
