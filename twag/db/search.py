@@ -192,13 +192,15 @@ def search_tweets(
 
     where_clause = " AND ".join(conditions)
 
-    # Order clause
-    if order_by == "score":
-        order_clause = "t.relevance_score DESC NULLS LAST"
-    elif order_by == "time":
-        order_clause = "t.created_at DESC"
-    else:  # rank (BM25)
-        order_clause = "bm25(tweets_fts)"
+    # Order clause — allowlist to prevent SQL injection via f-string interpolation
+    _search_order_map = {
+        "score": "t.relevance_score DESC NULLS LAST",
+        "time": "t.created_at DESC",
+        "rank": "bm25(tweets_fts)",
+    }
+    if order_by not in _search_order_map:
+        raise ValueError(f"Invalid order_by value: {order_by!r}. Must be one of {sorted(_search_order_map)}")
+    order_clause = _search_order_map[order_by]
 
     params.extend([limit, offset])
 
@@ -271,7 +273,7 @@ def search_tweets(
                 tickers=tickers,
                 bookmarked=bool(row["bookmarked"]),
                 rank=row["rank"],
-            )
+            ),
         )
 
     return results
@@ -332,12 +334,14 @@ def get_feed_tweets(
     where_clause = " AND ".join(conditions)
     params.extend([limit, offset])
 
-    if order_by == "latest":
-        inner_order = "created_at DESC"
-        outer_order = "t.created_at DESC"
-    else:
-        inner_order = "relevance_score DESC, created_at DESC"
-        outer_order = "t.relevance_score DESC, t.created_at DESC"
+    # Allowlist to prevent SQL injection via f-string interpolation
+    _feed_order_map = {
+        "latest": ("created_at DESC", "t.created_at DESC"),
+        "relevance": ("relevance_score DESC, created_at DESC", "t.relevance_score DESC, t.created_at DESC"),
+    }
+    if order_by not in _feed_order_map:
+        raise ValueError(f"Invalid order_by value: {order_by!r}. Must be one of {sorted(_feed_order_map)}")
+    inner_order, outer_order = _feed_order_map[order_by]
 
     cursor = conn.execute(
         f"""
@@ -485,7 +489,7 @@ def get_feed_tweets(
                 original_author_name=row["original_author_name"],
                 original_content=row["original_content"],
                 reactions=reactions,
-            )
+            ),
         )
 
     return results

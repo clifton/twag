@@ -251,21 +251,21 @@ def _select_article_top_visual(
                 str(chart.get("description", "")),
                 str(chart.get("insight", "")),
                 str(chart.get("implication", "")),
-            ]
+            ],
         ).strip()
         table_text = " ".join(
             [
                 str(table.get("title", "")),
                 str(table.get("description", "")),
                 str(table.get("summary", "")),
-            ]
+            ],
         ).strip()
         prose_text = " ".join(
             [
                 str(item.get("prose_summary", "")),
                 str(item.get("short_description", "")),
                 str(item.get("prose_text", "")),
-            ]
+            ],
         ).strip()
         candidate_text = " ".join(part for part in [chart_text, table_text, prose_text] if part).strip()
         if not candidate_text:
@@ -374,7 +374,7 @@ def _triage_rows(
                 "id": tweet_id,
                 "text": _build_triage_text(row),
                 "handle": row["author_handle"],
-            }
+            },
         )
         tweet_map[tweet_id] = row
 
@@ -520,7 +520,9 @@ def _triage_rows(
             try:
                 if media_items and _needs_media_analysis(media_items):
                     media_items, _ = _analyze_media_items(
-                        media_items, vision_model=vision_model, vision_provider=vision_provider
+                        media_items,
+                        vision_model=vision_model,
+                        vision_provider=vision_provider,
                     )
                 article_result = summarize_x_article(
                     article_text,

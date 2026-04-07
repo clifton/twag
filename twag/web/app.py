@@ -29,12 +29,12 @@ def create_app() -> FastAPI:
 
     app.state.db_path = get_database_path()
 
-    # CORS: restrict to localhost origins
+    # CORS: restrict to localhost origins with explicit methods/headers
     app.add_middleware(
         CORSMiddleware,
         allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=["Content-Type", "Authorization"],
     )
 
     # Initialize database

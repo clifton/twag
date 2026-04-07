@@ -298,7 +298,7 @@ def test_triage_parallel_db_access_stays_on_owner_thread(monkeypatch, tmp_path) 
                             "insight": "Revenue reaches 100",
                             "implication": "Momentum improves",
                         },
-                    }
+                    },
                 ],
                 True,
             ),
@@ -394,7 +394,7 @@ def test_enrich_high_signal_parallel_db_access_stays_on_owner_thread(monkeypatch
                     "short_description": "chart",
                     "prose_text": "Revenue reaches 100",
                     "prose_summary": "Revenue rises",
-                }
+                },
             ],
             True,
         ),
@@ -446,7 +446,7 @@ def test_expand_links_parallel_db_access_stays_on_owner_thread(monkeypatch, tmp_
                     "url": "https://t.co/ext",
                     "expanded_url": "https://github.com/example/project",
                     "display_url": "github.com/example/project",
-                }
+                },
             ],
         )
 

@@ -20,7 +20,10 @@ from ._progress import RichProgressReporter, create_progress, make_callbacks
 @click.option("--bookmarks/--no-bookmarks", default=True, help="Also fetch bookmarks")
 @click.option("--delay", type=float, default=None, help="Delay between tier-1 fetches (default: 3s)")
 @click.option(
-    "--stagger", type=int, default=None, help="Only fetch N tier-1 accounts (rotates by least-recently-fetched)"
+    "--stagger",
+    type=int,
+    default=None,
+    help="Only fetch N tier-1 accounts (rotates by least-recently-fetched)",
 )
 def fetch(
     status_id_or_url: str | None,

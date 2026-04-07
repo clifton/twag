@@ -198,7 +198,7 @@ def doctor():
                 "\n".join(f"  - {issue}" for issue in issues),
                 title=f"{len(issues)} issue(s) found",
                 border_style="red",
-            )
+            ),
         )
         sys.exit(1)
     elif warnings:
@@ -207,7 +207,7 @@ def doctor():
                 "\n".join(f"  - {w}" for w in warnings),
                 title=f"All checks passed with {len(warnings)} warning(s)",
                 border_style="yellow",
-            )
+            ),
         )
     else:
         console.print("\n[green]All checks passed![/green]")

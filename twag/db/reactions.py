@@ -63,7 +63,7 @@ def get_reactions_for_tweet(conn: sqlite3.Connection, tweet_id: str) -> list[Rea
                 reason=row["reason"],
                 target=row["target"],
                 created_at=created_at,
-            )
+            ),
         )
     return results
 
@@ -75,7 +75,7 @@ def get_reactions_summary(conn: sqlite3.Connection) -> dict[str, int]:
         SELECT reaction_type, COUNT(*) as count
         FROM reactions
         GROUP BY reaction_type
-        """
+        """,
     )
     return {row["reaction_type"]: row["count"] for row in cursor.fetchall()}
 

@@ -140,7 +140,7 @@ def db_restore(input_file: str, force: bool):
     try:
         counts = restore_sql(sql_script, db_file, backup=True)
         console.print(
-            f"Restored database: {counts['tweets']} tweets, {counts['accounts']} accounts, {counts['fts']} FTS entries"
+            f"Restored database: {counts['tweets']} tweets, {counts['accounts']} accounts, {counts['fts']} FTS entries",
         )
     except Exception as e:
         console.print(f"[red]Error restoring database: {e}[/red]")

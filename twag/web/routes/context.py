@@ -6,7 +6,7 @@ import re
 import shlex
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from ...db import (
@@ -24,6 +24,62 @@ from ...processor import ensure_media_analysis
 log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["context"])
+
+# Commands safe to execute as context enrichment tools.
+# Excludes interpreters (python, node) and data-exfiltration tools (curl, wget)
+# because they can trivially bypass any argument-level filtering.
+ALLOWED_COMMANDS = frozenset(
+    {
+        "bird",
+        "cat",
+        "echo",
+        "grep",
+        "head",
+        "jq",
+        "rg",
+        "sed",
+        "tail",
+        "twag",
+        "wc",
+    }
+)
+
+# Shell metacharacters that enable injection when present in a template
+_DANGEROUS_PATTERN = re.compile(r"[;|&`$><\n]")
+
+
+def _validate_command_template(template: str) -> None:
+    """Validate a command template is safe to store and execute.
+
+    Raises HTTPException(400) if the template uses dangerous patterns or
+    an unknown base command.
+    """
+    template = template.strip()
+    if not template:
+        raise HTTPException(status_code=400, detail="Command template must not be empty")
+
+    if _DANGEROUS_PATTERN.search(template):
+        raise HTTPException(
+            status_code=400,
+            detail="Command template contains forbidden shell metacharacters",
+        )
+
+    # Extract the base command (first token), ignoring any {var} wrapper
+    try:
+        tokens = shlex.split(template)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Malformed command template: {exc}") from exc
+
+    if not tokens:
+        raise HTTPException(status_code=400, detail="Command template must not be empty")
+
+    # The first token may be a placeholder like {some_cmd}; resolve it for checking.
+    base_cmd = tokens[0].strip("{}")
+    if base_cmd not in ALLOWED_COMMANDS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Command '{base_cmd}' is not in the allowed list: {sorted(ALLOWED_COMMANDS)}",
+        )
 
 
 class ContextCommandCreate(BaseModel):
@@ -73,6 +129,7 @@ async def create_context_command(
     command: ContextCommandCreate,
 ) -> dict[str, Any]:
     """Create a new context command."""
+    _validate_command_template(command.command_template)
     db_path = request.app.state.db_path
 
     with get_connection(db_path) as conn:
@@ -123,6 +180,7 @@ async def update_context_command(
     command: ContextCommandCreate,
 ) -> dict[str, Any]:
     """Update a context command."""
+    _validate_command_template(command.command_template)
     db_path = request.app.state.db_path
 
     with get_connection(db_path) as conn:
@@ -227,9 +285,20 @@ def _extract_tweet_variables(tweet_row) -> dict[str, str]:
 
 
 async def _run_command(command: str, timeout: float = 30.0) -> tuple[str, str, int]:
-    """Run a command and return (stdout, stderr, returncode)."""
+    """Run a command and return (stdout, stderr, returncode).
+
+    Also validates at execution time to catch commands stored before
+    validation was added at the API layer.
+    """
     try:
         args = shlex.split(command)
+        if not args:
+            return "", "Empty command", -1
+        base_cmd = args[0].strip("{}")
+        if base_cmd not in ALLOWED_COMMANDS:
+            return "", f"Command '{base_cmd}' is not in the allowed list", -1
+        if _DANGEROUS_PATTERN.search(command):
+            return "", "Command contains forbidden shell metacharacters", -1
         proc = await asyncio.create_subprocess_exec(
             *args,
             stdout=asyncio.subprocess.PIPE,

@@ -37,7 +37,12 @@ from ._console import console
     help="Sort order: rank (BM25, requires query), score, time",
 )
 @click.option(
-    "--format", "-f", "fmt", type=click.Choice(["brief", "full", "json"]), default="brief", help="Output format"
+    "--format",
+    "-f",
+    "fmt",
+    type=click.Choice(["brief", "full", "json"]),
+    default="brief",
+    help="Output format",
 )
 def search(
     query: str | None,

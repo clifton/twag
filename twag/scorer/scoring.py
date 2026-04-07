@@ -102,7 +102,7 @@ def triage_tweets_batch(
                 categories=categories,
                 summary=item.get("summary", ""),
                 tickers=item.get("tickers", []),
-            )
+            ),
         )
 
     return results
@@ -257,7 +257,7 @@ def summarize_x_article(
                     "point": point,
                     "reasoning": reasoning_text,
                     "evidence": evidence,
-                }
+                },
             )
 
     action_raw = data.get("actionable_items")
@@ -282,7 +282,7 @@ def summarize_x_article(
                     "horizon": (item.get("horizon") or "").strip(),
                     "confidence": confidence,
                     "tickers": [str(t).upper() for t in tickers if isinstance(t, str) and t.strip()],
-                }
+                },
             )
 
     return XArticleSummaryResult(

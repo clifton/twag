@@ -100,7 +100,7 @@ def process_unprocessed(
                     "id": tweet_id,
                     "text": row["content"],
                     "handle": row["author_handle"],
-                }
+                },
             )
             tweet_map[tweet_id] = row
 

@@ -61,8 +61,8 @@ def _sample_row(processed_at: str | None = None) -> dict:
                     "point": "Capex acceleration is unprecedented",
                     "reasoning": "Spend is stepping higher into 2026.",
                     "evidence": "$180B guide versus prior years.",
-                }
-            ]
+                },
+            ],
         ),
         "article_action_items_json": json.dumps(
             [
@@ -72,8 +72,8 @@ def _sample_row(processed_at: str | None = None) -> dict:
                     "horizon": "2-4 quarters",
                     "confidence": "medium",
                     "tickers": ["GOOGL", "MSFT"],
-                }
-            ]
+                },
+            ],
         ),
         "article_top_visual_json": json.dumps(
             {
@@ -81,7 +81,7 @@ def _sample_row(processed_at: str | None = None) -> dict:
                 "kind": "chart",
                 "why_important": "Most relevant quantitative visual supporting the thesis.",
                 "key_takeaway": "2026 capex bar is the largest in the series.",
-            }
+            },
         ),
         "media_items": json.dumps(
             [
@@ -95,7 +95,7 @@ def _sample_row(processed_at: str | None = None) -> dict:
                     "kind": "photo",
                     "short_description": "office selfie",
                 },
-            ]
+            ],
         ),
         "processed_at": processed_at,
     }
@@ -229,8 +229,8 @@ def test_print_status_analysis_wraps_and_labels_long_fields(monkeypatch, capsys)
                 "point": "Google's $180B capex plan is historically unprecedented at single-company scale.",
                 "reasoning": "Magnitude rivals peak dotcom telecom buildout on an inflation-adjusted basis.",
                 "evidence": "Compares to Apollo and Interstate totals while staying self-funded by operations.",
-            }
-        ]
+            },
+        ],
     )
     row["article_action_items_json"] = json.dumps(
         [
@@ -240,8 +240,8 @@ def test_print_status_analysis_wraps_and_labels_long_fields(monkeypatch, capsys)
                 "horizon": "medium_term",
                 "confidence": 0.7,
                 "tickers": ["GOOGL", "MSFT", "AMZN"],
-            }
-        ]
+            },
+        ],
     )
     monkeypatch.setattr(cli_mod, "_analysis_wrap_width", lambda: 72)
 
@@ -273,13 +273,13 @@ def test_print_status_analysis_skips_invalid_points_and_actions(capsys):
         [
             {"point": "", "reasoning": "missing main point", "evidence": "ignored"},
             {"reasoning": "non-point dict"},
-        ]
+        ],
     )
     row["article_action_items_json"] = json.dumps(
         [
             {"action": "", "trigger": "missing action"},
             {"trigger": "action key missing"},
-        ]
+        ],
     )
 
     cli_mod._print_status_analysis(row)

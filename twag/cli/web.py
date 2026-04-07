@@ -100,7 +100,7 @@ def web(host: str, port: int, reload: bool, dev: bool):
             subprocess.run(cmd, check=True)
         except FileNotFoundError:
             console.print(
-                "[red]Error: 'uv' not found. Install with: curl -LsSf https://astral.sh/uv/install.sh | sh[/red]"
+                "[red]Error: 'uv' not found. Install with: curl -LsSf https://astral.sh/uv/install.sh | sh[/red]",
             )
             sys.exit(1)
         except KeyboardInterrupt:

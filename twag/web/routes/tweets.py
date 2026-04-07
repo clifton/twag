@@ -36,7 +36,11 @@ def _looks_truncated_text(text: str | None) -> bool:
 
 
 def _build_quote_embed(
-    conn, quote_id: str | None, *, depth: int = 0, seen: set[str] | None = None
+    conn,
+    quote_id: str | None,
+    *,
+    depth: int = 0,
+    seen: set[str] | None = None,
 ) -> dict[str, Any] | None:
     if not quote_id:
         return None
@@ -355,7 +359,7 @@ async def list_tweets(
                     "reference_links": reference_links,
                     "external_links": normalized.external_links,
                     "display_content": display_content,
-                }
+                },
             )
 
     return {
@@ -579,7 +583,7 @@ async def list_categories(request: Request) -> dict[str, Any]:
             WHERE category IS NOT NULL AND processed_at IS NOT NULL
             GROUP BY category
             ORDER BY count DESC
-            """
+            """,
         )
         raw_counts = {row["category"]: row["count"] for row in cursor.fetchall()}
 
@@ -617,7 +621,7 @@ async def list_tickers(request: Request, limit: int = 50) -> dict[str, Any]:
             SELECT tickers
             FROM tweets
             WHERE tickers IS NOT NULL AND processed_at IS NOT NULL
-            """
+            """,
         )
         rows = cursor.fetchall()
 

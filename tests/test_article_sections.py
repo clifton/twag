@@ -16,7 +16,7 @@ def test_parse_primary_points_filters_invalid_entries():
             {"point": "", "reasoning": "invalid"},
             {"reasoning": "missing point"},
             "not-a-dict",
-        ]
+        ],
     )
 
     points = parse_primary_points(payload)
@@ -26,7 +26,7 @@ def test_parse_primary_points_filters_invalid_entries():
             "point": "Google capex is entering a new regime.",
             "reasoning": "Demand backlog supports accelerated deployment.",
             "evidence": "$240B backlog and strong cloud growth.",
-        }
+        },
     ]
 
 
@@ -42,7 +42,7 @@ def test_parse_action_items_normalizes_horizon_confidence_and_tickers():
             },
             {"action": "", "trigger": "invalid"},
             {"trigger": "missing action"},
-        ]
+        ],
     )
 
     actions = parse_action_items(payload)
@@ -54,7 +54,7 @@ def test_parse_action_items_normalizes_horizon_confidence_and_tickers():
             "horizon": "medium term",
             "confidence": "0.65",
             "tickers": "GOOGL, MSFT, AMZN",
-        }
+        },
     ]
 
 

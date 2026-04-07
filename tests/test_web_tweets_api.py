@@ -259,7 +259,7 @@ def test_list_tweets_normalizes_self_and_inline_links(monkeypatch, tmp_path):
             "url": "https://github.com/aliasvault/aliasvault",
             "display_url": "github.com/aliasvault/aliasvault",
             "domain": "github.com",
-        }
+        },
     ]
 
 
@@ -340,7 +340,7 @@ def test_list_tweets_drops_trailing_unresolved_short_link_when_other_link_resolv
                     "url": "https://t.co/ext",
                     "expanded_url": "https://github.com/fixie-ai/ultravox",
                     "display_url": "github.com/fixie-ai/ultravox",
-                }
+                },
             ],
             has_media=False,
         )
@@ -359,7 +359,7 @@ def test_list_tweets_drops_trailing_unresolved_short_link_when_other_link_resolv
             "url": "https://github.com/fixie-ai/ultravox",
             "display_url": "github.com/fixie-ai/ultravox",
             "domain": "github.com",
-        }
+        },
     ]
 
 
@@ -380,7 +380,7 @@ def test_list_tweets_does_not_expand_short_urls_on_request(monkeypatch, tmp_path
                     "url": "https://t.co/ext",
                     "expanded_url": "https://github.com/example/project",
                     "display_url": "github.com/example/project",
-                }
+                },
             ],
         )
         conn.commit()
