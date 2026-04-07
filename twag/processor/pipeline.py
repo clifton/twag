@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -43,6 +44,10 @@ def process_unprocessed(
     force_refresh: bool = False,
 ) -> list[TriageResult]:
     """Process tweets that haven't been scored yet."""
+    from ..metrics import get_collector
+
+    m = get_collector()
+    t0 = time.monotonic()
     config = load_config()
     batch_size = config["scoring"]["batch_size"]
     high_threshold = config["scoring"]["high_signal_threshold"]
@@ -138,6 +143,8 @@ def process_unprocessed(
 
         conn.commit()
 
+    m.observe("pipeline.process_unprocessed.latency_seconds", time.monotonic() - t0)
+    m.inc("pipeline.process_unprocessed.tweets", len(results))
     return results
 
 

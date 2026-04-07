@@ -34,34 +34,60 @@ def _extract_anthropic_text(content_blocks: list[Any]) -> str:
 
 def _call_anthropic(model: str, prompt: str, max_tokens: int = 2048) -> str:
     """Call Anthropic API and return text response."""
-    client = get_anthropic_client()
-    response = client.messages.create(
-        model=model,
-        max_tokens=max_tokens,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return _extract_anthropic_text(response.content)
+    from twag.metrics import get_collector
+
+    m = get_collector()
+    m.inc("scorer.anthropic.calls")
+    t0 = time.monotonic()
+    try:
+        client = get_anthropic_client()
+        response = client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        result = _extract_anthropic_text(response.content)
+        m.observe("scorer.anthropic.latency_seconds", time.monotonic() - t0)
+        if hasattr(response, "usage") and response.usage:
+            input_tokens = getattr(response.usage, "input_tokens", 0) or 0
+            output_tokens = getattr(response.usage, "output_tokens", 0) or 0
+            m.inc("scorer.anthropic.input_tokens", input_tokens)
+            m.inc("scorer.anthropic.output_tokens", output_tokens)
+        return result
+    except Exception:
+        m.inc("scorer.anthropic.errors")
+        raise
 
 
 def _call_gemini(model: str, prompt: str, max_tokens: int = 2048, reasoning: str | None = None) -> str:
     """Call Gemini API and return text response."""
     from google.genai import types
 
-    client = get_gemini_client()
+    from twag.metrics import get_collector
 
-    config_kwargs: dict = {"max_output_tokens": max_tokens}
+    m = get_collector()
+    m.inc("scorer.gemini.calls")
+    t0 = time.monotonic()
+    try:
+        client = get_gemini_client()
 
-    # Add thinking config if reasoning is specified
-    if reasoning:
-        # Gemini 3+ uses thinking_level (string: "low", "medium", "high")
-        config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_level=reasoning)  # ty: ignore[invalid-argument-type]
+        config_kwargs: dict = {"max_output_tokens": max_tokens}
 
-    response = client.models.generate_content(
-        model=model,
-        contents=prompt,
-        config=types.GenerateContentConfig(**config_kwargs),
-    )
-    return response.text
+        # Add thinking config if reasoning is specified
+        if reasoning:
+            # Gemini 3+ uses thinking_level (string: "low", "medium", "high")
+            config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_level=reasoning)  # ty: ignore[invalid-argument-type]
+
+        response = client.models.generate_content(
+            model=model,
+            contents=prompt,
+            config=types.GenerateContentConfig(**config_kwargs),
+        )
+        m.observe("scorer.gemini.latency_seconds", time.monotonic() - t0)
+        return response.text
+    except Exception:
+        m.inc("scorer.gemini.errors")
+        raise
 
 
 def _call_anthropic_vision(model: str, image_url: str, prompt: str, max_tokens: int = 1024) -> str:
@@ -141,6 +167,9 @@ def _call_llm_vision(provider: str, model: str, image_url: str, prompt: str, max
 
 
 def _with_retry(fn):
+    from twag.metrics import get_collector
+
+    m = get_collector()
     config = load_config()
     retries = config.get("llm", {}).get("retry_max_attempts", 4)
     base_delay = config.get("llm", {}).get("retry_base_seconds", 1.0)
@@ -153,6 +182,7 @@ def _with_retry(fn):
             return fn()
         except Exception as exc:
             attempt += 1
+            m.inc("scorer.retries")
             msg = str(exc).lower()
             if "not set" in msg and "api" in msg:
                 raise

@@ -2,9 +2,10 @@
 
 import html
 import os
+import time
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -12,7 +13,8 @@ from fastapi.templating import Jinja2Templates
 
 from ..config import get_database_path
 from ..db import init_db
-from .routes import context, prompts, reactions, tweets
+from ..metrics import get_collector
+from .routes import context, metrics, prompts, reactions, tweets
 
 # Paths
 TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -45,11 +47,22 @@ def create_app() -> FastAPI:
     templates.env.filters["unescape"] = lambda s: html.unescape(s) if s else s
     app.state.templates = templates
 
+    # Request metrics middleware
+    @app.middleware("http")
+    async def metrics_middleware(request: Request, call_next) -> Response:
+        m = get_collector()
+        m.inc("web.requests")
+        t0 = time.monotonic()
+        response: Response = await call_next(request)
+        m.observe("web.request_latency_seconds", time.monotonic() - t0)
+        return response
+
     # Include API routers
     app.include_router(tweets.router, prefix="/api")
     app.include_router(reactions.router, prefix="/api")
     app.include_router(prompts.router, prefix="/api")
     app.include_router(context.router, prefix="/api")
+    app.include_router(metrics.router, prefix="/api")
 
     # In dev mode (TWAG_DEV=1), skip SPA serving — Vite dev server handles frontend
     dev_mode = os.environ.get("TWAG_DEV") == "1"

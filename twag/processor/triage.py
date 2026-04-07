@@ -371,6 +371,9 @@ def _triage_rows(
     force_refresh: bool = False,
 ) -> list[TriageResult]:
     """Run triage on provided rows and persist results."""
+    from ..metrics import get_collector
+
+    m = get_collector()
     config = load_config()
     max_text_workers = _normalized_worker_count(config.get("llm", {}).get("max_concurrency_text", 5), 5)
     max_triage_workers = _normalized_worker_count(
@@ -579,11 +582,13 @@ def _triage_rows(
 
     def _handle_results(results: list[TriageResult]) -> None:
         for result in results:
+            m.inc("pipeline.triage.processed")
             tweet_row = tweet_map.get(result.tweet_id)
             if status_cb and tweet_row:
                 status_cb(f"Saving @{tweet_row['author_handle']}")
 
             tier = _score_to_signal_tier(result.score, high_threshold)
+            m.inc(f"pipeline.triage.tier.{tier}")
 
             update_tweet_processing(
                 conn,
@@ -725,6 +730,7 @@ def _triage_rows(
                 try:
                     results = future.result()
                 except Exception:
+                    m.inc("pipeline.triage.batch_errors")
                     if status_cb:
                         status_cb(f"Batch {batch_index} failed")
                     if progress_cb:
