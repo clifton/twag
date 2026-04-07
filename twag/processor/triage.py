@@ -378,6 +378,17 @@ def _triage_rows(
         )
         tweet_map[tweet_id] = row
 
+    # Pre-fetch account categories to avoid per-row SELECT in _submit_enrichment.
+    author_handles = {row["author_handle"] for row in tweet_rows}
+    account_categories: dict[str, str | None] = {}
+    if author_handles:
+        placeholders = ",".join("?" for _ in author_handles)
+        acct_cursor = conn.execute(
+            f"SELECT handle, category FROM accounts WHERE handle IN ({placeholders})",
+            tuple(author_handles),
+        )
+        account_categories = {r["handle"]: r["category"] for r in acct_cursor.fetchall()}
+
     all_results: list[TriageResult] = []
 
     total = len(tweets_for_triage)
@@ -406,9 +417,13 @@ def _triage_rows(
                 progress_cb(1)
 
     def _submit_enrichment(tweet_id: str, tweet_row: sqlite3.Row) -> None:
-        """Prepare enrichment parameters (fast DB reads) and submit to text_pool."""
-        row = get_tweet_by_id(conn, tweet_id)
-        if not row or (row["analysis_json"] and not force_refresh):
+        """Prepare enrichment parameters and submit to text_pool.
+
+        Uses the already-available tweet_row and pre-fetched account_categories
+        instead of re-querying the database per row.
+        """
+        row = tweet_row
+        if row["analysis_json"] and not force_refresh:
             _complete_task(tweet_id)
             return
 
@@ -421,12 +436,7 @@ def _triage_rows(
         media_items = parse_media_items(row["media_items"])
         media_context = build_media_context(media_items) if media_items else (row["media_analysis"] or "")
 
-        acct_cursor = conn.execute(
-            "SELECT category FROM accounts WHERE handle = ?",
-            (row["author_handle"],),
-        )
-        acct_row = acct_cursor.fetchone()
-        author_category = acct_row["category"] if acct_row else "unknown"
+        author_category = account_categories.get(row["author_handle"]) or "unknown"
 
         if status_cb:
             status_cb(f"Enriching @{row['author_handle']}")
@@ -460,9 +470,12 @@ def _triage_rows(
             _complete_task(tweet_id)
 
     def _submit_article(tweet_id: str, tweet_row: sqlite3.Row) -> None:
-        """Prepare article processing and submit to text_pool."""
-        row = get_tweet_by_id(conn, tweet_id)
-        if not row or (row["article_processed_at"] and not force_refresh):
+        """Prepare article processing and submit to text_pool.
+
+        Uses the already-available tweet_row instead of re-querying the database.
+        """
+        row = tweet_row
+        if row["article_processed_at"] and not force_refresh:
             _complete_task(tweet_id)
             return
 
