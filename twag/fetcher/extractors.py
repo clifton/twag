@@ -484,30 +484,3 @@ def _extract_links(data: dict[str, Any], content: str) -> list[dict[str, str]]:
             )
 
     return links
-
-
-def _extract_media_items_from_json_blob(blob: str) -> list[dict[str, Any]]:
-    """Best-effort media extraction from potentially truncated bird --json-full output."""
-    if not blob:
-        return []
-
-    urls: list[str] = []
-    patterns = [
-        r'"original_img_url"\s*:\s*"([^"]+)"',
-        r'"media_url_https"\s*:\s*"([^"]+)"',
-        r'"media_url"\s*:\s*"([^"]+)"',
-    ]
-    for pattern in patterns:
-        urls.extend(re.findall(pattern, blob))
-
-    items: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for raw_url in urls:
-        url = raw_url.replace("\\/", "/")
-        if not url.startswith("http"):
-            continue
-        if url in seen:
-            continue
-        seen.add(url)
-        items.append(sanitize_nested_strings({"url": url, "type": "photo", "source": "article_full_fallback"}))
-    return items

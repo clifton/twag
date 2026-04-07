@@ -178,22 +178,3 @@ def get_digests_dir() -> Path:
 def get_following_path() -> Path:
     """Get the following list path."""
     return get_data_dir() / "following.txt"
-
-
-# Backward compatibility aliases
-def get_memory_dir() -> Path:
-    """
-    Get the data directory (legacy alias).
-
-    DEPRECATED: Use get_data_dir() or get_digests_dir() instead.
-    """
-    return get_data_dir()
-
-
-def get_workspace_path() -> Path:
-    """
-    Get the data directory (legacy alias).
-
-    DEPRECATED: Use get_data_dir() instead.
-    """
-    return get_data_dir()

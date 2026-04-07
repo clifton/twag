@@ -45,19 +45,6 @@ class RichProgressReporter:
         self._progress.update(self._task_id, total=total, description=self._description())
 
 
-class NullProgressReporter:
-    """No-op progress reporter for non-interactive / library use."""
-
-    def update_status(self, message: str) -> None:
-        pass
-
-    def advance(self, step: int = 1) -> None:
-        pass
-
-    def set_total(self, total: int) -> None:
-        pass
-
-
 def create_progress() -> Progress:
     """Create a standard Rich progress bar."""
     return Progress(
