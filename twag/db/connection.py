@@ -209,6 +209,11 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_fetch_log_endpoint ON fetch_log(endpoint, executed_at DESC)")
 
+    # Ensure metrics table exists
+    from ..metrics import ensure_metrics_table
+
+    ensure_metrics_table(conn)
+
 
 def _init_fts(conn: sqlite3.Connection) -> None:
     """Initialize FTS5 virtual table and triggers."""
