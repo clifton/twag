@@ -166,6 +166,9 @@ twag search "query" --time 7d        # Last N days
 twag search "query" -s 7             # Min score threshold
 twag search "query" --format full    # Digest-style output
 twag search "query" --format json    # JSON output
+twag search --bookmarks              # Only bookmarked tweets
+twag search "query" --tier 1         # Filter by signal tier
+twag search "query" --order score    # Sort: rank, score, or time
 ```
 
 **Query syntax:**
@@ -179,13 +182,17 @@ twag search "query" --format json    # JSON output
 ```bash
 twag fetch                    # Home + tier-1 + bookmarks
 twag fetch --no-tier1         # Home only
-twag fetch -u @handle         # Specific user
+twag fetch --source user -u @handle  # Specific user
 twag fetch --source search -q "query"  # Search tweets
+twag fetch --stagger 5        # Rotate: fetch 5 least-recent tier-1
+twag fetch --delay 5.0        # Pacing between tier-1 fetches (default: 3s)
 
 twag process                  # Score unprocessed (no alerts by default)
 twag process -n 100           # Limit batch
 twag process --dry-run        # Preview
 twag process --notify         # Send alerts
+twag process --no-reprocess-quotes     # Skip reprocessing dependency tweets
+twag process --reprocess-min-score 5   # Min score for reprocessing (default: 3)
 ```
 
 ### Digest
@@ -221,6 +228,12 @@ twag prune --days 14          # Delete old tweets
 twag export --days 7          # Export recent
 ```
 
+### Narratives
+
+```bash
+twag narratives list          # List active narratives
+```
+
 ### Database
 
 ```bash
@@ -240,6 +253,8 @@ twag db restore backup.sql --force  # Restore without confirmation
 twag web                      # Start (localhost:5173)
 twag web --host 127.0.0.1     # Localhost only
 twag web --port 8080          # Custom port
+twag web --dev                # Dev mode (Vite + HMR)
+twag web --no-reload          # Disable auto-reload
 ```
 
 ### Config
