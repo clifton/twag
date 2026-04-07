@@ -3,12 +3,15 @@
 import json
 import random
 import time
-from typing import Any
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 from anthropic import Anthropic
 
 from twag.auth import get_api_key
 from twag.config import load_config
+
+_T = TypeVar("_T")
 
 
 def get_anthropic_client() -> Anthropic:
@@ -166,7 +169,7 @@ def _call_llm_vision(provider: str, model: str, image_url: str, prompt: str, max
     return _with_retry(_invoke)
 
 
-def _with_retry(fn):
+def _with_retry(fn: Callable[[], _T]) -> _T:
     from twag.metrics import get_collector
 
     m = get_collector()
