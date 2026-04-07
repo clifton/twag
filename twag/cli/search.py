@@ -60,7 +60,7 @@ def search(
     order: str | None,
     fmt: str,
 ):
-    """
+    r"""
     Search or browse tweets.
 
     \b

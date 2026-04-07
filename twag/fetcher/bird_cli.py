@@ -106,10 +106,10 @@ def _run_bird_once(
             log.error("bird %s exited with code %d", args[0] if args else "?", result.returncode)
         return stdout, result.stderr, result.returncode
     except subprocess.TimeoutExpired:
-        log.error("bird %s timed out after %ds", args[0] if args else "?", timeout)
+        log.error("bird %s timed out after %ds", args[0] if args else "?", timeout)  # noqa: TRY400
         return "", "Command timed out", 1
     except FileNotFoundError:
-        log.error("bird CLI not found on PATH")
+        log.error("bird CLI not found on PATH")  # noqa: TRY400
         return "", "bird CLI not found", 1
 
 
