@@ -41,7 +41,7 @@ ALLOWED_COMMANDS = frozenset(
         "tail",
         "twag",
         "wc",
-    }
+    },
 )
 
 # Shell metacharacters that enable injection when present in a template
