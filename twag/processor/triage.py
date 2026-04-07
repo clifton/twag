@@ -95,6 +95,7 @@ def ensure_media_analysis(
     vision_model: str | None = None,
     vision_provider: str | None = None,
 ) -> list[dict[str, Any]]:
+    """Analyze media for a tweet if not yet analyzed, persisting results to the database."""
     if not tweet_row["has_media"]:
         return []
 

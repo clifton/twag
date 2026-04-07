@@ -7,10 +7,10 @@
   "likeCount": 13,
   "conversationId": "2019488673935552978",
   "author": {
-    "username": "undrvalue",
-    "name": "market participant"
+    "username": "test_user",
+    "name": "Test User"
   },
-  "authorId": "2007674507587399680",
+  "authorId": "1234567890123456789",
   "article": {
     "title": "Google's $180 Billion Bet: Is This the Top?",
     "previewText": "Google just guided $180 billion in capex for 2026. Nearly double their 2025 spend. The largest single-year infrastructure commitment in corporate history. \nI'm certainly not the foremost analyst on"
@@ -23,16 +23,16 @@
       "user_results": {
         "result": {
           "__typename": "User",
-          "id": "VXNlcjoyMDA3Njc0NTA3NTg3Mzk5Njgw",
-          "rest_id": "2007674507587399680",
+          "id": "VXNlcjoxMjM0NTY3ODkwMTIzNDU2Nzg5",
+          "rest_id": "1234567890123456789",
           "affiliates_highlighted_label": {},
           "avatar": {
-            "image_url": "https://pbs.twimg.com/profile_images/2007696001998413825/yo6xkDTk_normal.jpg"
+            "image_url": "https://pbs.twimg.com/profile_images/test/test_normal.jpg"
           },
           "core": {
             "created_at": "Sun Jan 04 04:44:43 +0000 2026",
-            "name": "market participant",
-            "screen_name": "undrvalue"
+            "name": "Test User",
+            "screen_name": "test_user"
           },
           "dm_permissions": {
             "can_dm": false
@@ -43,7 +43,7 @@
           "legacy": {
             "default_profile": true,
             "default_profile_image": false,
-            "description": "Semi-pro investor & analyst. Asymmetric stock picking. $10M+ AUM. Tech, consumer, value.",
+            "description": "Test account for fixture data.",
             "entities": {
               "description": {
                 "urls": []
@@ -62,7 +62,7 @@
               "2010878894271004909"
             ],
             "possibly_sensitive": false,
-            "profile_banner_url": "https://pbs.twimg.com/profile_banners/2007674507587399680/1767506863",
+            "profile_banner_url": "https://pbs.twimg.com/profile_banners/1234567890123456789/0000000000",
             "profile_interstitial_type": "",
             "statuses_count": 413,
             "translator_type": "none",
@@ -70,7 +70,7 @@
             "withheld_in_countries": []
           },
           "location": {
-            "location": "California"
+            "location": "Test Location"
           },
           "media_permissions": {
             "can_media_tag": true
@@ -78,7 +78,7 @@
           "parody_commentary_fan_label": "None",
           "profile_image_shape": "Circle",
           "profile_bio": {
-            "description": "Semi-pro investor & analyst. Asymmetric stock picking. $10M+ AUM. Tech, consumer, value."
+            "description": "Test account for fixture data."
           },
           "privacy": {
             "protected": false
@@ -1366,7 +1366,7 @@
         "timestamps": [],
         "urls": [
           {
-            "display_url": "x.com/i/article/2019…",
+            "display_url": "x.com/i/article/2019\u2026",
             "expanded_url": "http://x.com/i/article/2019247287562895360",
             "url": "https://t.co/XSV2g4VfMe",
             "indices": [
@@ -1388,7 +1388,7 @@
       "reply_count": 1,
       "retweet_count": 0,
       "retweeted": false,
-      "user_id_str": "2007674507587399680",
+      "user_id_str": "1234567890123456789",
       "id_str": "2019488673935552978"
     },
     "quick_promote_eligibility": {

@@ -208,14 +208,13 @@ def test_insert_tweet_retries_transient_database_lock(monkeypatch):
             if self.calls == 1:
                 raise sqlite3.OperationalError("database is locked")
             self.params = params
-            return None
 
     conn = _LockOnceConnection()
     sleeps: list[float] = []
     monkeypatch.setattr(db_connection_mod.time, "sleep", lambda delay: sleeps.append(delay))
 
     inserted = insert_tweet(
-        conn,  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
+        conn,
         tweet_id="retry-1",
         author_handle="retry_user",
         content="retry content",

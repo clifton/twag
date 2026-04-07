@@ -147,14 +147,14 @@ def doctor():
 
     gemini_key = os.environ.get("GEMINI_API_KEY")
     if gemini_key:
-        console.print(f"  {status_icon(True)} GEMINI_API_KEY set ({gemini_key[:8]}...)")
+        console.print(f"  {status_icon(True)} GEMINI_API_KEY set ({len(gemini_key)} chars)")
     else:
         console.print(f"  {status_icon(False)} GEMINI_API_KEY not set")
         issues.append("Set GEMINI_API_KEY environment variable")
 
     anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
     if anthropic_key:
-        console.print(f"  {status_icon(True)} ANTHROPIC_API_KEY set ({anthropic_key[:8]}...)")
+        console.print(f"  {status_icon(True)} ANTHROPIC_API_KEY set ({len(anthropic_key)} chars)")
     else:
         console.print("  [yellow]WARN[/yellow] ANTHROPIC_API_KEY not set (enrichment disabled)")
         warnings.append("Set ANTHROPIC_API_KEY for enrichment features")

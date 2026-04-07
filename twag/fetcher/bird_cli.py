@@ -2,7 +2,9 @@
 
 import json
 import logging
+import os
 import random
+import re
 import subprocess
 import tempfile
 import threading
@@ -19,6 +21,20 @@ log = logging.getLogger(__name__)
 _BIRD_RATE_LOCK = threading.Lock()
 _BIRD_LAST_CALL = 0.0
 _MAX_RETWEET_HYDRATIONS = 12
+
+_SENSITIVE_ENV_VARS = ("AUTH_TOKEN", "CT0", "GEMINI_API_KEY", "ANTHROPIC_API_KEY", "TELEGRAM_BOT_TOKEN")
+_HEX_PATTERN = re.compile(r"[0-9a-fA-F]{32,}")
+
+
+def _redact_stderr(stderr: str) -> str:
+    """Strip credential values and long hex strings from bird stderr before logging."""
+    redacted = stderr
+    for var in _SENSITIVE_ENV_VARS:
+        value = os.environ.get(var)
+        if value and value in redacted:
+            redacted = redacted.replace(value, f"<{var}>")
+    redacted = _HEX_PATTERN.sub("<redacted-hex>", redacted)
+    return redacted
 
 
 @dataclass(frozen=True)
@@ -85,7 +101,7 @@ def _run_bird_once(
             meaningful = [ln for ln in lines if not ln.strip().startswith("\u2139")]
             if meaningful and log_failures:
                 level = logging.WARNING if result.returncode == 0 else logging.ERROR
-                log.log(level, "bird %s stderr: %s", args[0] if args else "?", "\n".join(meaningful))
+                log.log(level, "bird %s stderr: %s", args[0] if args else "?", _redact_stderr("\n".join(meaningful)))
         if result.returncode != 0 and log_failures:
             log.error("bird %s exited with code %d", args[0] if args else "?", result.returncode)
         return stdout, result.stderr, result.returncode
@@ -105,7 +121,10 @@ def run_bird(args: list[str], timeout: int = 60, *, log_failures: bool = True) -
     # Build command with auth if available
     cmd = ["bird", *args]
 
-    # Add auth flags if we have the tokens
+    # Auth tokens are passed as CLI flags because bird (v0.8.0) does not support
+    # reading AUTH_TOKEN/CT0 from environment variables.  This means tokens are
+    # visible in /proc/<pid>/cmdline.  Accepted trade-off for a single-user local
+    # tool — revisit if bird adds env-var auth support.
     auth_token = env.get("AUTH_TOKEN")
     ct0 = env.get("CT0")
 
@@ -233,8 +252,8 @@ def _parse_bird_output(stdout: str) -> list[Tweet]:
     except json.JSONDecodeError:
         text = stdout.strip()
         # Try NDJSON first (one JSON value per line)
-        for line in text.split("\n"):
-            line = line.strip()
+        for raw_line in text.split("\n"):
+            line = raw_line.strip()
             if not line:
                 continue
             try:
