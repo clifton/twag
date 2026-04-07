@@ -11,6 +11,7 @@ from .accounts import (
     update_account_stats,
     upsert_account,
 )
+from .alerts import get_recent_alert_count, log_alert
 from .connection import get_connection, init_db, rebuild_fts
 from .context_commands import (
     ContextCommand,
@@ -125,6 +126,7 @@ __all__ = [
     "get_reactions_for_tweet",
     "get_reactions_summary",
     "get_reactions_with_tweets",
+    "get_recent_alert_count",
     "get_tweet_by_id",
     "get_tweet_stats",
     "get_tweets_by_ids",
@@ -135,6 +137,7 @@ __all__ = [
     "insert_tweet",
     "is_tweet_seen",
     "link_tweet_narrative",
+    "log_alert",
     "log_fetch",
     "mark_tweet_bookmarked",
     "mark_tweet_in_digest",

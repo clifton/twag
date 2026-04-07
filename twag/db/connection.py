@@ -178,6 +178,20 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         if seeded > 0:
             conn.commit()
 
+    # Create alert_log table if not present (for notification rate limiting)
+    cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='alert_log'")
+    if not cursor.fetchone():
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS alert_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tweet_id TEXT,
+                sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                chat_id TEXT,
+                FOREIGN KEY (tweet_id) REFERENCES tweets(id)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_alert_log_sent ON alert_log(sent_at DESC)")
+
     # Ensure performance indexes exist on existing databases
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_tweets_processed_score "

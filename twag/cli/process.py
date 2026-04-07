@@ -80,9 +80,13 @@ def process(
     if not results:
         console.print("No unprocessed tweets found.")
     else:
-        # Show results
-        high_signal = [r for r in results if r.score >= 8]
-        market_relevant = [r for r in results if 6 <= r.score < 8]
+        # Show results using config-driven thresholds
+        cfg = load_config()
+        hs_threshold = cfg["scoring"]["high_signal_threshold"]
+        high_cut = hs_threshold + 1
+        market_cut = hs_threshold - 1
+        high_signal = [r for r in results if r.score >= high_cut]
+        market_relevant = [r for r in results if market_cut <= r.score < high_cut]
 
         console.print(f"Processed {len(results)} tweets:")
         console.print(f"  High signal: {len(high_signal)}")
