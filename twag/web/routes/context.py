@@ -5,7 +5,7 @@ import re
 import shlex
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from ...db import (
@@ -21,6 +21,69 @@ from ...media import build_media_context, parse_media_items
 from ...processor import ensure_media_analysis
 
 router = APIRouter(tags=["context"])
+
+# Allowlist of permitted base commands for context command templates.
+ALLOWED_COMMANDS = frozenset(
+    {
+        "bird",
+        "twag",
+        "curl",
+        "jq",
+        "echo",
+        "date",
+        "cat",
+        "head",
+        "tail",
+        "grep",
+        "wc",
+        "sort",
+        "uniq",
+        "cut",
+        "tr",
+        "python",
+        "python3",
+    }
+)
+
+# Shell metacharacters that enable chaining or redirection.
+_DANGEROUS_PATTERN = re.compile(r"[;|&`$><\n]|\\n")
+
+
+def _validate_command_template(template: str) -> None:
+    """Validate a command template against dangerous patterns.
+
+    Raises HTTPException(400) if the template contains shell metacharacters
+    (pipes, redirects, semicolons, backticks, $-expansion) or uses a
+    command not in the allowlist.
+    """
+    if _DANGEROUS_PATTERN.search(template):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Command template contains disallowed shell metacharacters "
+                "(pipes, redirects, semicolons, backticks, or variable expansion)."
+            ),
+        )
+
+    # Extract the base command (first token), ignoring {var} placeholders
+    # that may appear before real arguments.
+    try:
+        tokens = shlex.split(template)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Malformed command template: {exc}",
+        ) from exc
+
+    if not tokens:
+        raise HTTPException(status_code=400, detail="Empty command template.")
+
+    base_cmd = tokens[0].strip("{}")  # handle e.g. "{cmd}" edge case
+    if base_cmd not in ALLOWED_COMMANDS:
+        raise HTTPException(
+            status_code=400,
+            detail=(f"Command '{base_cmd}' is not in the allowed list: {sorted(ALLOWED_COMMANDS)}"),
+        )
 
 
 class ContextCommandCreate(BaseModel):
@@ -70,6 +133,7 @@ async def create_context_command(
     command: ContextCommandCreate,
 ) -> dict[str, Any]:
     """Create a new context command."""
+    _validate_command_template(command.command_template)
     db_path = request.app.state.db_path
 
     with get_connection(db_path) as conn:
@@ -120,6 +184,7 @@ async def update_context_command(
     command: ContextCommandCreate,
 ) -> dict[str, Any]:
     """Update a context command."""
+    _validate_command_template(command.command_template)
     db_path = request.app.state.db_path
 
     with get_connection(db_path) as conn:
