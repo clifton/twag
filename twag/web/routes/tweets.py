@@ -630,8 +630,8 @@ async def list_tickers(request: Request, limit: int = 50) -> dict[str, Any]:
             tickers = [t.strip() for t in row["tickers"].split(",") if t.strip()]
 
         for ticker in tickers:
-            ticker = ticker.upper()
-            ticker_counts[ticker] = ticker_counts.get(ticker, 0) + 1
+            normalized_ticker = ticker.upper()
+            ticker_counts[normalized_ticker] = ticker_counts.get(normalized_ticker, 0) + 1
 
     # Sort by count and limit
     sorted_tickers = sorted(ticker_counts.items(), key=lambda x: -x[1])[:limit]

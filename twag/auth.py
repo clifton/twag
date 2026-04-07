@@ -18,8 +18,8 @@ def load_env_file(path: Path | None = None) -> dict[str, str]:
         return env
 
     with open(path) as f:
-        for line in f:
-            line = line.strip()
+        for raw_line in f:
+            line = raw_line.strip()
             if not line or line.startswith("#") or "=" not in line:
                 continue
             line = line.removeprefix("export ")
