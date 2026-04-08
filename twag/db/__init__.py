@@ -28,6 +28,7 @@ from .maintenance import (
     prune_old_tweets,
     restore_sql,
 )
+from .migrations import TARGET_VERSION, check_schema, get_schema_version
 from .narratives import (
     archive_stale_narratives,
     get_active_narratives,
@@ -94,6 +95,7 @@ __all__ = [
     "EQUITY_KEYWORDS",
     "FTS_SCHEMA",
     "SCHEMA",
+    "TARGET_VERSION",
     "ContextCommand",
     "FeedTweet",
     "Prompt",
@@ -105,6 +107,7 @@ __all__ = [
     "apply_account_decay",
     "archive_stale_narratives",
     "boost_account",
+    "check_schema",
     "delete_context_command",
     "delete_reaction",
     "demote_account",
@@ -127,6 +130,7 @@ __all__ = [
     "get_reactions_summary",
     "get_reactions_with_tweets",
     "get_recent_alert_count",
+    "get_schema_version",
     "get_tweet_by_id",
     "get_tweet_stats",
     "get_tweets_by_ids",

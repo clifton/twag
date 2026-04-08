@@ -7,7 +7,8 @@ from pathlib import Path
 import rich_click as click
 
 from ..config import get_database_path
-from ..db import dump_sql, get_connection, init_db, rebuild_fts, restore_sql
+from ..db import check_schema, dump_sql, get_connection, init_db, rebuild_fts, restore_sql
+from ..db.migrations import TARGET_VERSION
 from ._console import console
 
 
@@ -144,4 +145,56 @@ def db_restore(input_file: str, force: bool):
         )
     except Exception as e:
         console.print(f"[red]Error restoring database: {e}[/red]")
+        sys.exit(1)
+
+
+@db.command("schema-version")
+def db_schema_version():
+    """Show current and target schema versions."""
+    db_file = get_database_path()
+    if not db_file.exists():
+        console.print("[red]Database not found.[/red]")
+        sys.exit(1)
+
+    with get_connection(readonly=True) as conn:
+        cursor = conn.execute("PRAGMA user_version")
+        current = cursor.fetchone()[0]
+
+    console.print(f"Current schema version: {current}")
+    console.print(f"Target schema version:  {TARGET_VERSION}")
+    if current < TARGET_VERSION:
+        console.print("[yellow]Database needs migration. Run: twag db init[/yellow]")
+    else:
+        console.print("[green]Schema is up to date.[/green]")
+
+
+@db.command("check")
+def db_check():
+    """Check database schema for drift against expected state."""
+    db_file = get_database_path()
+    if not db_file.exists():
+        console.print("[red]Database not found.[/red]")
+        sys.exit(1)
+
+    with get_connection(readonly=True) as conn:
+        result = check_schema(conn)
+
+    console.print(f"Schema version: {result['version_current']}/{result['version_target']}")
+
+    if not result["version_ok"]:
+        console.print(
+            f"[yellow]Version mismatch: have {result['version_current']}, need {result['version_target']}[/yellow]",
+        )
+
+    if result["missing_tables"]:
+        console.print(f"[red]Missing tables: {', '.join(result['missing_tables'])}[/red]")
+
+    if result["missing_columns"]:
+        for table, cols in result["missing_columns"].items():
+            console.print(f"[red]Missing columns in {table}: {', '.join(cols)}[/red]")
+
+    if result["ok"]:
+        console.print("[green]Schema check passed — no drift detected.[/green]")
+    else:
+        console.print("[yellow]Run 'twag db init' to apply pending migrations.[/yellow]")
         sys.exit(1)
