@@ -4,6 +4,7 @@ import asyncio
 import logging
 import re
 import shlex
+import shutil
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
@@ -284,6 +285,29 @@ def _extract_tweet_variables(tweet_row) -> dict[str, str]:
     return variables
 
 
+def _resolve_command(name: str) -> str | None:
+    """Resolve an allowed command name to its absolute path via shutil.which()."""
+    if name not in ALLOWED_COMMANDS:
+        return None
+    return shutil.which(name)
+
+
+# Commands whose arguments may reference file paths — block absolute paths
+# and path-traversal sequences to prevent arbitrary file reads.
+_FILE_READING_COMMANDS = frozenset({"cat", "head", "tail", "grep", "sed", "rg"})
+
+
+def _validate_arguments(base_cmd: str, args: list[str]) -> str | None:
+    """Validate command arguments. Returns an error message or None if OK."""
+    if base_cmd in _FILE_READING_COMMANDS:
+        for arg in args:
+            if arg.startswith("/"):
+                return f"Absolute paths are not allowed as arguments to '{base_cmd}'"
+            if ".." in arg:
+                return f"Path traversal ('..') is not allowed in arguments to '{base_cmd}'"
+    return None
+
+
 async def _run_command(command: str, timeout: float = 30.0) -> tuple[str, str, int]:
     """Run a command and return (stdout, stderr, returncode).
 
@@ -299,6 +323,18 @@ async def _run_command(command: str, timeout: float = 30.0) -> tuple[str, str, i
             return "", f"Command '{base_cmd}' is not in the allowed list", -1
         if _DANGEROUS_PATTERN.search(command):
             return "", "Command contains forbidden shell metacharacters", -1
+
+        # Validate arguments for file-reading commands
+        arg_error = _validate_arguments(base_cmd, args[1:])
+        if arg_error:
+            return "", arg_error, -1
+
+        # Resolve to absolute path to avoid PATH manipulation
+        abs_path = _resolve_command(base_cmd)
+        if not abs_path:
+            return "", f"Command '{base_cmd}' not found on system", -1
+        args[0] = abs_path
+
         proc = await asyncio.create_subprocess_exec(
             *args,
             stdout=asyncio.subprocess.PIPE,
