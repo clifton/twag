@@ -178,3 +178,20 @@ def get_digests_dir() -> Path:
 def get_following_path() -> Path:
     """Get the following list path."""
     return get_data_dir() / "following.txt"
+
+
+# Backward-compatibility shims (removed in v0.2, will be deleted in v0.3)
+def get_memory_dir() -> Path:
+    """Deprecated: use get_data_dir() instead."""
+    from twag._compat import _deprecated
+
+    _deprecated("twag.config.get_memory_dir", "twag.config.get_data_dir")
+    return get_data_dir()
+
+
+def get_workspace_path() -> Path:
+    """Deprecated: use get_data_dir() instead."""
+    from twag._compat import _deprecated
+
+    _deprecated("twag.config.get_workspace_path", "twag.config.get_data_dir")
+    return get_data_dir()

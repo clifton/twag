@@ -100,6 +100,9 @@ skip_empty = true
 [tool.ty.environment]
 python-version = "3.10"
 
+[tool.ty.src]
+exclude = [".claude/worktrees/**"]
+
 [tool.ty.analysis]
 allowed-unresolved-imports = ["google.*", "google.**", "anthropic.*", "anthropic.**"]
 

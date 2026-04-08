@@ -1,6 +1,7 @@
 """Shared tweet content utilities."""
 
 import html
+import re as _re
 from datetime import datetime
 from typing import Any
 
@@ -56,3 +57,57 @@ def quote_embed_from_row(row) -> dict[str, Any]:
         "content": decode_html_entities(row["content"]),
         "created_at": created_at.isoformat() if created_at else None,
     }
+
+
+# Backward-compatibility shims (removed in v0.2, will be deleted in v0.3)
+_TWEET_URL_RE = _re.compile(
+    r"https?://(?:www\.)?(?:mobile\.)?(?:x|twitter)\.com/(?:i/(?:web/)?|[^/]+/)?status/(\d+)(?:\?[^\s]+)?",
+    _re.IGNORECASE,
+)
+
+
+def extract_tweet_links(text: str) -> list[tuple[str, str]]:
+    """Deprecated: use twag.link_utils functions directly."""
+    from twag._compat import _deprecated
+
+    _deprecated(
+        "twag.web.tweet_utils.extract_tweet_links",
+        "twag.link_utils.normalize_tweet_links",
+    )
+    return [(m.group(1), m.group(0)) for m in _TWEET_URL_RE.finditer(text)]
+
+
+def remove_tweet_links(
+    text: str,
+    links: list[tuple[str, str]],
+    remove_ids: set[str],
+) -> str:
+    """Deprecated: use twag.link_utils.remove_urls_from_text directly."""
+    from twag._compat import _deprecated
+
+    from ..link_utils import remove_urls_from_text
+
+    _deprecated(
+        "twag.web.tweet_utils.remove_tweet_links",
+        "twag.link_utils.remove_urls_from_text",
+    )
+    urls_to_remove: set[str] = set()
+    for tweet_id, url in links:
+        if tweet_id in remove_ids:
+            urls_to_remove.add(url)
+    cleaned = remove_urls_from_text(text, urls_to_remove)
+    cleaned = _re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned
+
+
+def parse_tweet_id_from_url(url: str | None) -> str | None:
+    """Deprecated: use twag.link_utils.parse_tweet_status_id directly."""
+    from twag._compat import _deprecated
+
+    from ..link_utils import parse_tweet_status_id
+
+    _deprecated(
+        "twag.web.tweet_utils.parse_tweet_id_from_url",
+        "twag.link_utils.parse_tweet_status_id",
+    )
+    return parse_tweet_status_id(url)
