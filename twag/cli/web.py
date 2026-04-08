@@ -8,9 +8,9 @@ from ._console import console
 
 
 @click.command()
-@click.option("--host", "-h", default="0.0.0.0", help="Host to bind to")
+@click.option("--host", "-h", default="127.0.0.1", help="Host to bind to")
 @click.option("--port", "-p", default=5173, help="Port to bind to")
-@click.option("--reload/--no-reload", default=True, help="Auto-reload on code changes")
+@click.option("--reload/--no-reload", default=False, help="Auto-reload on code changes")
 @click.option("--dev", is_flag=True, default=False, help="Dev mode: start Vite + FastAPI with HMR")
 def web(host: str, port: int, reload: bool, dev: bool):
     """Start the web interface server."""

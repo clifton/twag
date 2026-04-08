@@ -1,12 +1,16 @@
 """Search and feed query operations."""
 
 import json
+import re
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
 from .time_utils import parse_time_range
+
+# FTS5 operators that are valid in queries — strip anything else that looks structural
+_FTS5_UNSAFE_PATTERN = re.compile(r"[{}()\[\]^]")
 
 
 @dataclass
@@ -94,6 +98,21 @@ EQUITY_KEYWORDS = {
 }
 
 
+def sanitize_fts5_query(query: str) -> str:
+    """Sanitize a user-supplied FTS5 query string.
+
+    Strips characters that can cause FTS5 parse errors or unexpected behaviour
+    (braces, brackets, carets) while preserving legitimate search operators
+    (AND, OR, NOT, quoted phrases, prefix wildcards).
+
+    Raises ValueError if the query is empty after sanitization.
+    """
+    cleaned = _FTS5_UNSAFE_PATTERN.sub("", query).strip()
+    if not cleaned:
+        raise ValueError("Search query is empty after sanitization")
+    return cleaned
+
+
 def query_suggests_equity_context(query: str) -> bool:
     """Check if a search query suggests equity-relevant context."""
     query_lower = query.lower()
@@ -138,6 +157,9 @@ def search_tweets(
     Returns:
         List of SearchResult objects
     """
+    # Sanitize user-supplied FTS5 query
+    query = sanitize_fts5_query(query)
+
     # Parse time_range if provided
     if time_range:
         parsed_since, parsed_until = parse_time_range(time_range)
@@ -225,7 +247,10 @@ def search_tweets(
         LIMIT ? OFFSET ?
     """
 
-    cursor = conn.execute(sql, params)
+    try:
+        cursor = conn.execute(sql, params)
+    except sqlite3.OperationalError as exc:
+        raise ValueError(f"Invalid search query: {query!r}") from exc
     results = []
 
     for row in cursor.fetchall():
