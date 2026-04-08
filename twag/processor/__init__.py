@@ -70,6 +70,64 @@ __all__ = [
     "fetch_and_store_bookmarks",
     "process_unprocessed",
     "reprocess_today_quoted",
+    "run_full_cycle",
     "store_bookmarked_tweets",
     "store_fetched_tweets",
 ]
+
+
+def __getattr__(name: str):
+    if name == "run_full_cycle":
+        from twag._compat import _deprecated
+
+        _deprecated(
+            "twag.processor.run_full_cycle",
+            "twag.processor.process_unprocessed + twag.processor.enrich_high_signal",
+        )
+
+        def run_full_cycle(
+            fetch_home: bool = True,
+            fetch_tier1: bool = True,
+            process: bool = True,
+            enrich: bool = True,
+        ) -> dict:
+            """Deprecated orchestrator — use process_unprocessed + enrich_high_signal."""
+            from twag.db import get_accounts, get_connection
+
+            stats: dict = {
+                "home_fetched": 0,
+                "home_new": 0,
+                "tier1_fetched": 0,
+                "tier1_new": 0,
+                "processed": 0,
+                "enriched": 0,
+            }
+            if fetch_home:
+                fetched, new = fetch_and_store(source="home", count=100)
+                stats["home_fetched"] = fetched
+                stats["home_new"] = new
+            if fetch_tier1:
+                with get_connection() as conn:
+                    tier1 = get_accounts(conn, tier=1)
+                for account in tier1:
+                    try:
+                        fetched, new = fetch_and_store(
+                            source="user",
+                            handle=account["handle"],
+                            count=20,
+                        )
+                        stats["tier1_fetched"] += fetched
+                        stats["tier1_new"] += new
+                    except Exception:
+                        pass
+            if process:
+                results = process_unprocessed(limit=100)
+                stats["processed"] = len(results)
+            if enrich:
+                results = enrich_high_signal(limit=20)
+                stats["enriched"] = len(results)
+            return stats
+
+        return run_full_cycle
+
+    raise AttributeError(f"module 'twag.processor' has no attribute {name!r}")
