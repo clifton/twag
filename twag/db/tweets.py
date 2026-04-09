@@ -323,9 +323,21 @@ def _merge_duplicate_retweet_metadata(
     updates = ["is_retweet = CASE WHEN is_retweet = 0 THEN 1 ELSE is_retweet END"]
     params: list[Any] = []
 
+    _COALESCE_ALLOWED_COLUMNS = frozenset(
+        {
+            "retweeted_by_handle",
+            "retweeted_by_name",
+            "original_tweet_id",
+            "original_author_handle",
+            "original_author_name",
+        },
+    )
+
     def _coalesce_if_present(column: str, value: str | None) -> None:
         if value is None:
             return
+        if column not in _COALESCE_ALLOWED_COLUMNS:
+            raise ValueError(f"Column {column!r} not in allowlist for SQL interpolation")
         updates.append(f"{column} = COALESCE({column}, ?)")
         params.append(value)
 

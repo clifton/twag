@@ -1,6 +1,7 @@
 """FastAPI application for twag web interface."""
 
 import html
+import logging
 import os
 import time
 from pathlib import Path
@@ -16,6 +17,8 @@ from ..db import init_db
 from ..metrics import get_collector
 from .routes import context, metrics, prompts, reactions, tweets
 
+log = logging.getLogger(__name__)
+
 # Paths
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 FRONTEND_DIST = Path(__file__).parent / "frontend" / "dist"
@@ -23,10 +26,18 @@ FRONTEND_DIST = Path(__file__).parent / "frontend" / "dist"
 
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
+    dev_mode = os.environ.get("TWAG_DEV") == "1"
+
+    # Disable OpenAPI docs in production to avoid exposing unauthenticated API surface
+    docs_url = "/docs" if dev_mode else None
+    redoc_url = "/redoc" if dev_mode else None
+
     app = FastAPI(
         title="Twag",
         description="Twitter aggregator web interface",
         version="0.1.0",
+        docs_url=docs_url,
+        redoc_url=redoc_url,
     )
 
     app.state.db_path = get_database_path()
@@ -64,9 +75,14 @@ def create_app() -> FastAPI:
     app.include_router(context.router, prefix="/api")
     app.include_router(metrics.router, prefix="/api")
 
-    # In dev mode (TWAG_DEV=1), skip SPA serving — Vite dev server handles frontend
-    dev_mode = os.environ.get("TWAG_DEV") == "1"
+    # Warn about unauthenticated endpoints
+    if not dev_mode:
+        log.warning(
+            "Twag web server has NO authentication on any endpoint. "
+            "Avoid binding to 0.0.0.0 in production — restrict to 127.0.0.1.",
+        )
 
+    # In dev mode (TWAG_DEV=1), skip SPA serving — Vite dev server handles frontend
     if not dev_mode and (FRONTEND_DIST / "index.html").exists():
         # Production: serve built SPA
         app.mount(
