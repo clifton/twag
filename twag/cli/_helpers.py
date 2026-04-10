@@ -3,6 +3,8 @@
 import json
 import re
 
+from ..text_utils import json_list as _json_list  # noqa: F401 — re-exported
+
 
 def _normalize_status_id_or_url(status_id_or_url: str) -> str:
     """Normalize a status argument to a tweet ID when possible."""
@@ -15,16 +17,6 @@ def _normalize_status_id_or_url(status_id_or_url: str) -> str:
         return match.group(1)
 
     return value
-
-
-def _json_list(value: str | None) -> list:
-    if not value:
-        return []
-    try:
-        decoded = json.loads(value)
-    except json.JSONDecodeError:
-        return []
-    return decoded if isinstance(decoded, list) else []
 
 
 def _json_object(value: str | None) -> dict:

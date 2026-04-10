@@ -2,18 +2,9 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
-
-def _json_list(value: str | None) -> list[Any]:
-    if not value:
-        return []
-    try:
-        decoded = json.loads(value)
-    except json.JSONDecodeError:
-        return []
-    return decoded if isinstance(decoded, list) else []
+from .text_utils import json_list as _json_list
 
 
 def normalize_horizon(value: Any) -> str:

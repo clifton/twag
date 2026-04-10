@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from typing import Any
 
@@ -58,3 +59,14 @@ def looks_truncated_text(text: str | None) -> bool:
         return False
     stripped = text.rstrip()
     return bool(stripped) and stripped.endswith(_TRUNCATION_SUFFIXES)
+
+
+def json_list(value: str | None) -> list[Any]:
+    """Parse a JSON string, returning a list or empty list on failure."""
+    if not value:
+        return []
+    try:
+        decoded = json.loads(value)
+    except json.JSONDecodeError:
+        return []
+    return decoded if isinstance(decoded, list) else []
