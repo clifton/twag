@@ -10,11 +10,17 @@ from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn
 class ProgressReporter(Protocol):
     """Protocol for reporting progress from CLI commands."""
 
-    def update_status(self, message: str) -> None: ...
+    def update_status(self, message: str) -> None:
+        """Update the displayed status message."""
+        ...
 
-    def advance(self, step: int = 1) -> None: ...
+    def advance(self, step: int = 1) -> None:
+        """Advance progress by *step* increments."""
+        ...
 
-    def set_total(self, total: int) -> None: ...
+    def set_total(self, total: int) -> None:
+        """Set the expected total number of steps."""
+        ...
 
 
 class RichProgressReporter:
@@ -28,18 +34,22 @@ class RichProgressReporter:
         self._total = 0
 
     def _description(self) -> str:
+        """Return the left-padded label for the progress bar."""
         return f"{self._label:<25s}"
 
     def update_status(self, message: str) -> None:
+        """Replace the progress bar label with *message*."""
         self._label = message
         self._progress.update(self._task_id, description=self._description())
 
     def advance(self, step: int = 1) -> None:
+        """Advance the progress bar by *step* increments (clamped to total)."""
         step = max(step, 0)
         self._count = min(self._total, self._count + step)
         self._progress.update(self._task_id, advance=step, description=self._description())
 
     def set_total(self, total: int) -> None:
+        """Set the expected total, floored to the current count."""
         total = max(total, self._count)
         self._total = total
         self._progress.update(self._task_id, total=total, description=self._description())
