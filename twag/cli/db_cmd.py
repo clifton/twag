@@ -8,6 +8,15 @@ import rich_click as click
 
 from ..config import get_database_path
 from ..db import dump_sql, get_connection, init_db, rebuild_fts, restore_sql
+from ..db.migrations import (
+    LATEST_VERSION,
+    _get_columns,
+    get_applied_migrations,
+    get_current_version,
+    get_expected_tables,
+    get_pending_migrations,
+    run_pending_migrations,
+)
 from ._console import console
 
 
@@ -145,3 +154,89 @@ def db_restore(input_file: str, force: bool):
     except Exception as e:
         console.print(f"[red]Error restoring database: {e}[/red]")
         sys.exit(1)
+
+
+@db.command("schema-status")
+def db_schema_status():
+    """Show current schema version, applied and pending migrations, and column diff."""
+    db_file = get_database_path()
+    if not db_file.exists():
+        console.print("[red]Database not found. Run 'twag db init' first.[/red]")
+        sys.exit(1)
+
+    with get_connection(readonly=True) as conn:
+        current = get_current_version(conn)
+        applied = get_applied_migrations(conn)
+        pending = get_pending_migrations(current)
+
+        console.print(f"[bold]Schema version:[/bold] {current} / {LATEST_VERSION}")
+        console.print()
+
+        if applied:
+            console.print("[bold]Applied migrations:[/bold]")
+            for m in applied:
+                console.print(f"  v{m['version']:>2}  {m['name']:<25} {m['applied_at'] or '—'}")
+        else:
+            console.print("[dim]No migrations recorded in audit table.[/dim]")
+
+        console.print()
+
+        if pending:
+            console.print(f"[yellow]Pending migrations ({len(pending)}):[/yellow]")
+            for m in pending:
+                console.print(f"  v{m.version:>2}  {m.name:<25} {m.description}")
+        else:
+            console.print("[green]All migrations applied.[/green]")
+
+        # Column diff
+        console.print()
+        console.print("[bold]Column diff (expected vs actual):[/bold]")
+        expected_tables = get_expected_tables()
+        has_diff = False
+        for table, expected_cols in sorted(expected_tables.items()):
+            try:
+                actual_cols = _get_columns(conn, table)
+            except Exception:
+                console.print(f"  [red]{table}: TABLE MISSING[/red]")
+                has_diff = True
+                continue
+            missing = expected_cols - actual_cols
+            extra = actual_cols - expected_cols
+            if missing or extra:
+                has_diff = True
+                console.print(f"  [yellow]{table}:[/yellow]")
+                for col in sorted(missing):
+                    console.print(f"    [red]- {col} (missing)[/red]")
+                for col in sorted(extra):
+                    console.print(f"    [dim]+ {col} (extra)[/dim]")
+        if not has_diff:
+            console.print("  [green]All tables match expected schema.[/green]")
+
+
+@db.command("migrate")
+@click.option("--dry-run", is_flag=True, help="Show what would change without applying")
+def db_migrate(dry_run: bool):
+    """Run pending schema migrations explicitly."""
+    db_file = get_database_path()
+    if not db_file.exists():
+        console.print("[red]Database not found. Run 'twag db init' first.[/red]")
+        sys.exit(1)
+
+    with get_connection() as conn:
+        current = get_current_version(conn)
+        pending = get_pending_migrations(current)
+
+        if not pending:
+            console.print(f"[green]Database is up to date (v{current}).[/green]")
+            return
+
+        if dry_run:
+            console.print(f"[bold]Dry run:[/bold] {len(pending)} migration(s) would be applied:")
+            for m in pending:
+                console.print(f"  v{m.version:>2}  {m.name:<25} {m.description}")
+            return
+
+        applied = run_pending_migrations(conn)
+        conn.commit()
+        new_version = get_current_version(conn)
+        console.print(f"[green]Applied {len(applied)} migration(s). Schema version: {current} → {new_version}[/green]")

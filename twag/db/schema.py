@@ -193,6 +193,15 @@ CREATE TABLE IF NOT EXISTS metrics (
     recorded_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 CREATE INDEX IF NOT EXISTS idx_metrics_name ON metrics(name, recorded_at DESC);
+
+-- Schema migrations: audit trail for versioned schema changes
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    version INTEGER NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    description TEXT,
+    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 # FTS5 schema for full-text search
