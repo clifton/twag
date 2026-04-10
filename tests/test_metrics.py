@@ -8,11 +8,11 @@ import threading
 import pytest
 
 from twag import metrics
-from twag.metrics import _HISTOGRAM_MAX_SIZE, MetricsCollector, ensure_metrics_table
+from twag.metrics import _HISTOGRAM_MAX_SIZE, MetricsCollector, ensure_metrics_table, get_collector
 
 
 def setup_function():
-    metrics.reset()
+    get_collector().reset()
 
 
 # ── Module-level convenience API tests ────────────────────────────────────
@@ -81,19 +81,10 @@ def test_timer_records_on_exception():
 def test_reset_clears_all():
     metrics.counter("a")
     metrics.histogram("b", 1.0)
-    metrics.reset()
+    get_collector().reset()
     data = metrics.get_all_metrics()
     assert data["counters"] == {}
     assert data["histograms"] == {}
-
-
-def test_dump_json(tmp_path):
-    metrics.counter("x", value=5)
-    path = str(tmp_path / "metrics.json")
-    text = metrics.dump_json(path)
-    assert '"x": 5.0' in text
-    with open(path) as f:
-        assert f.read() == text
 
 
 def test_thread_safety():

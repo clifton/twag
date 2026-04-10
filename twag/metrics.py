@@ -296,15 +296,3 @@ def get_all_metrics() -> MetricsSnapshot:
             "total": stats["total"],
         }
     return {"counters": counters, "histograms": histograms}
-
-
-def dump_json(path: str | None = None) -> str:
-    payload = json.dumps(get_all_metrics(), indent=2, sort_keys=True)
-    if path is not None:
-        with open(path, "w", encoding="utf-8") as handle:
-            handle.write(payload)
-    return payload
-
-
-def reset() -> None:
-    _collector.reset()

@@ -3,7 +3,6 @@
 import json
 import sqlite3
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 from ..text_utils import looks_truncated_text as _looks_truncated_text
@@ -767,31 +766,3 @@ def get_last_fetch(conn: sqlite3.Connection, endpoint: str) -> sqlite3.Row | Non
         (endpoint,),
     )
     return cursor.fetchone()
-
-
-def migrate_seen_json(conn: sqlite3.Connection, seen_json_path: Path) -> int:
-    """Migrate seen.json to database. Returns count of migrated IDs."""
-    if not seen_json_path.exists():
-        return 0
-
-    with open(seen_json_path) as f:
-        data = json.load(f)
-
-    seen_ids = data.get("seen", [])
-    count = 0
-
-    for tweet_id in seen_ids:
-        try:
-            execute_with_retry(
-                conn,
-                """
-                INSERT INTO tweets (id, author_handle, content, source)
-                VALUES (?, ?, ?, ?)
-                """,
-                (tweet_id, "unknown", "[migrated from seen.json]", "migration"),
-            )
-            count += 1
-        except sqlite3.IntegrityError:
-            pass  # Already exists
-
-    return count
