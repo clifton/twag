@@ -2,9 +2,12 @@
 
 import copy
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Any
+
+log = logging.getLogger(__name__)
 
 # Application name for XDG paths
 APP_NAME = "twag"
@@ -106,6 +109,7 @@ def load_config() -> dict[str, Any]:
         mtime = config_path.stat().st_mtime
     except OSError:
         # Config file doesn't exist — use defaults.
+        log.debug("Config file not found at %s, using defaults", config_path)
         mtime = 0.0
 
     if _config_cache is not None and _config_cache[0] == mtime:
@@ -113,6 +117,7 @@ def load_config() -> dict[str, Any]:
 
     config = DEFAULT_CONFIG.copy()
     if mtime > 0:
+        log.debug("Loading config from %s", config_path)
         with open(config_path) as f:
             user_config = json.load(f)
             config = deep_merge(config, user_config)
