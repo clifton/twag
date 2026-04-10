@@ -1,5 +1,6 @@
 """Database maintenance operations: dump, restore, prune."""
 
+import logging
 import re
 import shutil
 import sqlite3
@@ -8,6 +9,8 @@ from pathlib import Path
 
 from ..config import get_database_path
 from .connection import rebuild_fts
+
+log = logging.getLogger(__name__)
 
 # FTS shadow table suffixes and related object names to filter during dump
 _FTS_TABLE = "tweets_fts"
@@ -148,6 +151,7 @@ def restore_sql(
     # Backup existing database
     if backup and db_path.exists():
         backup_path = db_path.with_suffix(".db.bak")
+        log.info("Backing up existing database to %s", backup_path)
         shutil.copy2(db_path, backup_path)
 
     # Remove existing database
@@ -176,11 +180,13 @@ def restore_sql(
 
         return {"tweets": tweet_count, "accounts": account_count, "fts": fts_count}
     except Exception:
+        log.exception("Database restore failed, attempting to recover from backup")
         conn.close()
         # Attempt to restore backup on failure
         if backup:
             backup_path = db_path.with_suffix(".db.bak")
             if backup_path.exists():
+                log.info("Restoring backup from %s", backup_path)
                 if db_path.exists():
                     db_path.unlink()
                 shutil.copy2(backup_path, db_path)

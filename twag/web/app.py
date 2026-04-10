@@ -1,6 +1,7 @@
 """FastAPI application for twag web interface."""
 
 import html
+import logging
 import os
 import time
 from pathlib import Path
@@ -21,8 +22,18 @@ TEMPLATES_DIR = Path(__file__).parent / "templates"
 FRONTEND_DIST = Path(__file__).parent / "frontend" / "dist"
 
 
+log = logging.getLogger(__name__)
+
+
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(name)s %(levelname)s %(message)s",
+    )
+    logging.getLogger("twag").setLevel(logging.INFO)
+    log.info("Creating twag web application")
+
     app = FastAPI(
         title="Twag",
         description="Twitter aggregator web interface",
