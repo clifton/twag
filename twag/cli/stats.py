@@ -102,3 +102,69 @@ def export(fmt: str, days: int):
         tweets = [dict(row) for row in cursor.fetchall()]
 
     click.echo(json.dumps(tweets, indent=2, default=str))
+
+
+@click.command("bus-factor")
+@click.option("--path", "-p", default=".", help="Repository path to analyze")
+@click.option("--ext", "-e", multiple=True, help="File extensions to include (e.g. py, js)")
+@click.option("--top", "-n", type=int, default=20, help="Number of modules to show")
+def bus_factor(path: str, ext: tuple[str, ...], top: int):
+    """Analyze code ownership concentration (bus factor)."""
+    from ..bus_factor import analyze_repo
+
+    extensions = list(ext) if ext else None
+    repo_stats, module_stats = analyze_repo(path, extensions)
+
+    if repo_stats.total_lines == 0:
+        console.print("No tracked files found.")
+        return
+
+    # Show repo-wide summary
+    console.print(
+        f"\n[bold]Repo bus factor:[/bold] {repo_stats.bus_factor}  "
+        f"[bold]Risk:[/bold] {repo_stats.risk_level}  "
+        f"[bold]Dominant:[/bold] {repo_stats.dominant_author} "
+        f"({repo_stats.dominant_ownership_pct:.0f}%)\n",
+    )
+
+    # Filter to directory-level entries (not individual files)
+    dir_stats = {k: v for k, v in module_stats.items() if "/" not in k or v.path.endswith("/")}
+    # If that's empty, fall back to all entries
+    if not dir_stats:
+        dir_stats = module_stats
+
+    # Sort by risk (bus_factor ascending, then lines descending)
+    sorted_modules = sorted(
+        dir_stats.values(),
+        key=lambda s: (s.bus_factor, -s.total_lines),
+    )[:top]
+
+    table = Table(title="Module ownership")
+    table.add_column("Module", style="bold")
+    table.add_column("Lines", justify="right")
+    table.add_column("Dominant Author")
+    table.add_column("Ownership %", justify="right")
+    table.add_column("Bus Factor", justify="right")
+    table.add_column("Risk")
+
+    risk_colors = {
+        "CRITICAL": "red bold",
+        "HIGH": "yellow",
+        "MEDIUM": "cyan",
+        "LOW": "green",
+        "N/A": "dim",
+    }
+
+    for ms in sorted_modules:
+        risk = ms.risk_level
+        color = risk_colors.get(risk, "")
+        table.add_row(
+            ms.path,
+            str(ms.total_lines),
+            ms.dominant_author or "-",
+            f"{ms.dominant_ownership_pct:.0f}%",
+            str(ms.bus_factor),
+            f"[{color}]{risk}[/{color}]",
+        )
+
+    console.print(table)
