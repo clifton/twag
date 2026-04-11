@@ -1,5 +1,7 @@
 """Database maintenance operations: dump, restore, prune."""
 
+import hashlib
+import logging
 import re
 import shutil
 import sqlite3
@@ -8,6 +10,8 @@ from pathlib import Path
 
 from ..config import get_database_path
 from .connection import rebuild_fts
+
+log = logging.getLogger(__name__)
 
 # FTS shadow table suffixes and related object names to filter during dump
 _FTS_TABLE = "tweets_fts"
@@ -141,6 +145,17 @@ def restore_sql(
     """
     if db_path is None:
         db_path = get_database_path()
+
+    # Verify SHA-256 integrity if a sidecar file exists
+    sha256_path = db_path.with_suffix(".db.sha256")
+    if sha256_path.exists():
+        expected = sha256_path.read_text().strip().split()[0]
+        actual = hashlib.sha256(sql.encode("utf-8")).hexdigest()
+        if actual != expected:
+            raise ValueError(
+                f"SHA-256 mismatch: expected {expected}, got {actual}. The dump file may be corrupted or tampered with.",
+            )
+        log.info("SHA-256 integrity check passed")
 
     # Ensure parent directory exists
     db_path.parent.mkdir(parents=True, exist_ok=True)

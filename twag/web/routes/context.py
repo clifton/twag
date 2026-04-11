@@ -31,13 +31,11 @@ router = APIRouter(tags=["context"])
 ALLOWED_COMMANDS = frozenset(
     {
         "bird",
-        "cat",
         "echo",
         "grep",
         "head",
         "jq",
         "rg",
-        "sed",
         "tail",
         "twag",
         "wc",
@@ -299,6 +297,10 @@ async def _run_command(command: str, timeout: float = 30.0) -> tuple[str, str, i
             return "", f"Command '{base_cmd}' is not in the allowed list", -1
         if _DANGEROUS_PATTERN.search(command):
             return "", "Command contains forbidden shell metacharacters", -1
+        # Reject path traversal and absolute paths in arguments
+        for arg in args[1:]:
+            if ".." in arg or arg.startswith("/"):
+                return "", f"Argument '{arg}' contains a forbidden path pattern", -1
         proc = await asyncio.create_subprocess_exec(
             *args,
             stdout=asyncio.subprocess.PIPE,

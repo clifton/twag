@@ -7,7 +7,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -46,6 +46,19 @@ def create_app() -> FastAPI:
     templates = Jinja2Templates(directory=TEMPLATES_DIR)
     templates.env.filters["unescape"] = lambda s: html.unescape(s) if s else s
     app.state.templates = templates
+
+    # Optional API key auth for mutating endpoints
+    api_key = os.environ.get("TWAG_API_KEY")
+    if api_key:
+        _MUTATING_METHODS = {"POST", "PUT", "DELETE", "PATCH"}
+
+        @app.middleware("http")
+        async def api_key_middleware(request: Request, call_next) -> Response:
+            if request.method in _MUTATING_METHODS and request.url.path.startswith("/api/"):
+                provided = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+                if provided != api_key:
+                    return JSONResponse(status_code=401, content={"detail": "Invalid or missing API key"})
+            return await call_next(request)
 
     # Request metrics middleware
     @app.middleware("http")
