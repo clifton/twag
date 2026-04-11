@@ -18,7 +18,7 @@ FETCH → PROCESS → DIGEST
 ```
 
 **Core packages:**
-- `twag/models/` — Pydantic data models (tweet, scoring, media, links, config, API, db_models)
+- `twag/metrics.py` — Lightweight in-memory counters, gauges, and histograms with optional SQLite persistence
 - `twag/auth.py` — Shared credential and env-file parsing
 - `twag/config.py` — Runtime config (paths, defaults, following file)
 - `twag/db/` — SQLite database layer (schema, connection, tweets, search, maintenance, accounts, narratives, reactions, prompts, context_commands, time_utils)
@@ -155,7 +155,7 @@ Defined in `twag/cli/`:
 - **Pipeline:** `fetch`, `process`, `analyze`, `digest`
 - **Accounts:** `list`, `add`, `promote`, `demote`, `mute`, `boost`, `decay`, `import`
 - **Query:** `search`, `narratives list`
-- **Maintenance:** `stats`, `prune`, `export`
+- **Maintenance:** `stats`, `prune`, `export`, `metrics`
 - **Config:** `show`, `path`, `set`
 - **Database:** `path`, `shell`, `init`, `rebuild-fts`, `dump`, `restore`
 - **Web:** `web`

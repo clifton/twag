@@ -280,6 +280,12 @@ twag prune --dry-run            # Preview prune
 twag export --days 7            # Export recent data
 ```
 
+### Metrics
+
+```bash
+twag metrics                    # Show instrumentation coverage and current values
+```
+
 ### Narratives
 
 ```bash
