@@ -44,6 +44,8 @@ LabelMap = Mapping[str, str]
 
 
 class HistogramSnapshot(TypedDict):
+    """Summary statistics for a single histogram metric."""
+
     count: int
     min: float
     max: float
@@ -52,6 +54,8 @@ class HistogramSnapshot(TypedDict):
 
 
 class MetricsSnapshot(TypedDict):
+    """Point-in-time snapshot of all counters and histograms."""
+
     counters: dict[str, float]
     histograms: dict[str, HistogramSnapshot]
 
@@ -112,12 +116,14 @@ class MetricsCollector:
     # -- Counters --
 
     def inc(self, name: str, value: float = 1.0) -> None:
+        """Increment a counter by *value* (default 1). Creates the counter on first use."""
         with self._lock:
             if name not in self._counters:
                 self._counters[name] = _Counter()
             self._counters[name].value += value
 
     def counter_value(self, name: str) -> float:
+        """Return the current value of counter *name*, or 0.0 if it doesn't exist."""
         with self._lock:
             c = self._counters.get(name)
             return c.value if c else 0.0
@@ -125,12 +131,14 @@ class MetricsCollector:
     # -- Gauges --
 
     def set_gauge(self, name: str, value: float) -> None:
+        """Set a gauge to an absolute *value*. Creates the gauge on first use."""
         with self._lock:
             if name not in self._gauges:
                 self._gauges[name] = _Gauge()
             self._gauges[name].value = value
 
     def gauge_value(self, name: str) -> float:
+        """Return the current value of gauge *name*, or 0.0 if it doesn't exist."""
         with self._lock:
             g = self._gauges.get(name)
             return g.value if g else 0.0
@@ -138,12 +146,14 @@ class MetricsCollector:
     # -- Histograms --
 
     def observe(self, name: str, value: float) -> None:
+        """Record a histogram observation. Creates the histogram on first use."""
         with self._lock:
             if name not in self._histograms:
                 self._histograms[name] = _Histogram()
             self._histograms[name].observe(value)
 
     def histogram_stats(self, name: str) -> dict[str, float]:
+        """Return stats (count, total, mean, min, max, p50, p99) for histogram *name*."""
         with self._lock:
             h = self._histograms.get(name)
             if not h or h.count == 0:
@@ -163,6 +173,7 @@ class MetricsCollector:
     # -- Snapshot --
 
     def snapshot(self) -> dict[str, Any]:
+        """Return a full point-in-time snapshot of all metrics including uptime."""
         with self._lock:
             result: dict[str, Any] = {
                 "uptime_seconds": time.monotonic() - self._start_time,
@@ -224,6 +235,7 @@ class MetricsCollector:
         return len(rows)
 
     def reset(self) -> None:
+        """Clear all counters, gauges, and histograms and reset the uptime clock."""
         with self._lock:
             self._counters.clear()
             self._gauges.clear()
@@ -256,12 +268,14 @@ def _label_key(name: str, labels: LabelMap | None = None) -> str:
 
 
 def counter(name: str, *, value: float = 1.0, labels: LabelMap | None = None) -> float:
+    """Increment a counter and return its new value. Supports optional label dimensions."""
     key = _label_key(name, labels)
     _collector.inc(key, value)
     return _collector.counter_value(key)
 
 
 def histogram(name: str, value: float, *, labels: LabelMap | None = None) -> HistogramSnapshot:
+    """Record a histogram observation and return updated summary statistics."""
     key = _label_key(name, labels)
     _collector.observe(key, value)
     stats = _collector.histogram_stats(key)
@@ -276,6 +290,7 @@ def histogram(name: str, value: float, *, labels: LabelMap | None = None) -> His
 
 @contextmanager
 def timer(name: str, *, labels: LabelMap | None = None) -> Iterator[None]:
+    """Context manager that records elapsed wall-clock seconds to a histogram."""
     start = time.perf_counter()
     try:
         yield
@@ -284,6 +299,7 @@ def timer(name: str, *, labels: LabelMap | None = None) -> Iterator[None]:
 
 
 def get_all_metrics() -> MetricsSnapshot:
+    """Return a ``MetricsSnapshot`` of all counters and histograms."""
     snap = _collector.snapshot()
     counters = dict(snap["counters"])
     histograms: dict[str, HistogramSnapshot] = {}
@@ -299,6 +315,7 @@ def get_all_metrics() -> MetricsSnapshot:
 
 
 def dump_json(path: str | None = None) -> str:
+    """Serialize all metrics to a JSON string. Optionally write to *path*."""
     payload = json.dumps(get_all_metrics(), indent=2, sort_keys=True)
     if path is not None:
         with open(path, "w", encoding="utf-8") as handle:
@@ -307,4 +324,5 @@ def dump_json(path: str | None = None) -> str:
 
 
 def reset() -> None:
+    """Reset the global collector, clearing all recorded metrics."""
     _collector.reset()

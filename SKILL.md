@@ -228,6 +228,12 @@ twag prune --days 14          # Delete old tweets
 twag export --days 7          # Export recent
 ```
 
+### Metrics
+
+```bash
+twag metrics                  # Show instrumentation coverage and current values
+```
+
 ### Narratives
 
 ```bash
