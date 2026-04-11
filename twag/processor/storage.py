@@ -19,7 +19,6 @@ from ..db import (
 )
 from ..fetcher import (
     Tweet,
-    fetch_bookmarks,
     fetch_home_timeline,
     fetch_search,
     fetch_user_tweets,
@@ -218,12 +217,6 @@ def fetch_and_store(
         source=source,
         query_params={"handle": handle, "query": query, "count": count},
     )
-
-
-def fetch_and_store_bookmarks(count: int = 100) -> tuple[int, int]:
-    """Fetch bookmarks and store/mark them. Returns (fetched, new) counts."""
-    tweets = fetch_bookmarks(count=count)
-    return store_bookmarked_tweets(tweets)
 
 
 def auto_promote_bookmarked_authors(min_bookmarks: int = 3) -> list[str]:

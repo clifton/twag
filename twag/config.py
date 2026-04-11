@@ -45,8 +45,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "accounts": {
         "decay_rate": 0.05,
-        "boost_increment": 5,
-        "auto_promote_threshold": 75,
     },
     "fetch": {
         "tier1_delay": 3,  # seconds between tier-1 account fetches
@@ -63,8 +61,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "data_dir": None,  # Override for all data (db, following, digests)
     },
     "bird": {
-        "auth_token_env": "AUTH_TOKEN",
-        "ct0_env": "CT0",
         "min_interval_seconds": 1.0,
         "retry_max_attempts": 4,
         "retry_base_seconds": 15.0,
