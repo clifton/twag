@@ -22,7 +22,6 @@ from .pipeline import (
 from .storage import (
     auto_promote_bookmarked_authors,
     fetch_and_store,
-    fetch_and_store_bookmarks,
     store_bookmarked_tweets,
     store_fetched_tweets,
 )
@@ -65,7 +64,6 @@ __all__ = [
     "enrich_high_signal",
     "ensure_media_analysis",
     "fetch_and_store",
-    "fetch_and_store_bookmarks",
     "process_unprocessed",
     "reprocess_today_quoted",
     "store_bookmarked_tweets",
