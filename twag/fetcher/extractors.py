@@ -1,6 +1,7 @@
 """Tweet parsing and extraction from bird CLI JSON payloads."""
 
 import html
+import logging
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -8,6 +9,8 @@ from typing import Any
 
 from ..text_utils import looks_truncated_text as _looks_truncated_text
 from ..text_utils import sanitize_nested_strings, sanitize_text
+
+log = logging.getLogger(__name__)
 
 
 @dataclass

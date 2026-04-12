@@ -1,6 +1,7 @@
 """FastAPI application for twag web interface."""
 
 import html
+import logging
 import os
 import time
 from pathlib import Path
@@ -15,6 +16,8 @@ from ..config import get_database_path
 from ..db import init_db
 from ..metrics import get_collector
 from .routes import context, metrics, prompts, reactions, tweets
+
+log = logging.getLogger(__name__)
 
 # Paths
 TEMPLATES_DIR = Path(__file__).parent / "templates"

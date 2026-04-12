@@ -1,5 +1,6 @@
 """Reaction API routes."""
 
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -14,6 +15,8 @@ from ...db import (
     insert_reaction,
     mute_account,
 )
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["reactions"])
 

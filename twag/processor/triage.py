@@ -158,6 +158,7 @@ def _analyze_media_items(
         try:
             result = analyze_media(url, model=vision_model, provider=vision_provider)
         except Exception:
+            log.warning("Media analysis failed for %s", url, exc_info=True)
             continue
 
         item["kind"] = result.kind
@@ -209,6 +210,7 @@ def _merge_document_media(media_items: list[dict[str, Any]]) -> bool:
     try:
         combined_summary = summarize_document_text(combined_text)
     except Exception:
+        log.warning("Document summarization failed, using first page summary", exc_info=True)
         combined_summary = (media_items[doc_entries[0][1]].get("prose_summary") or "").strip()
 
     primary_idx = doc_entries[0][1]

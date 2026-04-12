@@ -1,6 +1,7 @@
 """Tweet feed API routes."""
 
 import json
+import logging
 import re
 from datetime import datetime
 from typing import Annotated, Any
@@ -15,6 +16,8 @@ from ..tweet_utils import (
     normalize_links_for_display,
     quote_embed_from_row,
 )
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["tweets"])
 MAX_QUOTE_DEPTH = 3
