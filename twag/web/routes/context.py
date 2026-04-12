@@ -4,6 +4,7 @@ import asyncio
 import logging
 import re
 import shlex
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
@@ -284,6 +285,47 @@ def _extract_tweet_variables(tweet_row) -> dict[str, str]:
     return variables
 
 
+def _get_allowed_paths() -> list[Path]:
+    """Return the list of directories that commands are allowed to read from."""
+    from ...config import get_data_dir
+
+    return [get_data_dir()]
+
+
+def _validate_file_paths(args: list[str]) -> str | None:
+    """Check that any file path arguments are within allowed directories.
+
+    Returns an error message if a disallowed path is found, None if OK.
+    Commands that read files (cat, grep, rg, head, tail, sed, wc) must
+    only access files under the twag data directory.
+    """
+    # Commands that take file path arguments
+    file_reading_commands = {"cat", "grep", "head", "rg", "sed", "tail", "wc"}
+    base_cmd = args[0].strip("{}")
+    if base_cmd not in file_reading_commands:
+        return None
+
+    allowed_dirs = _get_allowed_paths()
+
+    for arg in args[1:]:
+        # Skip flags (arguments starting with -)
+        if arg.startswith("-"):
+            continue
+        # Check if this looks like a file path (not a pattern/regex argument)
+        candidate = Path(arg)
+        try:
+            resolved = candidate.resolve()
+        except (OSError, ValueError):
+            continue
+        # Only validate arguments that look like existing paths or absolute paths
+        if not candidate.is_absolute() and not resolved.exists():
+            continue
+        if not any(resolved == d or d in resolved.parents for d in allowed_dirs):
+            return f"Path '{arg}' is outside the allowed data directory"
+
+    return None
+
+
 async def _run_command(command: str, timeout: float = 30.0) -> tuple[str, str, int]:
     """Run a command and return (stdout, stderr, returncode).
 
@@ -299,6 +341,9 @@ async def _run_command(command: str, timeout: float = 30.0) -> tuple[str, str, i
             return "", f"Command '{base_cmd}' is not in the allowed list", -1
         if _DANGEROUS_PATTERN.search(command):
             return "", "Command contains forbidden shell metacharacters", -1
+        path_error = _validate_file_paths(args)
+        if path_error:
+            return "", path_error, -1
         proc = await asyncio.create_subprocess_exec(
             *args,
             stdout=asyncio.subprocess.PIPE,
@@ -478,6 +523,9 @@ Return your analysis in a structured format."""
             "analysis": analysis,
         }
 
-    except Exception as e:
+    except Exception:
         log.exception("Context-enriched analysis failed for tweet %s", tweet_id)
-        raise HTTPException(status_code=500, detail=f"Analysis failed: {e!s}") from e
+        raise HTTPException(
+            status_code=500,
+            detail="Analysis failed due to an internal error",
+        ) from None

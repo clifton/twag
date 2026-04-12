@@ -81,6 +81,63 @@ def _filter_fts_from_sql(sql: str) -> str:
     return "\n".join(output_lines)
 
 
+# SQL statement types allowed in restore dumps.
+# Anything not matching is rejected to prevent ATTACH, PRAGMA, LOAD_EXTENSION, etc.
+_ALLOWED_SQL_PREFIXES = re.compile(
+    r"^\s*("
+    r"BEGIN(\s+TRANSACTION)?"
+    r"|COMMIT"
+    r"|CREATE\s+(TABLE|INDEX|UNIQUE\s+INDEX|TRIGGER|VIEW)"
+    r"|DELETE\s+FROM"
+    r"|INSERT\s+(INTO|OR\s+REPLACE\s+INTO|OR\s+IGNORE\s+INTO)"
+    r"|UPDATE\s+"
+    r"|DROP\s+(TABLE|INDEX|TRIGGER|VIEW)\s+IF\s+EXISTS"
+    r"|ANALYZE"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def _validate_restore_sql(sql: str) -> None:
+    """Validate that a SQL dump only contains safe DDL/DML statements.
+
+    Uses the same statement-level parsing as _filter_fts_from_sql to handle
+    multi-line statements with embedded semicolons (e.g. INSERT with JSON
+    values containing ';'). Raises ValueError if the dump contains statements
+    outside the allowlist (e.g. ATTACH, PRAGMA, LOAD_EXTENSION).
+    """
+    current_stmt_lines: list[str] = []
+    in_block = False
+
+    def _check_statement(stmt: str) -> None:
+        stripped = stmt.strip()
+        if not stripped:
+            return
+        if not _ALLOWED_SQL_PREFIXES.match(stripped):
+            preview = stripped[:80] + ("..." if len(stripped) > 80 else "")
+            raise ValueError(f"Disallowed SQL statement in restore dump: {preview}")
+
+    for line in sql.splitlines():
+        stripped = line.strip()
+        current_stmt_lines.append(line)
+
+        if not in_block and re.match(r"CREATE\s+TRIGGER\b", stripped, re.IGNORECASE):
+            in_block = True
+
+        if stripped.endswith(";"):
+            if in_block:
+                if stripped.upper() == "END;":
+                    _check_statement("\n".join(current_stmt_lines))
+                    current_stmt_lines = []
+                    in_block = False
+            else:
+                _check_statement("\n".join(current_stmt_lines))
+                current_stmt_lines = []
+
+    if current_stmt_lines:
+        _check_statement("\n".join(current_stmt_lines))
+
+
 def prune_old_tweets(conn: sqlite3.Connection, days: int = 14) -> int:
     """Delete tweets older than specified days. Returns count deleted."""
     cursor = conn.execute(
@@ -159,6 +216,11 @@ def restore_sql(
     # CREATE TRIGGER with embedded semicolons). We accumulate lines into
     # complete statements, then check each whole statement for FTS refs.
     filtered_sql = _filter_fts_from_sql(sql)
+
+    # Validate that the filtered SQL only contains expected DDL/DML.
+    # Reject dangerous statements that could escape the SQLite sandbox
+    # (e.g. ATTACH to overwrite files, PRAGMA to load extensions).
+    _validate_restore_sql(filtered_sql)
 
     # Execute the filtered SQL
     conn = sqlite3.connect(db_path)
