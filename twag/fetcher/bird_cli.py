@@ -14,6 +14,7 @@ from typing import Any
 
 from ..auth import get_auth_env
 from ..config import load_config
+from ..taxonomy import Metric
 from .extractors import Tweet, _looks_truncated_text, _needs_retweet_hydration
 
 log = logging.getLogger(__name__)
@@ -118,7 +119,7 @@ def run_bird(args: list[str], timeout: int = 60, *, log_failures: bool = True) -
     from twag.metrics import get_collector
 
     m = get_collector()
-    m.inc("fetcher.calls")
+    m.inc(Metric.FETCHER_CALLS)
     t0 = time.monotonic()
     _rate_limit_bird()
     env = get_auth_env()
@@ -148,18 +149,18 @@ def run_bird(args: list[str], timeout: int = 60, *, log_failures: bool = True) -
         stdout, stderr, returncode = _run_bird_once(cmd, env, args, timeout, log_failures=log_failures)
 
         if returncode == 0 or not _is_rate_limited(stderr):
-            m.observe("fetcher.latency_seconds", time.monotonic() - t0)
+            m.observe(Metric.FETCHER_LATENCY, time.monotonic() - t0)
             if returncode != 0:
-                m.inc("fetcher.errors")
+                m.inc(Metric.FETCHER_ERRORS)
             return stdout, stderr, returncode
 
         if attempt + 1 >= max_attempts:
             log.error("bird %s rate-limited after %d attempts, giving up", args[0] if args else "?", max_attempts)
-            m.observe("fetcher.latency_seconds", time.monotonic() - t0)
-            m.inc("fetcher.errors")
+            m.observe(Metric.FETCHER_LATENCY, time.monotonic() - t0)
+            m.inc(Metric.FETCHER_ERRORS)
             return stdout, stderr, returncode
 
-        m.inc("fetcher.retries")
+        m.inc(Metric.FETCHER_RETRIES)
         delay = min(base_seconds * (2**attempt), max_seconds)
         jitter = random.uniform(0, delay * 0.25)
         wait = delay + jitter
@@ -173,7 +174,7 @@ def run_bird(args: list[str], timeout: int = 60, *, log_failures: bool = True) -
         time.sleep(wait)
         _rate_limit_bird()
 
-    m.observe("fetcher.latency_seconds", time.monotonic() - t0)
+    m.observe(Metric.FETCHER_LATENCY, time.monotonic() - t0)
     return stdout, stderr, returncode
 
 

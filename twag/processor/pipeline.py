@@ -22,6 +22,7 @@ from ..db import (
 from ..fetcher import read_tweet
 from ..media import build_media_context
 from ..scorer import EnrichmentResult, TriageResult, enrich_tweet
+from ..taxonomy import DRY_RUN_CATEGORY, Metric
 from .dependencies import _expand_links_for_rows, _expand_unprocessed_with_dependencies
 from .triage import (
     _normalized_worker_count,
@@ -119,7 +120,7 @@ def process_unprocessed(
                 TriageResult(
                     tweet_id=t["id"],
                     score=0,
-                    categories=["dry_run"],
+                    categories=[DRY_RUN_CATEGORY],
                     summary=f"[DRY RUN] @{t['handle']}: {t['text'][:50]}...",
                 )
                 for t in tweets_for_triage
@@ -143,8 +144,8 @@ def process_unprocessed(
 
         conn.commit()
 
-    m.observe("pipeline.process_unprocessed.latency_seconds", time.monotonic() - t0)
-    m.inc("pipeline.process_unprocessed.tweets", len(results))
+    m.observe(Metric.PIPELINE_PROCESS_LATENCY, time.monotonic() - t0)
+    m.inc(Metric.PIPELINE_PROCESS_TWEETS, len(results))
     return results
 
 
@@ -203,7 +204,7 @@ def reprocess_today_quoted(
                 TriageResult(
                     tweet_id=row["id"],
                     score=0,
-                    categories=["dry_run"],
+                    categories=[DRY_RUN_CATEGORY],
                     summary=f"[DRY RUN] @{row['author_handle']}: {row['content'][:50]}...",
                 )
                 for row in rows

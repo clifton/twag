@@ -10,6 +10,7 @@ from anthropic import Anthropic
 
 from twag.auth import get_api_key
 from twag.config import load_config
+from twag.taxonomy import Metric
 
 _T = TypeVar("_T")
 
@@ -40,7 +41,7 @@ def _call_anthropic(model: str, prompt: str, max_tokens: int = 2048) -> str:
     from twag.metrics import get_collector
 
     m = get_collector()
-    m.inc("scorer.anthropic.calls")
+    m.inc(Metric.SCORER_ANTHROPIC_CALLS)
     t0 = time.monotonic()
     try:
         client = get_anthropic_client()
@@ -50,15 +51,15 @@ def _call_anthropic(model: str, prompt: str, max_tokens: int = 2048) -> str:
             messages=[{"role": "user", "content": prompt}],
         )
         result = _extract_anthropic_text(response.content)
-        m.observe("scorer.anthropic.latency_seconds", time.monotonic() - t0)
+        m.observe(Metric.SCORER_ANTHROPIC_LATENCY, time.monotonic() - t0)
         if hasattr(response, "usage") and response.usage:
             input_tokens = getattr(response.usage, "input_tokens", 0) or 0
             output_tokens = getattr(response.usage, "output_tokens", 0) or 0
-            m.inc("scorer.anthropic.input_tokens", input_tokens)
-            m.inc("scorer.anthropic.output_tokens", output_tokens)
+            m.inc(Metric.SCORER_ANTHROPIC_INPUT_TOKENS, input_tokens)
+            m.inc(Metric.SCORER_ANTHROPIC_OUTPUT_TOKENS, output_tokens)
         return result
     except Exception:
-        m.inc("scorer.anthropic.errors")
+        m.inc(Metric.SCORER_ANTHROPIC_ERRORS)
         raise
 
 
@@ -69,7 +70,7 @@ def _call_gemini(model: str, prompt: str, max_tokens: int = 2048, reasoning: str
     from twag.metrics import get_collector
 
     m = get_collector()
-    m.inc("scorer.gemini.calls")
+    m.inc(Metric.SCORER_GEMINI_CALLS)
     t0 = time.monotonic()
     try:
         client = get_gemini_client()
@@ -86,10 +87,10 @@ def _call_gemini(model: str, prompt: str, max_tokens: int = 2048, reasoning: str
             contents=prompt,
             config=types.GenerateContentConfig(**config_kwargs),
         )
-        m.observe("scorer.gemini.latency_seconds", time.monotonic() - t0)
+        m.observe(Metric.SCORER_GEMINI_LATENCY, time.monotonic() - t0)
         return response.text
     except Exception:
-        m.inc("scorer.gemini.errors")
+        m.inc(Metric.SCORER_GEMINI_ERRORS)
         raise
 
 
@@ -185,7 +186,7 @@ def _with_retry(fn: Callable[[], _T]) -> _T:
             return fn()
         except Exception as exc:
             attempt += 1
-            m.inc("scorer.retries")
+            m.inc(Metric.SCORER_RETRIES)
             msg = str(exc).lower()
             if "not set" in msg and "api" in msg:
                 raise

@@ -14,6 +14,7 @@ from fastapi.templating import Jinja2Templates
 from ..config import get_database_path
 from ..db import init_db
 from ..metrics import get_collector
+from ..taxonomy import Metric
 from .routes import context, metrics, prompts, reactions, tweets
 
 # Paths
@@ -51,10 +52,10 @@ def create_app() -> FastAPI:
     @app.middleware("http")
     async def metrics_middleware(request: Request, call_next) -> Response:
         m = get_collector()
-        m.inc("web.requests")
+        m.inc(Metric.WEB_HTTP_REQUESTS)
         t0 = time.monotonic()
         response: Response = await call_next(request)
-        m.observe("web.request_latency_seconds", time.monotonic() - t0)
+        m.observe(Metric.WEB_HTTP_LATENCY, time.monotonic() - t0)
         return response
 
     # Include API routers

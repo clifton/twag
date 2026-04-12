@@ -31,16 +31,10 @@ from ..scorer import (
     summarize_x_article,
     triage_tweets_batch,
 )
-
-_SIGNAL_TIER_RANK = {
-    "noise": 0,
-    "news": 1,
-    "market_relevant": 2,
-    "high_signal": 3,
-}
+from ..taxonomy import Metric, SignalTier
 
 
-def _score_to_signal_tier(score: float, high_threshold: float) -> str:
+def _score_to_signal_tier(score: float, high_threshold: float) -> SignalTier:
     """Derive signal tier from score using config-driven thresholds.
 
     Tier boundaries are derived from high_signal_threshold (default 7):
@@ -50,12 +44,12 @@ def _score_to_signal_tier(score: float, high_threshold: float) -> str:
     - noise: below news threshold
     """
     if score >= high_threshold + 1:
-        return "high_signal"
+        return SignalTier.HIGH_SIGNAL
     if score >= high_threshold - 1:
-        return "market_relevant"
+        return SignalTier.MARKET_RELEVANT
     if score >= high_threshold - 3:
-        return "news"
-    return "noise"
+        return SignalTier.NEWS
+    return SignalTier.NOISE
 
 
 def _normalized_worker_count(value: Any, fallback: int) -> int:
@@ -76,8 +70,14 @@ def _prefer_stronger_signal_tier(existing: str | None, candidate: str | None) ->
     if not candidate:
         return existing
 
-    existing_rank = _SIGNAL_TIER_RANK.get(str(existing), -1)
-    candidate_rank = _SIGNAL_TIER_RANK.get(str(candidate), -1)
+    try:
+        existing_rank = SignalTier(str(existing)).rank()
+    except ValueError:
+        existing_rank = -1
+    try:
+        candidate_rank = SignalTier(str(candidate)).rank()
+    except ValueError:
+        candidate_rank = -1
     return candidate if candidate_rank > existing_rank else existing
 
 
@@ -582,7 +582,7 @@ def _triage_rows(
 
     def _handle_results(results: list[TriageResult]) -> None:
         for result in results:
-            m.inc("pipeline.triage.processed")
+            m.inc(Metric.PIPELINE_TRIAGE_PROCESSED)
             tweet_row = tweet_map.get(result.tweet_id)
             if status_cb and tweet_row:
                 status_cb(f"Saving @{tweet_row['author_handle']}")
@@ -730,7 +730,7 @@ def _triage_rows(
                 try:
                     results = future.result()
                 except Exception:
-                    m.inc("pipeline.triage.batch_errors")
+                    m.inc(Metric.PIPELINE_TRIAGE_BATCH_ERRORS)
                     if status_cb:
                         status_cb(f"Batch {batch_index} failed")
                     if progress_cb:

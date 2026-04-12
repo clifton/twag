@@ -319,5 +319,5 @@ class TestMetricsEndpoint:
         web_client.get("/api/health")
         resp = web_client.get("/api/metrics")
         data = resp.json()
-        # The middleware should have incremented web.requests
-        assert data["counters"].get("web.requests", 0) > 0
+        # The middleware should have incremented web.http.requests
+        assert data["counters"].get("web.http.requests", 0) > 0

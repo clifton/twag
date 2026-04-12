@@ -10,6 +10,7 @@ from .config import load_config
 from .db import get_connection, log_alert
 from .db import get_recent_alert_count as _db_get_recent_alert_count
 from .fetcher import get_tweet_url
+from .taxonomy import SignalTier
 
 log = logging.getLogger(__name__)
 
@@ -80,7 +81,7 @@ def format_alert(
 
     # Category display - handle list or string
     if isinstance(category, list):
-        cats = [c for c in category if c != "noise"]
+        cats = [c for c in category if c != SignalTier.NOISE]
         cat_display = ", ".join(c.replace("_", " ").upper() for c in cats) if cats else "MARKET"
     else:
         cat_display = category.replace("_", " ").upper() if category else "MARKET"
