@@ -85,43 +85,6 @@ async def create_reaction(request: Request, reaction: ReactionCreate) -> dict[st
     }
 
 
-@router.get("/reactions/{tweet_id}")
-async def get_tweet_reactions(request: Request, tweet_id: str) -> dict[str, Any]:
-    """Get all reactions for a specific tweet."""
-    db_path = request.app.state.db_path
-
-    with get_connection(db_path, readonly=True) as conn:
-        reactions = get_reactions_for_tweet(conn, tweet_id)
-
-    return {
-        "tweet_id": tweet_id,
-        "reactions": [
-            {
-                "id": r.id,
-                "reaction_type": r.reaction_type,
-                "reason": r.reason,
-                "target": r.target,
-                "created_at": r.created_at.isoformat() if r.created_at else None,
-            }
-            for r in reactions
-        ],
-    }
-
-
-@router.delete("/reactions/{reaction_id}")
-async def remove_reaction(request: Request, reaction_id: int) -> dict[str, Any]:
-    """Delete a reaction."""
-    db_path = request.app.state.db_path
-
-    with get_connection(db_path) as conn:
-        deleted = delete_reaction(conn, reaction_id)
-        conn.commit()
-
-    if deleted:
-        return {"message": "Reaction deleted"}
-    return {"error": "Reaction not found"}
-
-
 @router.get("/reactions/summary")
 async def reactions_summary(request: Request) -> dict[str, Any]:
     """Get summary of reaction counts by type."""
@@ -171,7 +134,7 @@ async def export_reactions(
                 "tweet": {
                     "id": tweet["id"],
                     "author": tweet["author_handle"],
-                    "content": tweet["content"][:500],  # Truncate for export
+                    "content": tweet["content"][:500],
                     "summary": tweet["summary"],
                     "score": tweet["relevance_score"],
                     "categories": categories,
@@ -184,3 +147,40 @@ async def export_reactions(
         "count": len(export_data),
         "reactions": export_data,
     }
+
+
+@router.get("/reactions/{tweet_id}")
+async def get_tweet_reactions(request: Request, tweet_id: str) -> dict[str, Any]:
+    """Get all reactions for a specific tweet."""
+    db_path = request.app.state.db_path
+
+    with get_connection(db_path, readonly=True) as conn:
+        reactions = get_reactions_for_tweet(conn, tweet_id)
+
+    return {
+        "tweet_id": tweet_id,
+        "reactions": [
+            {
+                "id": r.id,
+                "reaction_type": r.reaction_type,
+                "reason": r.reason,
+                "target": r.target,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in reactions
+        ],
+    }
+
+
+@router.delete("/reactions/{reaction_id}")
+async def remove_reaction(request: Request, reaction_id: int) -> dict[str, Any]:
+    """Delete a reaction."""
+    db_path = request.app.state.db_path
+
+    with get_connection(db_path) as conn:
+        deleted = delete_reaction(conn, reaction_id)
+        conn.commit()
+
+    if deleted:
+        return {"message": "Reaction deleted"}
+    return {"error": "Reaction not found"}
