@@ -5,11 +5,25 @@ import random
 import time
 from collections.abc import Callable
 from typing import Any, TypeVar
+from urllib.parse import urlparse
 
 from anthropic import Anthropic
 
 from twag.auth import get_api_key
 from twag.config import load_config
+
+_ALLOWED_IMAGE_DOMAINS = frozenset({"pbs.twimg.com", "ton.twimg.com", "abs.twimg.com"})
+
+
+def _validate_image_url(url: str) -> None:
+    """Reject image URLs outside the Twitter CDN allowlist and non-https schemes."""
+    parsed = urlparse(url)
+    if parsed.scheme not in ("https",):
+        raise ValueError(f"Blocked image URL with scheme '{parsed.scheme}': only https is allowed")
+    host = (parsed.hostname or "").lower()
+    if host not in _ALLOWED_IMAGE_DOMAINS:
+        raise ValueError(f"Blocked image URL from untrusted domain '{host}'")
+
 
 _T = TypeVar("_T")
 
@@ -95,6 +109,7 @@ def _call_gemini(model: str, prompt: str, max_tokens: int = 2048, reasoning: str
 
 def _call_anthropic_vision(model: str, image_url: str, prompt: str, max_tokens: int = 1024) -> str:
     """Call Anthropic API with image and return text response."""
+    _validate_image_url(image_url)
     client = get_anthropic_client()
     response = client.messages.create(
         model=model,
@@ -126,6 +141,7 @@ def _call_gemini_vision(model: str, image_url: str, prompt: str, max_tokens: int
     import httpx
     from google.genai import types
 
+    _validate_image_url(image_url)
     client = get_gemini_client()
 
     # Fetch image
