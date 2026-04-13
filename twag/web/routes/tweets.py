@@ -1,6 +1,7 @@
 """Tweet feed API routes."""
 
 import json
+import logging
 import re
 from datetime import datetime
 from typing import Annotated, Any
@@ -15,6 +16,8 @@ from ..tweet_utils import (
     normalize_links_for_display,
     quote_embed_from_row,
 )
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["tweets"])
 MAX_QUOTE_DEPTH = 3
@@ -60,6 +63,7 @@ def _build_quote_embed(
             if isinstance(decoded, list):
                 links_json = [item for item in decoded if isinstance(item, dict)]
         except json.JSONDecodeError:
+            log.debug("Malformed links_json for tweet %s", row["id"])
             links_json = []
     normalized = normalize_links_for_display(
         tweet_id=row["id"],
@@ -108,6 +112,7 @@ def _build_quote_embed_from_cache(
             if isinstance(decoded, list):
                 links_json = [item for item in decoded if isinstance(item, dict)]
         except json.JSONDecodeError:
+            log.debug("Malformed links_json for tweet %s", row["id"])
             links_json = []
     normalized = normalize_links_for_display(
         tweet_id=row["id"],
@@ -244,7 +249,7 @@ async def list_tweets(
                                     if tid and tid != row["id"] and tid not in quote_cache:
                                         next_ids.add(tid)
                     except json.JSONDecodeError:
-                        pass
+                        log.debug("Malformed links_json for tweet %s", row["id"])
             ids_to_fetch = next_ids
 
         # Phase 3: Build response from cache
@@ -400,6 +405,7 @@ async def get_tweet(request: Request, tweet_id: str) -> dict[str, Any]:
                 if isinstance(decoded, list):
                     article_primary_points = [item for item in decoded if isinstance(item, dict)]
             except json.JSONDecodeError:
+                log.debug("Malformed article_primary_points_json for tweet %s", tweet["id"])
                 article_primary_points = []
 
         article_action_items = []
@@ -409,6 +415,7 @@ async def get_tweet(request: Request, tweet_id: str) -> dict[str, Any]:
                 if isinstance(decoded, list):
                     article_action_items = [item for item in decoded if isinstance(item, dict)]
             except json.JSONDecodeError:
+                log.debug("Malformed article_action_items_json for tweet %s", tweet["id"])
                 article_action_items = []
 
         article_top_visual = None
@@ -418,6 +425,7 @@ async def get_tweet(request: Request, tweet_id: str) -> dict[str, Any]:
                 if isinstance(decoded, dict):
                     article_top_visual = decoded
             except json.JSONDecodeError:
+                log.debug("Malformed article_top_visual_json for tweet %s", tweet["id"])
                 article_top_visual = None
 
         # Parse links from links_json
@@ -428,6 +436,7 @@ async def get_tweet(request: Request, tweet_id: str) -> dict[str, Any]:
                 if isinstance(decoded, list):
                     links = [item for item in decoded if isinstance(item, dict)]
             except json.JSONDecodeError:
+                log.debug("Malformed links_json for tweet %s", tweet["id"])
                 links = []
 
         # Normalize links for display (same as list endpoint)

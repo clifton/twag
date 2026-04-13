@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -29,6 +30,8 @@ from .dependencies import (
     _fetch_quote_chain,
     _fetch_reply_chain,
 )
+
+log = logging.getLogger(__name__)
 
 
 def _store_tweets(
@@ -140,6 +143,7 @@ def _store_tweets(
     )
     conn.commit()
 
+    log.info("Stored %d/%d tweets from %s", new_count, fetched, source)
     return fetched, new_count
 
 
