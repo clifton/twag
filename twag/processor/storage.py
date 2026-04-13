@@ -20,9 +20,6 @@ from ..db import (
 from ..fetcher import (
     Tweet,
     fetch_bookmarks,
-    fetch_home_timeline,
-    fetch_search,
-    fetch_user_tweets,
 )
 from .dependencies import (
     _fetch_inline_linked_tweets,
@@ -195,29 +192,6 @@ def store_bookmarked_tweets(
             status_cb=status_cb,
             progress_cb=progress_cb,
         )
-
-
-def fetch_and_store(
-    source: str = "home",
-    handle: str | None = None,
-    query: str | None = None,
-    count: int = 100,
-) -> tuple[int, int]:
-    """Fetch tweets and store new ones. Returns (fetched, new) counts."""
-    if source == "home":
-        tweets = fetch_home_timeline(count=count)
-    elif source == "user" and handle:
-        tweets = fetch_user_tweets(handle=handle, count=count)
-    elif source == "search" and query:
-        tweets = fetch_search(query=query, count=count)
-    else:
-        raise ValueError(f"Invalid source/parameters: {source}")
-
-    return store_fetched_tweets(
-        tweets,
-        source=source,
-        query_params={"handle": handle, "query": query, "count": count},
-    )
 
 
 def fetch_and_store_bookmarks(count: int = 100) -> tuple[int, int]:
