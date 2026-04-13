@@ -1,6 +1,7 @@
 """LLM client infrastructure: provider dispatch, retry logic, JSON parsing."""
 
 import json
+import logging
 import random
 import time
 from collections.abc import Callable
@@ -10,6 +11,8 @@ from anthropic import Anthropic
 
 from twag.auth import get_api_key
 from twag.config import load_config
+
+log = logging.getLogger(__name__)
 
 _T = TypeVar("_T")
 
@@ -59,6 +62,7 @@ def _call_anthropic(model: str, prompt: str, max_tokens: int = 2048) -> str:
         return result
     except Exception:
         m.inc("scorer.anthropic.errors")
+        log.warning("Anthropic call failed for model %s", model, exc_info=True)
         raise
 
 
@@ -90,6 +94,7 @@ def _call_gemini(model: str, prompt: str, max_tokens: int = 2048, reasoning: str
         return response.text
     except Exception:
         m.inc("scorer.gemini.errors")
+        log.warning("Gemini call failed for model %s", model, exc_info=True)
         raise
 
 
@@ -190,8 +195,10 @@ def _with_retry(fn: Callable[[], _T]) -> _T:
             if "not set" in msg and "api" in msg:
                 raise
             if retries and attempt >= retries:
+                log.warning("LLM retry exhausted after %d attempts", attempt, exc_info=True)
                 raise
 
+            log.debug("LLM retry attempt %d/%d: %s", attempt, retries, exc)
             delay = min(max_delay, base_delay * (2 ** (attempt - 1)))
             if jitter:
                 delay = max(0.0, delay * (1 + random.uniform(-jitter, jitter)))

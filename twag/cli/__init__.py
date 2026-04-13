@@ -1,5 +1,7 @@
 """CLI entry point for twag."""
 
+import logging
+
 import rich_click as click
 
 from .. import __version__
@@ -26,6 +28,11 @@ from .analyze import _analysis_wrap_width as _analysis_wrap_width
 from .analyze import _echo_labeled as _echo_labeled
 from .analyze import _echo_wrapped as _echo_wrapped
 from .analyze import _print_status_analysis as _print_status_analysis
+
+logging.basicConfig(
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    level=logging.WARNING,
+)
 
 
 @click.group()

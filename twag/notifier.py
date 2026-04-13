@@ -37,7 +37,7 @@ def get_recent_alert_count() -> int:
         with get_connection() as conn:
             return _db_get_recent_alert_count(conn, minutes=60)
     except Exception:
-        log.warning("Failed to query alert log; allowing alert")
+        log.warning("Failed to query alert log; allowing alert", exc_info=True)
         return 0
 
 
@@ -147,7 +147,7 @@ def send_telegram_alert(
                     log_alert(conn, tweet_id=tweet_id, chat_id=chat_id)
                     conn.commit()
             except Exception:
-                log.warning("Failed to log alert to database")
+                log.warning("Failed to log alert to database", exc_info=True)
             return True
         return False
     except Exception:
