@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import ipaddress
 import re
+import socket
 from dataclasses import dataclass
 from functools import lru_cache
 from threading import Lock
@@ -26,6 +28,21 @@ _SHORT_URL_GET_TIMEOUT_SECONDS = 1.5
 _MAX_NETWORK_EXPANSION_ATTEMPTS = 512
 _network_expansion_attempts = 0
 _network_expansion_lock = Lock()
+
+
+def _is_private_ip(hostname: str) -> bool:
+    """Return True if hostname resolves to a private/internal IP address."""
+    try:
+        addr = ipaddress.ip_address(hostname)
+    except ValueError:
+        try:
+            resolved = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+            if not resolved:
+                return False
+            addr = ipaddress.ip_address(resolved[0][4][0])
+        except (socket.gaierror, OSError, ValueError):
+            return False
+    return addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved
 
 
 @dataclass
@@ -114,6 +131,9 @@ def _expand_short_url(url: str) -> str:
             response = httpx.request(method, cleaned, headers=headers, timeout=timeout, follow_redirects=True)
             resolved = clean_url_candidate(str(response.url) or cleaned)
             if resolved:
+                resolved_host = _domain_for(resolved).split(":")[0]
+                if resolved_host and _is_private_ip(resolved_host):
+                    return cleaned
                 return resolved
         except Exception:
             continue

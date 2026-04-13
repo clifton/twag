@@ -31,13 +31,11 @@ router = APIRouter(tags=["context"])
 ALLOWED_COMMANDS = frozenset(
     {
         "bird",
-        "cat",
         "echo",
         "grep",
         "head",
         "jq",
         "rg",
-        "sed",
         "tail",
         "twag",
         "wc",
@@ -45,7 +43,7 @@ ALLOWED_COMMANDS = frozenset(
 )
 
 # Shell metacharacters that enable injection when present in a template
-_DANGEROUS_PATTERN = re.compile(r"[;|&`$><\n]")
+_DANGEROUS_PATTERN = re.compile(r"[;|&`$><!\n]")
 
 
 def _validate_command_template(template: str) -> None:
