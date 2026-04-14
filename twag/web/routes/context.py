@@ -325,8 +325,7 @@ async def test_context_command(
     name: str,
     test_req: TestCommandRequest,
 ) -> dict[str, Any]:
-    """
-    Test a context command with a sample tweet.
+    """Test a context command with a sample tweet.
 
     Substitutes tweet variables and runs the command.
     """
@@ -375,8 +374,7 @@ async def analyze_tweet_with_context(
     request: Request,
     tweet_id: str,
 ) -> dict[str, Any]:
-    """
-    Deep analyze a tweet with context injection from enabled commands.
+    """Deep analyze a tweet with context injection from enabled commands.
 
     Runs all enabled context commands, injects their output into the
     analysis prompt, and returns enriched analysis.
