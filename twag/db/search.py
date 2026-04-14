@@ -117,8 +117,7 @@ def search_tweets(
     offset: int = 0,
     order_by: str = "rank",
 ) -> list[SearchResult]:
-    """
-    Search tweets using FTS5 full-text search.
+    """Search tweets using FTS5 full-text search.
 
     Args:
         query: FTS5 query string (supports AND, OR, NOT, phrases, prefixes)
@@ -137,6 +136,7 @@ def search_tweets(
 
     Returns:
         List of SearchResult objects
+
     """
     # Parse time_range if provided
     if time_range:

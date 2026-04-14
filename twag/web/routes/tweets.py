@@ -139,8 +139,7 @@ async def list_tweets(
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> dict[str, Any]:
-    """
-    Get paginated feed of processed tweets.
+    """Get paginated feed of processed tweets.
 
     Filters:
     - category: Filter by category (fed_policy, equities, etc.)

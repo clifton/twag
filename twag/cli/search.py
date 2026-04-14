@@ -60,8 +60,7 @@ def search(
     order: str | None,
     fmt: str,
 ):
-    r"""
-    Search or browse tweets.
+    r"""Search or browse tweets.
 
     \b
     With QUERY: full-text search using FTS5 (default order: BM25 rank).

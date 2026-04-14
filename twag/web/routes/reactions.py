@@ -29,8 +29,7 @@ class ReactionCreate(BaseModel):
 
 @router.post("/react")
 async def create_reaction(request: Request, reaction: ReactionCreate) -> dict[str, Any]:
-    """
-    Create a reaction to a tweet.
+    """Create a reaction to a tweet.
 
     Reaction types:
     - '>>' : High importance - "This should be top-tier"
@@ -139,8 +138,7 @@ async def export_reactions(
     reaction_type: str | None = None,
     limit: int = 100,
 ) -> dict[str, Any]:
-    """
-    Export reactions with associated tweet data.
+    """Export reactions with associated tweet data.
     Useful for prompt tuning analysis.
     """
     import json

@@ -133,8 +133,7 @@ async def rollback_to_version(
 
 @router.post("/prompts/tune")
 async def tune_prompt(request: Request, tune_req: TuneRequest) -> dict[str, Any]:
-    """
-    LLM-assisted prompt tuning based on user reactions.
+    """LLM-assisted prompt tuning based on user reactions.
 
     Analyzes user feedback (reactions) to suggest prompt improvements.
     """
