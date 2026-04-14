@@ -247,8 +247,7 @@ def normalize_tweet_links(
     has_media: bool = False,
     already_expanded: bool = False,
 ) -> LinkNormalizationResult:
-    """
-    Normalize links for display and embedding rules.
+    """Normalize links for display and embedding rules.
 
     Rules:
     - Self tweet links are removed from display text.

@@ -24,8 +24,7 @@ def _get_et_offset() -> timedelta:
 
 
 def get_market_day_cutoff() -> datetime:
-    """
-    Get the previous market close (4pm ET) as a UTC datetime.
+    """Get the previous market close (4pm ET) as a UTC datetime.
 
     - Weekday before 4pm ET -> previous business day's 4pm
     - Weekday after 4pm ET -> same day's 4pm
@@ -67,8 +66,7 @@ def get_market_day_cutoff() -> datetime:
 
 
 def parse_time_range(spec: str) -> tuple[datetime | None, datetime | None]:
-    """
-    Parse a time range specification.
+    """Parse a time range specification.
 
     Supported formats:
     - "today" -> since previous market close (4pm ET)

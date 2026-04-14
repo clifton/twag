@@ -107,6 +107,7 @@ def dump_sql(db_path: Path | None = None) -> Iterator[str]:
 
     Yields:
         Clean SQL statements suitable for executescript().
+
     """
     if db_path is None:
         db_path = get_database_path()
@@ -138,6 +139,7 @@ def restore_sql(
 
     Returns:
         Dict with counts: {"tweets": N, "accounts": N, "fts": N}
+
     """
     if db_path is None:
         db_path = get_database_path()

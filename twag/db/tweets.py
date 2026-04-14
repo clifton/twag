@@ -633,6 +633,7 @@ def get_processed_counts(conn: sqlite3.Connection) -> dict[str, int]:
 
     Returns:
         Dict with keys '1h', '24h', '7d' containing tweet counts.
+
     """
     cursor = conn.execute(
         """

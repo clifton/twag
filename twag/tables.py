@@ -11,6 +11,7 @@ def table_to_markdown(table: dict) -> str:
 
     Returns:
         Markdown-formatted table string with aligned columns
+
     """
     cols = table.get("columns", [])
     rows = table.get("rows", [])
@@ -30,6 +31,7 @@ def should_show_inline(table: dict, threshold: int = 10) -> bool:
 
     Returns:
         True if table should be shown inline, False for toggle
+
     """
     rows = table.get("rows", [])
     return len(rows) <= threshold
