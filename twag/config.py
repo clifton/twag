@@ -142,8 +142,7 @@ def deep_merge(base: dict, override: dict) -> dict:
 
 
 def get_data_dir() -> Path:
-    """
-    Get the data directory for twag.
+    """Get the data directory for twag.
 
     Priority:
     1. TWAG_DATA_DIR environment variable

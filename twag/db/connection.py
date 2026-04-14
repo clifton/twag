@@ -260,6 +260,7 @@ def get_connection(db_path: Path | None = None, readonly: bool = False) -> Itera
     Args:
         db_path: Path to database file. If None, uses default from config.
         readonly: If True, open in readonly mode to avoid write locks.
+
     """
     if db_path is None:
         db_path = get_database_path()
