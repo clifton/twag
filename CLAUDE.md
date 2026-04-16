@@ -167,4 +167,4 @@ If command behavior changes, update `README.md` and `SKILL.md` in the same PR.
 - Keep commits focused and atomic
 - Run formatting/lint/tests before committing
 - Don't commit temporary artifacts unless explicitly requested
-- Write descriptive commit messages
+- Follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) — see `CONTRIBUTING.md` for allowed types and subject rules. AI-authored commits must use a conforming `<type>(<scope>): <subject>` prefix.
