@@ -290,18 +290,115 @@ twag config set key value     # Update setting
 | `TELEGRAM_BOT_TOKEN` | No | Alerts |
 | `TELEGRAM_CHAT_ID` | No | Alert destination |
 
-## Telegram Digest Format
+## Producing digests — editorial rules
 
-When sending digests to Telegram, follow [{baseDir}/TELEGRAM_DIGEST_FORMAT.md]({baseDir}/TELEGRAM_DIGEST_FORMAT.md):
+When producing a digest for Telegram, chat, or any market-note output, follow the format doc at [{baseDir}/TELEGRAM_DIGEST_FORMAT.md]({baseDir}/TELEGRAM_DIGEST_FORMAT.md) plus the editorial rules below.
 
-- Use `twag search --time Xh -s 6 -f json -n 50` for structured input
-- Group tweets by theme (don't list chronologically)
-- Use `**BOLD CAPS**` for section headers (no markdown `###`)
-- Use `•` for bullet points
-- Citations: `[📊](url)` when `has_media: true`, `[🔗](url)` otherwise
-- Condense multiple tweets on same topic into bullets
-- Extract key facts and numbers
-- Use `delivery.mode: "direct"` in cron jobs to preserve `[🔗](url)` and `[📊](url)` links
+Source command (adjust window and limit to taste — prefer a broad pull and condense after retrieval):
+
+```bash
+twag search --time 2h -s 6 -f json -n 100
+```
+
+Treat the JSON output as source material, not as the final answer. Rewrite it into the final digest. Do not try to solve deduplication, attribution, or brevity mechanically. Use editorial judgment.
+
+**Audience: someone consuming market information at a glance. Every unnecessary word wastes their time.**
+
+### Rule 1: No added color. Ever.
+
+Bullets are strictly factual. Never tack on a trailing clause that interprets, frames, themes, or synthesizes what the facts mean. No "AI-style" commentary — no phrases like "escalation still driving barrel-control regime", "signaling continued uncertainty", "reinforcing the risk-off tone", "underscoring fragility", "highlighting the shift". State the facts. Stop. The reader interprets.
+
+Bad:
+
+```text
+• Trump ordered Navy to engage mine-laying boats, tripled minesweeper activity, then said Hormuz is effectively sealed until Iran deal, escalation still driving barrel-control regime
+```
+
+The trailing clause `escalation still driving barrel-control regime` is unnecessary. It adds zero information and makes the bullet look generated.
+
+Better:
+
+```text
+• Trump ordered Navy to engage Iran mine-laying boats; minesweeper activity tripled; Hormuz "effectively sealed until Iran deal"
+```
+
+Before emitting any bullet, scan for trailing interpretive clauses and cut them.
+
+### Rule 2: Compression
+
+- compress aggressively; no arbitrary fixed top-N cap unless the user explicitly asks
+- every bullet must be as concise as possible and should survive a second compression pass
+- default to one-line bullets; use a second line only when the point would otherwise break
+- fragments beat sentences; do not try to make bullets read like polished prose
+- if a bullet still reads like a normal sentence, compress again
+- one bullet should usually represent one distinct development or takeaway, not one tweet
+- before returning, ask: "can I delete 20 percent more words from each bullet?" If yes, do it
+
+### Rule 3: Grouping and merging
+
+- merge duplicate or near-duplicate items into a single bullet; gather their citations at the end
+- never emit labels like `Duplicate:`; fold those links into the merged bullet
+- when multiple tweets support the same claim, keep the strongest phrasing once and attach multiple citations like `[🔗](url1) [📊](url2)`
+- preserve materially distinct updates even inside the same theme; do not merge unrelated developments just because they share a category
+
+### Rule 4: Attribution
+
+- omit source/author attribution by default
+- include attribution only when the identity materially changes the meaning of the item
+- attribution matters: a CEO speaking about their company, a Fed or White House official, a named analyst making a non-consensus call, a politician announcing policy, a well-known domain expert whose identity is itself the news
+- attribution usually does not matter: aggregator/newswire handles like `financialjuice`, `DeItaone`, `sentdefender`, `zerohedge`, `Barchart`, and similar repost/alert accounts
+- if attribution matters, keep it brief and natural inside the bullet; do not mechanically prefix every line with a handle
+- prefer fact-first wording; strip filler like `reports indicate`, `speculation on`, `analysis of`, `reportedly`
+
+### Rule 5: Section discipline
+
+- default to roughly 4-6 sections and usually 2-4 bullets per section; only exceed that when the signal clearly earns it
+- if three bullets say the same thing, they must become one bullet
+- drop weak opinion-only tweets unless the person or phrasing itself is the news
+- do not include generic reactions, vague warnings, or "watch this" commentary unless they add a concrete fact
+- do not repeat the same fact in multiple sections
+- if a section cannot produce at least 2 high-signal bullets, fold it into another section or cut it entirely
+
+### Examples
+
+Bad:
+
+```text
+• financialjuice: Reports indicate no damage to Iran oil infrastructure following US-Israeli attack. [🔗](a)
+• DeItaone: Iranian sources report no disruptions to oil facilities at Kharg Island despite geopolitical tensions. [🔗](b)
+• Duplicate: U.S. State Dept advisory for Bahrain amid Iran escalation risk. [📊](c)
+```
+
+Better:
+
+```text
+• No reported damage to Iran oil infrastructure after the strike. [🔗](a) [🔗](b)
+• U.S. State Department issued a Bahrain advisory amid escalation risk. [📊](c)
+```
+
+Bad:
+
+```text
+• sundarpichai: Google CEO Sundar Pichai discusses AGI roadmap and future of Google Search. [🔗](d)
+```
+
+Better:
+
+```text
+• Sundar Pichai: Google is framing its AGI roadmap around the future of Search. [🔗](d)
+```
+
+### Before-return checklist
+
+- headers are **BOLD CAPS**
+- bullets use `•`
+- every bullet ends with `[🔗](url)` or `[📊](url)`
+- no `Source:` / `📰` / `💡` summary-card formatting survived
+- every bullet is the shortest version that still carries the point
+- **no bullet has a trailing interpretive clause** (e.g. "…driving X regime", "…signaling Y", "…reinforcing Z")
+- no attribution prefix on aggregator/newswire accounts
+
+For OpenClaw users: set `delivery.mode: "direct"` in cron jobs to preserve `[🔗](url)` and `[📊](url)` links across the announce path.
 
 ## Automation
 
