@@ -1,0 +1,26 @@
+# <type>(<scope>): <subject>
+#
+# Subject line rules:
+#   - <type> must be one of: feat, fix, docs, style, refactor, perf, test,
+#     chore, build, ci, revert
+#   - <scope> is optional (e.g., fetcher, scorer, web, db)
+#   - Use the imperative mood ("add", not "added"/"adds")
+#   - Keep the whole subject line <= 72 characters
+#   - No trailing period
+#
+# Body (optional, wrap at ~72 chars):
+#   Explain the *why* and any non-obvious context. Reference issues or
+#   incidents when relevant. Separate from the subject with a blank line.
+#
+# Footers / trailers (optional, one per line at the end):
+#   Co-Authored-By: Name <email@example.com>
+#   Refs: #123
+#   BREAKING CHANGE: describe the incompatible change
+#
+# Example:
+#   feat(scorer): add cached prompt for long-tail accounts
+#
+#   The default prompt was being recomputed for low-volume accounts, which
+#   blew the rate limit during overnight batches. Cache by author handle.
+#
+#   Refs: #456
