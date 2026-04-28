@@ -164,7 +164,14 @@ If command behavior changes, update `README.md` and `SKILL.md` in the same PR.
 
 ## Commit Hygiene
 
-- Keep commits focused and atomic
-- Run formatting/lint/tests before committing
-- Don't commit temporary artifacts unless explicitly requested
-- Write descriptive commit messages
+- Follow [Conventional Commits](https://www.conventionalcommits.org/);
+  `CONTRIBUTING.md` is the canonical reference for allowed types, subject
+  rules, body, and trailers.
+- An opt-in `commit-msg` hook in `scripts/hooks/` validates the subject
+  line. Enable with `git config core.hooksPath scripts/hooks` or run
+  `scripts/setup-hooks.sh`.
+- A commit message template lives at `.gitmessage`; enable with
+  `git config commit.template .gitmessage`.
+- Keep commits focused and atomic.
+- Run formatting/lint/tests before committing.
+- Don't commit temporary artifacts unless explicitly requested.
