@@ -133,6 +133,16 @@ twag digest --stdout
 twag search "fed rate" --today
 ```
 
+## Documentation
+
+Deeper, contributor-facing references live in [`docs/`](./docs/README.md):
+
+- [Architecture](./docs/architecture.md) — FETCH → PROCESS → DIGEST flow and module map
+- [Database schema](./docs/database.md) — tables, columns, indexes, FTS triggers
+- [CLI reference](./docs/cli.md) — every command and option, grouped by lifecycle
+- [Web API](./docs/web-api.md) — FastAPI route reference
+- [Metrics](./docs/metrics.md) — counters, gauges, histograms emitted by each subsystem
+
 ## Core Workflow
 
 ```
