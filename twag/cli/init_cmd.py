@@ -69,7 +69,9 @@ def init(force: bool):
     console.print("")
     console.print("Initialization complete! Next steps:")
     console.print("  1. Set API keys: export GEMINI_API_KEY=... ANTHROPIC_API_KEY=...")
-    console.print("  2. Set Twitter auth: export AUTH_TOKEN=... CT0=...")
+    console.print(
+        "  2. Set Twitter auth: export AUTH_TOKEN=... CT0=...",
+    )  # pii-scan: ignore (instructional text, not a value)
     console.print("  3. Run: twag doctor")
     console.print("  4. Add accounts: twag accounts add @handle")
     console.print("  5. Fetch tweets: twag fetch")
