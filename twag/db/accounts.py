@@ -1,11 +1,14 @@
 """Account CRUD operations."""
 
+import logging
 import sqlite3
 from datetime import datetime, timezone
 from typing import Any
 
 from ..text_utils import sanitize_text
 from .connection import execute_with_retry
+
+log = logging.getLogger(__name__)
 
 
 def upsert_account(

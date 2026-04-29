@@ -1,8 +1,11 @@
 """Narrative CRUD operations."""
 
 import json
+import logging
 import sqlite3
 from datetime import datetime, timezone
+
+log = logging.getLogger(__name__)
 
 
 def upsert_narrative(

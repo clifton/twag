@@ -37,7 +37,7 @@ def get_recent_alert_count() -> int:
         with get_connection() as conn:
             return _db_get_recent_alert_count(conn, minutes=60)
     except Exception:
-        log.warning("Failed to query alert log; allowing alert")
+        log.warning("Failed to query alert log; allowing alert", exc_info=True)
         return 0
 
 
@@ -130,6 +130,7 @@ def send_telegram_alert(
     # Send via Telegram API
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
 
+    log.info("Sending Telegram alert for tweet %s", tweet_id or "<unknown>")
     try:
         response = httpx.post(
             url,
@@ -142,13 +143,19 @@ def send_telegram_alert(
             timeout=10,
         )
         if response.status_code == 200:
+            log.info("Telegram alert delivered for tweet %s", tweet_id or "<unknown>")
             try:
                 with get_connection() as conn:
                     log_alert(conn, tweet_id=tweet_id, chat_id=chat_id)
                     conn.commit()
             except Exception:
-                log.warning("Failed to log alert to database")
+                log.warning("Failed to log alert to database", exc_info=True)
             return True
+        log.warning(
+            "Telegram alert rejected for tweet %s: HTTP %d",
+            tweet_id or "<unknown>",
+            response.status_code,
+        )
         return False
     except Exception:
         log.warning("Telegram send failed", exc_info=True)

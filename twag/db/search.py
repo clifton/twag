@@ -1,12 +1,15 @@
 """Search and feed query operations."""
 
 import json
+import logging
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
 from .time_utils import parse_time_range
+
+log = logging.getLogger(__name__)
 
 
 @dataclass

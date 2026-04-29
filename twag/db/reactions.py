@@ -1,9 +1,12 @@
 """Reaction CRUD operations for feedback loop."""
 
+import logging
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
+
+log = logging.getLogger(__name__)
 
 
 @dataclass

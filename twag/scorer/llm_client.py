@@ -1,6 +1,7 @@
 """LLM client infrastructure: provider dispatch, retry logic, JSON parsing."""
 
 import json
+import logging
 import random
 import time
 from collections.abc import Callable
@@ -10,6 +11,8 @@ from anthropic import Anthropic
 
 from twag.auth import get_api_key
 from twag.config import load_config
+
+log = logging.getLogger(__name__)
 
 _T = TypeVar("_T")
 

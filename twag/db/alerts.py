@@ -1,8 +1,11 @@
 """Alert log operations for notification rate limiting."""
 
+import logging
 import sqlite3
 
 from .connection import execute_with_retry
+
+log = logging.getLogger(__name__)
 
 
 def get_recent_alert_count(conn: sqlite3.Connection, minutes: int = 60) -> int:

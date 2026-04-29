@@ -6,6 +6,7 @@ from .. import __version__
 
 # Re-export symbols that tests monkeypatch on `twag.cli`
 from ..db import get_connection, get_tweet_by_id, get_unprocessed_tweets, init_db  # noqa: F401
+from ..logging_setup import configure_logging
 
 # Import command modules — avoid shadowing module names with command objects
 # so that `import twag.cli.<module>` still resolves to the module.
@@ -32,6 +33,7 @@ from .analyze import _print_status_analysis as _print_status_analysis
 @click.version_option(version=__version__)
 def cli():
     """Twitter aggregator for market-relevant signals."""
+    configure_logging()
 
 
 # Register commands

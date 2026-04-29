@@ -13,6 +13,7 @@ from fastapi.templating import Jinja2Templates
 
 from ..config import get_database_path
 from ..db import init_db
+from ..logging_setup import configure_logging
 from ..metrics import get_collector
 from .routes import context, metrics, prompts, reactions, tweets
 
@@ -23,6 +24,7 @@ FRONTEND_DIST = Path(__file__).parent / "frontend" / "dist"
 
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
+    configure_logging()
     app = FastAPI(
         title="Twag",
         description="Twitter aggregator web interface",

@@ -48,6 +48,7 @@ def process_unprocessed(
 
     m = get_collector()
     t0 = time.monotonic()
+    log.info("process_unprocessed start (limit=%d, dry_run=%s, force_refresh=%s)", limit, dry_run, force_refresh)
     config = load_config()
     batch_size = config["scoring"]["batch_size"]
     high_threshold = config["scoring"]["high_signal_threshold"]
@@ -143,8 +144,10 @@ def process_unprocessed(
 
         conn.commit()
 
-    m.observe("pipeline.process_unprocessed.latency_seconds", time.monotonic() - t0)
+    elapsed = time.monotonic() - t0
+    m.observe("pipeline.process_unprocessed.latency_seconds", elapsed)
     m.inc("pipeline.process_unprocessed.tweets", len(results))
+    log.info("process_unprocessed complete: %d results in %.2fs", len(results), elapsed)
     return results
 
 
@@ -360,6 +363,7 @@ def enrich_high_signal(
                             (result.signal_tier, tweet_id),
                         )
                 except Exception:
+                    log.warning("Enrichment worker failed for tweet %s", tweet_id, exc_info=True)
                     continue
         finally:
             if text_pool:

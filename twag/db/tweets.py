@@ -1,6 +1,7 @@
 """Tweet CRUD operations."""
 
 import json
+import logging
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -8,6 +9,8 @@ from typing import Any
 
 from ..text_utils import sanitize_nested_strings, sanitize_text
 from .connection import execute_with_retry
+
+log = logging.getLogger(__name__)
 
 
 def insert_tweet(

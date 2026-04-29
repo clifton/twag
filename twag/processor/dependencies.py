@@ -218,6 +218,7 @@ def _expand_links_for_rows(
                     try:
                         _, expanded_links = future.result()
                     except Exception:
+                        log.warning("Parallel link expansion failed for tweet %s", tweet_id, exc_info=True)
                         expanded_links = None
                     links_payload: list[dict[str, Any]] | str | None = (
                         expanded_links if expanded_links is not None else original_row["links_json"]
@@ -229,6 +230,7 @@ def _expand_links_for_rows(
                 try:
                     _, expanded_links = _expand_single_tweet_links(row)
                 except Exception:
+                    log.warning("Sequential link expansion failed for tweet %s", tweet_id, exc_info=True)
                     expanded_links = None
                 links_payload = expanded_links if expanded_links is not None else row["links_json"]
                 update_tweet_links_expanded(conn, tweet_id, links_payload, expanded_at)

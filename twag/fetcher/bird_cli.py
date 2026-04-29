@@ -106,10 +106,10 @@ def _run_bird_once(
             log.error("bird %s exited with code %d", args[0] if args else "?", result.returncode)
         return stdout, result.stderr, result.returncode
     except subprocess.TimeoutExpired:
-        log.error("bird %s timed out after %ds", args[0] if args else "?", timeout)  # noqa: TRY400
+        log.error("bird %s timed out after %ds", args[0] if args else "?", timeout, exc_info=True)
         return "", "Command timed out", 1
     except FileNotFoundError:
-        log.error("bird CLI not found on PATH")  # noqa: TRY400
+        log.error("bird CLI not found on PATH", exc_info=True)
         return "", "bird CLI not found", 1
 
 
@@ -333,6 +333,7 @@ def _hydrate_truncated_retweets(tweets: list[Tweet]) -> list[Tweet]:
 
 def fetch_home_timeline(count: int = 100) -> list[Tweet]:
     """Fetch home timeline tweets."""
+    log.info("Fetching home timeline (count=%d)", count)
     stdout, stderr, code = run_bird(["home", "-n", str(count), "--json"])
 
     if code != 0:
@@ -341,6 +342,7 @@ def fetch_home_timeline(count: int = 100) -> list[Tweet]:
     tweets = _parse_bird_output(stdout)
     if not tweets and stdout.strip():
         log.warning("bird home returned %d bytes but 0 parseable tweets", len(stdout))
+    log.info("Home timeline fetch complete: %d tweets parsed", len(tweets))
     return _hydrate_truncated_retweets(tweets)
 
 
@@ -350,34 +352,40 @@ def fetch_user_tweets(handle: str, count: int = 50) -> list[Tweet]:
     if not handle.startswith("@"):
         handle = f"@{handle}"
 
+    log.info("Fetching user tweets for %s (count=%d)", handle, count)
     stdout, stderr, code = run_bird(["user-tweets", handle, "-n", str(count), "--json"])
 
     if code != 0:
         raise RuntimeError(f"bird user-tweets failed for {handle} (exit {code}): {stderr.strip()}")
 
     tweets = _parse_bird_output(stdout)
+    log.info("User-tweets fetch complete for %s: %d tweets parsed", handle, len(tweets))
     return _hydrate_truncated_retweets(tweets)
 
 
 def fetch_search(query: str, count: int = 30) -> list[Tweet]:
     """Search for tweets matching a query."""
+    log.info("Running search query (count=%d): %r", count, query)
     stdout, stderr, code = run_bird(["search", query, "-n", str(count), "--json"])
 
     if code != 0:
         raise RuntimeError(f"bird search failed (exit {code}): {stderr.strip()}")
 
     tweets = _parse_bird_output(stdout)
+    log.info("Search complete: %d tweets parsed", len(tweets))
     return _hydrate_truncated_retweets(tweets)
 
 
 def fetch_bookmarks(count: int = 100) -> list[Tweet]:
     """Fetch user's bookmarked tweets."""
+    log.info("Fetching bookmarks (count=%d)", count)
     stdout, stderr, code = run_bird(["bookmarks", "-n", str(count), "--json"])
 
     if code != 0:
         raise RuntimeError(f"bird bookmarks failed (exit {code}): {stderr.strip()}")
 
     tweets = _parse_bird_output(stdout)
+    log.info("Bookmarks fetch complete: %d tweets parsed", len(tweets))
     return _hydrate_truncated_retweets(tweets)
 
 

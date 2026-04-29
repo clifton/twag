@@ -1,5 +1,6 @@
 """Database maintenance operations: dump, restore, prune."""
 
+import logging
 import re
 import shutil
 import sqlite3
@@ -8,6 +9,8 @@ from pathlib import Path
 
 from ..config import get_database_path
 from .connection import rebuild_fts
+
+log = logging.getLogger(__name__)
 
 # FTS shadow table suffixes and related object names to filter during dump
 _FTS_TABLE = "tweets_fts"

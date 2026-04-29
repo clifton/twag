@@ -1,6 +1,7 @@
 """Markdown output generation for digests."""
 
 import json
+import logging
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -12,6 +13,8 @@ from .db import get_connection, get_tweet_by_id, get_tweets_for_digest, mark_twe
 from .fetcher import get_tweet_url
 from .link_utils import normalize_tweet_links
 from .text_utils import row_value as _value
+
+log = logging.getLogger(__name__)
 
 
 def _append_labeled_markdown(lines: list[str], label: str, value: str, *, indent: str = "  ") -> None:
@@ -35,10 +38,13 @@ def render_digest(
     if min_score is None:
         min_score = config["scoring"]["min_score_for_digest"]
 
+    log.info("Rendering digest for %s (min_score=%s)", date, min_score)
+
     with get_connection() as conn:
         tweets = get_tweets_for_digest(conn, date=date, min_score=min_score)
 
         if not tweets:
+            log.info("Digest %s: no qualifying tweets", date)
             return f"# Twitter Feed - {date}\n\n*No market-relevant tweets found.*\n"
 
         # Group by signal tier
@@ -117,6 +123,7 @@ def render_digest(
         default_path.parent.mkdir(parents=True, exist_ok=True)
         default_path.write_text(content)
 
+    log.info("Digest %s rendered: %d tweets, %d bytes", date, len(tweets), len(content))
     return content
 
 
