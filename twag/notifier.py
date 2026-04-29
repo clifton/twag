@@ -127,8 +127,9 @@ def send_telegram_alert(
     if not bot_token:
         return False
 
-    # Send via Telegram API
-    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    # Send via Telegram API. The bot token must appear in the URL path per
+    # Telegram's protocol; the constructed URL is never logged.
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"  # pii-scan: ignore
 
     try:
         response = httpx.post(
