@@ -1,12 +1,42 @@
 """Search and feed query operations."""
 
 import json
+import logging
+import re
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
 from .time_utils import parse_time_range
+
+log = logging.getLogger(__name__)
+
+
+# FTS5 operator/punctuation tokens. Stripping these turns a malformed query
+# (unbalanced quote, stray '*', column filter) into a plain bag of words
+# we can safely re-execute as a quoted phrase.
+_FTS5_STRIP_RE = re.compile(r'[\\"\'(){}\[\]:^*?+~]')
+
+_FTS5_KEYWORDS = frozenset({"AND", "OR", "NOT", "NEAR"})
+
+
+def sanitize_fts_query(query: str) -> str:
+    """Best-effort sanitization of a user-supplied FTS5 query.
+
+    Strips FTS5 operator/punctuation characters, drops bare boolean keywords,
+    and returns a single quoted phrase. Used as a fallback when the raw query
+    fails to parse — preserves power-user FTS5 features on the happy path
+    while ensuring malformed input still returns *something* useful.
+    Returns "" when the input has no usable tokens.
+    """
+    if not query or not isinstance(query, str):
+        return ""
+    cleaned = _FTS5_STRIP_RE.sub(" ", query)
+    tokens = [t for t in cleaned.split() if t and t.upper() not in _FTS5_KEYWORDS]
+    if not tokens:
+        return ""
+    return '"' + " ".join(tokens) + '"'
 
 
 @dataclass
@@ -225,10 +255,29 @@ def search_tweets(
         LIMIT ? OFFSET ?
     """
 
-    cursor = conn.execute(sql, params)
+    # FTS5 raises OperationalError on malformed MATCH expressions (unbalanced
+    # quote, leading "*", invalid column filter, etc.). Without handling that
+    # the search endpoint 500s on harmless user typos. Retry with a sanitized
+    # phrase first; if even that fails, log and return empty results.
+    try:
+        cursor = conn.execute(sql, params)
+        rows = cursor.fetchall()
+    except sqlite3.OperationalError as exc:
+        log.warning("FTS5 query failed (%s); retrying sanitized", exc)
+        sanitized = sanitize_fts_query(query)
+        if not sanitized:
+            return []
+        params[0] = sanitized
+        try:
+            cursor = conn.execute(sql, params)
+            rows = cursor.fetchall()
+        except sqlite3.OperationalError:
+            log.warning("FTS5 query still failed after sanitization; returning empty results")
+            return []
+
     results = []
 
-    for row in cursor.fetchall():
+    for row in rows:
         # Parse tickers from JSON or comma-separated
         tickers_raw = row["tickers"]
         if tickers_raw:

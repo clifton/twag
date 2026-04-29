@@ -1,5 +1,6 @@
 """Telegram notifications for high-signal tweets."""
 
+import html
 import logging
 import os
 from datetime import datetime
@@ -74,9 +75,16 @@ def format_alert(
     summary: str,
     tickers: list[str] | None = None,
 ) -> str:
-    """Format a high-signal alert message."""
+    """Format a high-signal alert message.
+
+    The message is sent with parse_mode=HTML, so any attacker-controlled text
+    embedded in it (tweet content, author handle, summary, tickers) MUST be
+    HTML-escaped to prevent tag injection.
+    """
     # Truncate content for preview
     preview = content[:150] + "..." if len(content) > 150 else content
+    safe_preview = html.escape(preview)
+    safe_handle = html.escape(author_handle)
 
     # Category display - handle list or string
     if isinstance(category, list):
@@ -84,22 +92,24 @@ def format_alert(
         cat_display = ", ".join(c.replace("_", " ").upper() for c in cats) if cats else "MARKET"
     else:
         cat_display = category.replace("_", " ").upper() if category else "MARKET"
+    safe_cat_display = html.escape(cat_display)
 
     # Build message
     lines = [
-        f"🚨 HIGH SIGNAL [{cat_display}]",
-        f'@{author_handle}: "{preview}"',
+        f"🚨 HIGH SIGNAL [{safe_cat_display}]",
+        f'@{safe_handle}: "{safe_preview}"',
         "",
     ]
 
     if summary:
-        lines.append(f"📊 {summary}")
+        lines.append(f"📊 {html.escape(summary)}")
 
     if tickers:
-        lines.append(f"💡 Tickers: {', '.join(tickers)}")
+        safe_tickers = ", ".join(html.escape(t) for t in tickers)
+        lines.append(f"💡 Tickers: {safe_tickers}")
 
     url = get_tweet_url(tweet_id, author_handle)
-    lines.append(f"🔗 {url}")
+    lines.append(f"🔗 {html.escape(url)}")
 
     return "\n".join(lines)
 

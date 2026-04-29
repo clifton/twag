@@ -5,6 +5,7 @@ import random
 import time
 from collections.abc import Callable
 from typing import Any, TypeVar
+from urllib.parse import urlparse
 
 from anthropic import Anthropic
 
@@ -12,6 +13,27 @@ from twag.auth import get_api_key
 from twag.config import load_config
 
 _T = TypeVar("_T")
+
+_ALLOWED_IMAGE_SCHEMES = frozenset({"http", "https"})
+
+
+class UnsafeImageURLError(ValueError):
+    """Raised when an image URL is rejected by the SSRF guard."""
+
+
+def _validate_image_url(image_url: str) -> None:
+    # Vision fetcher pulls user/LLM-supplied URLs over the network. Without a
+    # scheme allowlist an attacker could pivot to file://, gopher://, or other
+    # unintended protocols and reach link-local / internal hosts.
+    if not isinstance(image_url, str) or not image_url:
+        raise UnsafeImageURLError("image_url must be a non-empty string")
+    parsed = urlparse(image_url)
+    if parsed.scheme.lower() not in _ALLOWED_IMAGE_SCHEMES:
+        raise UnsafeImageURLError(
+            f"image_url scheme {parsed.scheme!r} is not allowed (must be http or https)",
+        )
+    if not parsed.netloc:
+        raise UnsafeImageURLError("image_url must include a host")
 
 
 def get_anthropic_client() -> Anthropic:
@@ -95,6 +117,7 @@ def _call_gemini(model: str, prompt: str, max_tokens: int = 2048, reasoning: str
 
 def _call_anthropic_vision(model: str, image_url: str, prompt: str, max_tokens: int = 1024) -> str:
     """Call Anthropic API with image and return text response."""
+    _validate_image_url(image_url)
     client = get_anthropic_client()
     response = client.messages.create(
         model=model,
@@ -126,10 +149,13 @@ def _call_gemini_vision(model: str, image_url: str, prompt: str, max_tokens: int
     import httpx
     from google.genai import types
 
+    _validate_image_url(image_url)
+
     client = get_gemini_client()
 
-    # Fetch image
-    resp = httpx.get(image_url, timeout=30)
+    # follow_redirects=False prevents an http(s) URL that 30x's to file://
+    # or an internal host from sneaking past the scheme/host validation above.
+    resp = httpx.get(image_url, timeout=30, follow_redirects=False)
     resp.raise_for_status()
     image_data = resp.content
     mime_type = resp.headers.get("content-type", "image/jpeg")
