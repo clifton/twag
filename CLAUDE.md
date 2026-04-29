@@ -162,6 +162,34 @@ Defined in `twag/cli/`:
 
 If command behavior changes, update `README.md` and `SKILL.md` in the same PR.
 
+## Test Flakiness
+
+Use `scripts/analyze_test_flakiness.py` to identify flaky tests and static flakiness smells:
+
+```bash
+# Full analysis: 5 randomized runs + smell scan, writes docs/test_flakiness_report.md
+uv run python scripts/analyze_test_flakiness.py
+
+# Static-only (fast — no test execution)
+uv run python scripts/analyze_test_flakiness.py --static-only
+
+# Custom run count or fixed seeds
+uv run python scripts/analyze_test_flakiness.py --runs 10
+uv run python scripts/analyze_test_flakiness.py --runs 3 --seeds 1,2,3
+```
+
+The analyzer combines two signals:
+- **Dynamic** — runs pytest N times (with `pytest-randomly` for order shuffling)
+  and diffs per-test outcomes via the built-in `--junit-xml` report. Tests
+  with mixed pass/fail outcomes across runs are flagged as flaky.
+- **Static** — regex scan of `tests/` for common smells: real `sleep`, real
+  clocks, unseeded `random`, real network calls, absolute-path filesystem
+  writes, and ordering assumptions on dicts/sets.
+
+Baseline report lives at `docs/test_flakiness_report.md`. Re-run the analyzer
+and refresh the report when triaging flakiness or before/after broad test
+refactors.
+
 ## Commit Hygiene
 
 - Keep commits focused and atomic
