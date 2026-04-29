@@ -1,16 +1,5 @@
 """Prompt templates for LLM scoring and analysis."""
 
-# Triage prompt for fast scoring
-TRIAGE_PROMPT = """You are a financial markets triage agent. Score this tweet 0-10 for relevance to macro/investing.
-
-Categories (assign 1-3 that apply): fed_policy, inflation, job_market, macro_data, earnings, equities, rates_fx, credit, banks, consumer_spending, capex, commodities, energy, metals_mining, geopolitical, sanctions, tech_business, ai_advancement, crypto, noise
-
-Tweet: {tweet_text}
-Author: @{handle}
-
-Return JSON only:
-{{"score": 7, "categories": ["fed_policy", "rates_fx"], "summary": "One-liner summary", "tickers": ["TLT", "GLD"]}}"""
-
 # Batch triage prompt
 BATCH_TRIAGE_PROMPT = """You are a financial markets triage agent. Score these tweets 0-10 for relevance to macro/investing.
 
