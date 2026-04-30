@@ -169,15 +169,28 @@ def _call_llm_vision(provider: str, model: str, image_url: str, prompt: str, max
     return _with_retry(_invoke)
 
 
+_RETRY_PARAMS_CACHE: tuple[int, float, float, float] | None = None
+
+
+def _retry_params() -> tuple[int, float, float, float]:
+    """Return cached retry params. Read once per process to keep _with_retry off the config hot path."""
+    global _RETRY_PARAMS_CACHE
+    if _RETRY_PARAMS_CACHE is None:
+        llm_cfg = load_config().get("llm", {})
+        _RETRY_PARAMS_CACHE = (
+            int(llm_cfg.get("retry_max_attempts", 4)),
+            float(llm_cfg.get("retry_base_seconds", 1.0)),
+            float(llm_cfg.get("retry_max_seconds", 20.0)),
+            float(llm_cfg.get("retry_jitter", 0.3)),
+        )
+    return _RETRY_PARAMS_CACHE
+
+
 def _with_retry(fn: Callable[[], _T]) -> _T:
     from twag.metrics import get_collector
 
     m = get_collector()
-    config = load_config()
-    retries = config.get("llm", {}).get("retry_max_attempts", 4)
-    base_delay = config.get("llm", {}).get("retry_base_seconds", 1.0)
-    max_delay = config.get("llm", {}).get("retry_max_seconds", 20.0)
-    jitter = config.get("llm", {}).get("retry_jitter", 0.3)
+    retries, base_delay, max_delay, jitter = _retry_params()
 
     attempt = 0
     while True:

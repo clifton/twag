@@ -47,14 +47,15 @@ def create_app() -> FastAPI:
     templates.env.filters["unescape"] = lambda s: html.unescape(s) if s else s
     app.state.templates = templates
 
-    # Request metrics middleware
+    # Resolve the collector once at app build time so each request skips the lookup.
+    metrics_collector = get_collector()
+
     @app.middleware("http")
     async def metrics_middleware(request: Request, call_next) -> Response:
-        m = get_collector()
-        m.inc("web.requests")
+        metrics_collector.inc("web.requests")
         t0 = time.monotonic()
         response: Response = await call_next(request)
-        m.observe("web.request_latency_seconds", time.monotonic() - t0)
+        metrics_collector.observe("web.request_latency_seconds", time.monotonic() - t0)
         return response
 
     # Include API routers

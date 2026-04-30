@@ -160,6 +160,14 @@ class MetricsCollector:
                 "p99": obs[_min(int(n * 0.99), n - 1)],
             }
 
+    def histogram_snapshot(self, name: str) -> HistogramSnapshot:
+        """Cheap snapshot (count/min/max/avg/total) without sorting observations."""
+        with self._lock:
+            h = self._histograms.get(name)
+            if not h:
+                return {"count": 0, "min": 0.0, "max": 0.0, "avg": 0.0, "total": 0.0}
+            return h.snapshot()
+
     # -- Snapshot --
 
     def snapshot(self) -> dict[str, Any]:
@@ -264,14 +272,7 @@ def counter(name: str, *, value: float = 1.0, labels: LabelMap | None = None) ->
 def histogram(name: str, value: float, *, labels: LabelMap | None = None) -> HistogramSnapshot:
     key = _label_key(name, labels)
     _collector.observe(key, value)
-    stats = _collector.histogram_stats(key)
-    return {
-        "count": int(stats["count"]),
-        "min": stats["min"],
-        "max": stats["max"],
-        "avg": stats["mean"],
-        "total": stats["total"],
-    }
+    return _collector.histogram_snapshot(key)
 
 
 @contextmanager
