@@ -25,11 +25,15 @@ from ._console import console
 def _build_snapshot_from_db(window: timedelta) -> dict[str, Any]:
     """Reconstruct a metrics snapshot from the persisted ``metrics`` table.
 
-    Counters are summed across rows in the window; histograms use the latest
-    flushed totals (since each flush writes the running total).
+    Counter rows are deltas (see ``MetricsCollector.flush_to_db``), so summing
+    them across the window recovers the true total — even across multiple
+    process lifetimes that flushed within the same window. Histograms use the
+    latest row in the window (each flushed snapshot is itself cumulative for
+    the writing process).
     """
     cutoff = datetime.now(timezone.utc) - window
-    cutoff_iso = cutoff.strftime("%Y-%m-%dT%H:%M:%fZ")
+    # Match the table's strftime format: %f is milliseconds in SQLite, fractional in Python.
+    cutoff_iso = cutoff.strftime("%Y-%m-%dT%H:%M:%S.") + f"{cutoff.microsecond // 1000:03d}Z"
 
     counters: dict[str, float] = defaultdict(float)
     histograms: dict[str, dict[str, float]] = {}
@@ -41,23 +45,20 @@ def _build_snapshot_from_db(window: timedelta) -> dict[str, Any]:
             (cutoff_iso,),
         ).fetchall()
 
-    last_counter: dict[str, float] = {}
     for row in rows:
         name = row["name"]
         kind = row["type"]
         value = row["value"]
         if kind == "counter":
-            # Each flush records the cumulative counter total; take max to avoid
-            # double-counting the same lifetime.
-            last_counter[name] = max(last_counter.get(name, 0.0), value)
+            counters[name] += value
         elif kind == "histogram" and row["labels_json"]:
             try:
                 stats = json.loads(row["labels_json"])
             except json.JSONDecodeError:
                 continue
+            # Latest histogram row in the window wins (rows are ordered ASC).
             histograms[name] = stats
 
-    counters.update(last_counter)
     return {"counters": dict(counters), "histograms": histograms}
 
 
@@ -82,7 +83,7 @@ def _component_to_dict(c: Component) -> dict[str, Any]:
     "--pricing-file",
     type=click.Path(dir_okay=False),
     default=None,
-    help="Path to pricing override JSON. Defaults to ~/.twag/pricing.json if present.",
+    help="Path to pricing override JSON. Defaults to ~/.config/twag/pricing.json if present.",
 )
 def costs(since: str, as_json: bool, pricing_file: str | None) -> None:
     """Estimate API costs by component from locally-tracked metrics."""

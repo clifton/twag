@@ -35,6 +35,17 @@ def cli():
     """Twitter aggregator for market-relevant signals."""
 
 
+@cli.result_callback()
+def _flush_metrics_after_command(_result, **_kwargs):
+    """Persist any in-memory metrics so ``twag costs --since`` can see them.
+
+    Runs after every subcommand. Failures are silent — see ``flush_metrics``.
+    """
+    from ..metrics import flush_metrics
+
+    flush_metrics()
+
+
 # Register commands
 cli.add_command(_init_mod.init)
 cli.add_command(_init_mod.doctor)

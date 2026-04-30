@@ -3,20 +3,24 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from unittest.mock import patch
 
 from click.testing import CliRunner
 
 from twag import metrics
 from twag.cli import cli
+from twag.cli.costs_cmd import _build_snapshot_from_db
 from twag.costs import (
     Component,
+    default_pricing_path,
     derive_model_from_label,
     estimate_costs,
     load_pricing_overrides,
     lookup_rate,
     total_usd,
 )
+from twag.metrics import MetricsCollector, ensure_metrics_table
 
 
 def setup_function():
@@ -284,3 +288,144 @@ def test_cli_costs_pricing_file_option(tmp_path):
     anthropic = next(c for c in payload["components"] if c["name"] == "scorer:anthropic")
     # 1M tokens * 2.0/1M = 2.0
     assert abs(anthropic["usd_estimate"] - 2.0) < 1e-6
+
+
+# ── Persisted counters: delta semantics across process lifetimes ─────────
+
+
+def test_flush_to_db_writes_delta_not_cumulative():
+    """Each flush should record only the delta since the previous flush.
+
+    Cumulative-snapshot rows would force a window-aggregator to choose between
+    SUM (double-counts within one process) or MAX (loses cross-process spend).
+    Storing deltas lets the window query be a simple SUM.
+    """
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    ensure_metrics_table(conn)
+
+    m = MetricsCollector()
+    m.inc("scorer.gemini.input_tokens", 100)
+    m.flush_to_db(conn)
+
+    m.inc("scorer.gemini.input_tokens", 50)
+    m.flush_to_db(conn)
+
+    rows = conn.execute(
+        "SELECT value FROM metrics WHERE name = 'scorer.gemini.input_tokens' AND type = 'counter'",
+    ).fetchall()
+    values = [r["value"] for r in rows]
+    assert values == [100, 50], f"expected per-flush deltas, got {values}"
+    # Sum across rows should equal current cumulative value.
+    assert sum(values) == m.counter_value("scorer.gemini.input_tokens") == 150
+
+
+def test_flush_to_db_skips_unchanged_counters():
+    """A flush with no counter activity should not insert duplicate rows."""
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    ensure_metrics_table(conn)
+
+    m = MetricsCollector()
+    m.inc("scorer.anthropic.input_tokens", 25)
+    first = m.flush_to_db(conn)
+    second = m.flush_to_db(conn)
+    assert first == 1
+    assert second == 0
+
+
+def test_flush_summed_across_two_collectors_recovers_total():
+    """Cross-process scenario: two independent collectors that each flush.
+
+    The fix from review iteration 1: process A flushes 100 + 50, process B
+    starts fresh and flushes 30 — the window total must be 180, not 150 (the
+    old MAX-based reconstruction returned 150).
+    """
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    ensure_metrics_table(conn)
+
+    a = MetricsCollector()
+    a.inc("scorer.gemini.input_tokens", 100)
+    a.flush_to_db(conn)
+    a.inc("scorer.gemini.input_tokens", 50)
+    a.flush_to_db(conn)
+
+    b = MetricsCollector()
+    b.inc("scorer.gemini.input_tokens", 30)
+    b.flush_to_db(conn)
+
+    total = conn.execute(
+        "SELECT SUM(value) AS s FROM metrics WHERE name = 'scorer.gemini.input_tokens' AND type = 'counter'",
+    ).fetchone()["s"]
+    assert total == 180
+
+
+def test_build_snapshot_from_db_sums_cross_process_deltas(monkeypatch):
+    """End-to-end: the CLI window-aggregator returns the true cross-process sum."""
+    db_file = sqlite3.connect(":memory:")
+    db_file.row_factory = sqlite3.Row
+    ensure_metrics_table(db_file)
+
+    a = MetricsCollector()
+    a.inc("scorer.gemini.input_tokens{model=gemini-3-flash-preview}", 100)
+    a.flush_to_db(db_file)
+    a.inc("scorer.gemini.input_tokens{model=gemini-3-flash-preview}", 50)
+    a.flush_to_db(db_file)
+    b = MetricsCollector()
+    b.inc("scorer.gemini.input_tokens{model=gemini-3-flash-preview}", 30)
+    b.flush_to_db(db_file)
+
+    # Patch the connection helper so _build_snapshot_from_db sees our in-memory DB.
+    from contextlib import contextmanager
+
+    @contextmanager
+    def _conn(**_kw):
+        yield db_file
+
+    monkeypatch.setattr("twag.cli.costs_cmd.get_connection", _conn)
+
+    from datetime import timedelta
+
+    snapshot = _build_snapshot_from_db(timedelta(days=1))
+    assert snapshot["counters"]["scorer.gemini.input_tokens{model=gemini-3-flash-preview}"] == 180
+
+
+# ── XDG path ────────────────────────────────────────────────────────────
+
+
+def test_default_pricing_path_is_xdg(monkeypatch, tmp_path):
+    """Default override file should live under XDG_CONFIG_HOME/twag/, not ~/.twag/."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    expected = tmp_path / "twag" / "pricing.json"
+    assert default_pricing_path() == expected
+
+
+# ── Labeled counters from llm_client are correctly attributed ───────────
+
+
+def test_labeled_counters_per_model_are_priced_independently():
+    """Two Gemini models in the same provider bucket should each price using
+    their own row in PRICING -- not collapse into a single configured default.
+    """
+    snapshot = {
+        "counters": {
+            # 1M input tokens on gemini-3-flash → 0.30 USD
+            "scorer.gemini.input_tokens{model=gemini-3-flash-preview}": 1_000_000,
+            "scorer.gemini.output_tokens{model=gemini-3-flash-preview}": 0,
+            # 1M input tokens on gemini-3-pro → 3.50 USD
+            "scorer.gemini.input_tokens{model=gemini-3-pro-preview}": 1_000_000,
+            "scorer.gemini.output_tokens{model=gemini-3-pro-preview}": 0,
+        },
+        "histograms": {},
+    }
+    components = estimate_costs(snapshot, configured_models={})
+    by_name = {c.name: c for c in components}
+    gemini = by_name["scorer:gemini"]
+    # 0.30 + 3.50 = 3.80
+    assert abs(gemini.usd_estimate - 3.80) < 1e-6
+    # And both models appear in the per-model breakdown
+    assert "gemini-3-flash-preview" in gemini.breakdown["models"]
+    assert "gemini-3-pro-preview" in gemini.breakdown["models"]
+    assert abs(gemini.breakdown["models"]["gemini-3-flash-preview"]["usd_estimate"] - 0.30) < 1e-6
+    assert abs(gemini.breakdown["models"]["gemini-3-pro-preview"]["usd_estimate"] - 3.50) < 1e-6

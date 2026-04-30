@@ -107,6 +107,8 @@ class MetricsCollector:
         self._counters: dict[str, _Counter] = {}
         self._gauges: dict[str, _Gauge] = {}
         self._histograms: dict[str, _Histogram] = {}
+        self._last_flushed_counters: dict[str, float] = {}
+        self._last_flushed_hist_counts: dict[str, int] = {}
         self._start_time = time.monotonic()
 
     # -- Counters --
@@ -204,30 +206,55 @@ class MetricsCollector:
     # -- Persistence --
 
     def flush_to_db(self, conn: sqlite3.Connection) -> int:
-        """Write current metrics to the metrics table. Returns rows written."""
-        snap = self.snapshot()
-        rows: list[tuple[str, str, float, str | None]] = []
+        """Persist deltas since last flush. Returns rows written.
 
-        for name, value in snap["counters"].items():
-            rows.append((name, "counter", value, None))
-        for name, value in snap["gauges"].items():
-            rows.append((name, "gauge", value, None))
-        for name, stats in snap["histograms"].items():
-            rows.append((name, "histogram", stats["mean"], json.dumps(stats)))
+        Counter rows store the *delta* between the current cumulative value and
+        the value at the previous flush from this collector instance. This lets
+        ``SUM(value)`` over a window across many process lifetimes recover the
+        true total — cumulative-counter rows would lose data on process
+        restart and double-count within a single process.
 
-        if rows:
-            conn.executemany(
-                "INSERT INTO metrics (name, type, value, labels_json) VALUES (?, ?, ?, ?)",
-                rows,
-            )
-            conn.commit()
-        return len(rows)
+        Histograms write a row only when the count has advanced. Gauges always
+        write the latest value (snapshot semantics).
+        """
+        with self._lock:
+            snap = self.snapshot()
+            rows: list[tuple[str, str, float, str | None]] = []
+
+            for name, value in snap["counters"].items():
+                last = self._last_flushed_counters.get(name, 0.0)
+                delta = value - last
+                if delta == 0:
+                    continue
+                rows.append((name, "counter", delta, None))
+                self._last_flushed_counters[name] = value
+
+            for name, value in snap["gauges"].items():
+                rows.append((name, "gauge", value, None))
+
+            for name, stats in snap["histograms"].items():
+                count = int(stats["count"])
+                last_count = self._last_flushed_hist_counts.get(name, 0)
+                if count <= last_count:
+                    continue
+                rows.append((name, "histogram", stats["mean"], json.dumps(stats)))
+                self._last_flushed_hist_counts[name] = count
+
+            if rows:
+                conn.executemany(
+                    "INSERT INTO metrics (name, type, value, labels_json) VALUES (?, ?, ?, ?)",
+                    rows,
+                )
+                conn.commit()
+            return len(rows)
 
     def reset(self) -> None:
         with self._lock:
             self._counters.clear()
             self._gauges.clear()
             self._histograms.clear()
+            self._last_flushed_counters.clear()
+            self._last_flushed_hist_counts.clear()
             self._start_time = time.monotonic()
 
 
@@ -308,3 +335,22 @@ def dump_json(path: str | None = None) -> str:
 
 def reset() -> None:
     _collector.reset()
+
+
+def flush_metrics() -> int:
+    """Persist the current in-memory metrics to the twag SQLite database.
+
+    Used by long-running CLI commands and the web layer to make in-memory
+    counters visible to ``twag costs --since <window>``. Errors are swallowed
+    (e.g. database missing or locked) so a flush failure never breaks the
+    user's command — the in-memory snapshot is still available for the
+    current process.
+    """
+    try:
+        from .db import get_connection
+
+        with get_connection() as conn:
+            ensure_metrics_table(conn)
+            return _collector.flush_to_db(conn)
+    except Exception:
+        return 0

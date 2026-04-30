@@ -3,6 +3,7 @@
 import html
 import os
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request, Response
@@ -21,12 +22,23 @@ TEMPLATES_DIR = Path(__file__).parent / "templates"
 FRONTEND_DIST = Path(__file__).parent / "frontend" / "dist"
 
 
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    # Startup: nothing to do beyond the work create_app() already performed.
+    yield
+    # Shutdown: persist in-memory metrics so `twag costs --since` sees them.
+    from ..metrics import flush_metrics
+
+    flush_metrics()
+
+
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
     app = FastAPI(
         title="Twag",
         description="Twitter aggregator web interface",
         version="0.1.0",
+        lifespan=_lifespan,
     )
 
     app.state.db_path = get_database_path()

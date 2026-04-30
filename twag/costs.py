@@ -2,7 +2,8 @@
 
 Translates locally-tracked metrics (token counters per LLM provider, call counts)
 into a per-component USD estimate. Pricing is configurable via the PRICING table
-or a user-supplied JSON file (default: ``~/.twag/pricing.json``).
+or a user-supplied JSON file (default: ``$XDG_CONFIG_HOME/twag/pricing.json``,
+i.e. ``~/.config/twag/pricing.json``).
 
 Estimates are advisory. Token counts come from the LLM SDKs' usage metadata when
 available; calls without usage data are not priced. Non-LLM components (fetcher,
@@ -15,6 +16,8 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+from .config import APP_NAME, get_xdg_config_home
 
 if TYPE_CHECKING:
     import os
@@ -44,7 +47,9 @@ PRICING: dict[tuple[str, str], tuple[float, float]] = {
 }
 
 
-DEFAULT_PRICING_PATH = Path.home() / ".twag" / "pricing.json"
+def default_pricing_path() -> Path:
+    """Default location for a user pricing override file (XDG-compliant)."""
+    return get_xdg_config_home() / APP_NAME / "pricing.json"
 
 
 @dataclass
@@ -60,7 +65,7 @@ class Component:
 def _user_pricing_path(override: str | os.PathLike[str] | None = None) -> Path:
     if override is not None:
         return Path(override)
-    return DEFAULT_PRICING_PATH
+    return default_pricing_path()
 
 
 def load_pricing_overrides(path: str | os.PathLike[str] | None = None) -> dict[tuple[str, str], tuple[float, float]]:

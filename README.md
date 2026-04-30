@@ -288,9 +288,10 @@ twag costs --pricing-file ~/my-pricing.json
 #### Cost estimation
 
 `twag costs` converts locally-tracked LLM token counters into a per-component USD
-estimate, grouped by provider (`scorer:gemini`, `scorer:anthropic`) plus
+estimate, grouped by provider/model (`scorer:gemini`, `scorer:anthropic`) plus
 non-priced rows for `fetcher`, `pipeline`, and `web`. Pricing comes from a
-built-in table; override per-model rates by writing `~/.twag/pricing.json`:
+built-in table; override per-model rates by writing
+`~/.config/twag/pricing.json`:
 
 ```json
 {
@@ -302,6 +303,12 @@ built-in table; override per-model rates by writing `~/.twag/pricing.json`:
   }
 }
 ```
+
+Counters are persisted to the twag SQLite database after every CLI command and
+when the web server shuts down, so `twag costs --since 24h` can report spend
+across many `fetch` / `process` runs. Each flush records only the **delta**
+since the previous flush from that process, which is what makes summing across
+multiple process lifetimes within the window return the true total.
 
 Estimates are advisory — they reflect tokens reported by the SDKs. Calls without
 SDK-reported usage data are not priced.
