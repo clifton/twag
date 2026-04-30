@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 from ..config import load_config
 from ..db import (
-    get_tweet_by_id,
+    get_tweets_by_ids,
     update_account_stats,
     update_tweet_analysis,
     update_tweet_article,
@@ -413,6 +413,10 @@ def _triage_rows(
         )
         account_categories = {r["handle"]: r["category"] for r in acct_cursor.fetchall()}
 
+    # Batch-fetch all quoted tweets in one query instead of N individual lookups.
+    quote_ids = {row["quote_tweet_id"] for row in tweet_rows if row["has_quote"] and row["quote_tweet_id"]}
+    quoted_rows: dict[str, sqlite3.Row] = get_tweets_by_ids(conn, quote_ids) if quote_ids else {}
+
     all_results: list[TriageResult] = []
 
     total = len(tweets_for_triage)
@@ -453,7 +457,7 @@ def _triage_rows(
 
         quoted_text = ""
         if row["has_quote"] and row["quote_tweet_id"]:
-            quoted_row = get_tweet_by_id(conn, row["quote_tweet_id"])
+            quoted_row = quoted_rows.get(row["quote_tweet_id"])
             if quoted_row:
                 quoted_text = f"@{quoted_row['author_handle']}: {quoted_row['content']}"
 
