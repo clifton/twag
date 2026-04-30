@@ -278,7 +278,33 @@ twag prune --days 14            # Delete old tweets
 twag prune --dry-run            # Preview prune
 
 twag export --days 7            # Export recent data
+
+twag costs                      # Estimated USD spend (last 24h, persisted metrics)
+twag costs --since live         # In-memory metrics only
+twag costs --since 7d --json    # Raw JSON output
+twag costs --pricing-file ~/my-pricing.json
 ```
+
+#### Cost estimation
+
+`twag costs` converts locally-tracked LLM token counters into a per-component USD
+estimate, grouped by provider (`scorer:gemini`, `scorer:anthropic`) plus
+non-priced rows for `fetcher`, `pipeline`, and `web`. Pricing comes from a
+built-in table; override per-model rates by writing `~/.twag/pricing.json`:
+
+```json
+{
+  "anthropic": {
+    "claude-opus-4-7": {"input_per_million_usd": 15.0, "output_per_million_usd": 75.0}
+  },
+  "gemini": {
+    "gemini-3-flash-preview": [0.30, 2.50]
+  }
+}
+```
+
+Estimates are advisory — they reflect tokens reported by the SDKs. Calls without
+SDK-reported usage data are not priced.
 
 ### Narratives
 

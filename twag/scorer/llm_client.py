@@ -62,6 +62,19 @@ def _call_anthropic(model: str, prompt: str, max_tokens: int = 2048) -> str:
         raise
 
 
+def _record_gemini_usage(collector, response: Any, kind: str) -> None:
+    """Read response.usage_metadata and increment token counters."""
+    usage = getattr(response, "usage_metadata", None)
+    if not usage:
+        return
+    input_tokens = getattr(usage, "prompt_token_count", 0) or 0
+    output_tokens = getattr(usage, "candidates_token_count", 0) or 0
+    if input_tokens:
+        collector.inc(f"scorer.gemini.{kind}input_tokens", input_tokens)
+    if output_tokens:
+        collector.inc(f"scorer.gemini.{kind}output_tokens", output_tokens)
+
+
 def _call_gemini(model: str, prompt: str, max_tokens: int = 2048, reasoning: str | None = None) -> str:
     """Call Gemini API and return text response."""
     from google.genai import types
@@ -87,6 +100,7 @@ def _call_gemini(model: str, prompt: str, max_tokens: int = 2048, reasoning: str
             config=types.GenerateContentConfig(**config_kwargs),
         )
         m.observe("scorer.gemini.latency_seconds", time.monotonic() - t0)
+        _record_gemini_usage(m, response, kind="")
         return response.text
     except Exception:
         m.inc("scorer.gemini.errors")
@@ -95,30 +109,47 @@ def _call_gemini(model: str, prompt: str, max_tokens: int = 2048, reasoning: str
 
 def _call_anthropic_vision(model: str, image_url: str, prompt: str, max_tokens: int = 1024) -> str:
     """Call Anthropic API with image and return text response."""
-    client = get_anthropic_client()
-    response = client.messages.create(
-        model=model,
-        max_tokens=max_tokens,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "url",
-                            "url": image_url,
+    from twag.metrics import get_collector
+
+    m = get_collector()
+    m.inc("scorer.anthropic.vision_calls")
+    t0 = time.monotonic()
+    try:
+        client = get_anthropic_client()
+        response = client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "url",
+                                "url": image_url,
+                            },
                         },
-                    },
-                    {
-                        "type": "text",
-                        "text": prompt,
-                    },
-                ],
-            },
-        ],
-    )
-    return _extract_anthropic_text(response.content)
+                        {
+                            "type": "text",
+                            "text": prompt,
+                        },
+                    ],
+                },
+            ],
+        )
+        m.observe("scorer.anthropic.vision_latency_seconds", time.monotonic() - t0)
+        if hasattr(response, "usage") and response.usage:
+            input_tokens = getattr(response.usage, "input_tokens", 0) or 0
+            output_tokens = getattr(response.usage, "output_tokens", 0) or 0
+            if input_tokens:
+                m.inc("scorer.anthropic.vision_input_tokens", input_tokens)
+            if output_tokens:
+                m.inc("scorer.anthropic.vision_output_tokens", output_tokens)
+        return _extract_anthropic_text(response.content)
+    except Exception:
+        m.inc("scorer.anthropic.vision_errors")
+        raise
 
 
 def _call_gemini_vision(model: str, image_url: str, prompt: str, max_tokens: int = 1024) -> str:
@@ -126,25 +157,36 @@ def _call_gemini_vision(model: str, image_url: str, prompt: str, max_tokens: int
     import httpx
     from google.genai import types
 
-    client = get_gemini_client()
+    from twag.metrics import get_collector
 
-    # Fetch image
-    resp = httpx.get(image_url, timeout=30)
-    resp.raise_for_status()
-    image_data = resp.content
-    mime_type = resp.headers.get("content-type", "image/jpeg")
+    m = get_collector()
+    m.inc("scorer.gemini.vision_calls")
+    t0 = time.monotonic()
+    try:
+        client = get_gemini_client()
 
-    # Create image part using new SDK
-    image_part = types.Part.from_bytes(data=image_data, mime_type=mime_type)
+        # Fetch image
+        resp = httpx.get(image_url, timeout=30)
+        resp.raise_for_status()
+        image_data = resp.content
+        mime_type = resp.headers.get("content-type", "image/jpeg")
 
-    response = client.models.generate_content(
-        model=model,
-        contents=[prompt, image_part],
-        config=types.GenerateContentConfig(
-            max_output_tokens=max_tokens,
-        ),
-    )
-    return response.text
+        # Create image part using new SDK
+        image_part = types.Part.from_bytes(data=image_data, mime_type=mime_type)
+
+        response = client.models.generate_content(
+            model=model,
+            contents=[prompt, image_part],
+            config=types.GenerateContentConfig(
+                max_output_tokens=max_tokens,
+            ),
+        )
+        m.observe("scorer.gemini.vision_latency_seconds", time.monotonic() - t0)
+        _record_gemini_usage(m, response, kind="vision_")
+        return response.text
+    except Exception:
+        m.inc("scorer.gemini.vision_errors")
+        raise
 
 
 def _call_llm(provider: str, model: str, prompt: str, max_tokens: int = 2048, reasoning: str | None = None) -> str:
