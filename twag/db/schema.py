@@ -156,7 +156,8 @@ CREATE TABLE IF NOT EXISTS prompt_history (
     prompt_name TEXT NOT NULL,
     template TEXT NOT NULL,
     version INTEGER NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_by TEXT
 );
 
 -- CLI commands for context enrichment

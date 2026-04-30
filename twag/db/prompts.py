@@ -171,13 +171,21 @@ def upsert_prompt(
         old_version = row["version"]
         old_template = row["template"]
 
+        # Capture who last updated the row we're about to archive so the
+        # /prompts/{name}/history endpoint can attribute each historic version.
+        old_updated_by_row = conn.execute(
+            "SELECT updated_by FROM prompts WHERE name = ?",
+            (name,),
+        ).fetchone()
+        old_updated_by = old_updated_by_row["updated_by"] if old_updated_by_row else None
+
         # Save to history before updating
         conn.execute(
             """
-            INSERT INTO prompt_history (prompt_name, template, version)
-            VALUES (?, ?, ?)
+            INSERT INTO prompt_history (prompt_name, template, version, updated_by)
+            VALUES (?, ?, ?, ?)
             """,
-            (name, old_template, old_version),
+            (name, old_template, old_version, old_updated_by),
         )
 
         new_version = old_version + 1
@@ -204,17 +212,44 @@ def upsert_prompt(
 
 
 def get_prompt_history(conn: sqlite3.Connection, name: str, limit: int = 10) -> list[dict[str, Any]]:
-    """Get version history for a prompt."""
+    """Get version history for a prompt.
+
+    The shape returned matches the frontend ``PromptHistoryEntry`` interface:
+    ``version``, ``template``, ``updated_at`` (the time this archived version
+    was created), and ``updated_by`` (who authored that version).
+    """
     cursor = conn.execute(
         """
-        SELECT * FROM prompt_history
+        SELECT version, template, created_at, updated_by
+        FROM prompt_history
         WHERE prompt_name = ?
         ORDER BY version DESC
         LIMIT ?
         """,
         (name, limit),
     )
-    return [dict(row) for row in cursor.fetchall()]
+    rows = cursor.fetchall()
+    return [
+        {
+            "version": row["version"],
+            "template": row["template"],
+            "updated_at": _normalize_timestamp(row["created_at"]),
+            "updated_by": row["updated_by"] or "",
+        }
+        for row in rows
+    ]
+
+
+def _normalize_timestamp(value: str | None) -> str | None:
+    """Coerce SQLite ``YYYY-MM-DD HH:MM:SS`` to ISO 8601 so JS ``new Date()`` parses reliably."""
+    if not value:
+        return value
+    if "T" in value:
+        return value
+    try:
+        return datetime.fromisoformat(value).isoformat()
+    except ValueError:
+        return value
 
 
 def rollback_prompt(conn: sqlite3.Connection, name: str, to_version: int) -> bool:

@@ -1,4 +1,12 @@
-"""Contract tests: single-tweet and list-tweet endpoints return the same field set."""
+"""Contract tests: API responses match the frontend TypeScript types in
+``twag/web/frontend/src/api/types.ts``.
+
+These tests assert the *shape* of responses (which keys are present, which
+types they hold) for the endpoints the frontend depends on. They are not full
+behavioural tests — they exist to catch silent contract drift between the
+FastAPI backend and the React client (e.g. a renamed field or a route that
+gets shadowed by a parameterized one).
+"""
 
 from datetime import datetime, timezone
 
@@ -272,3 +280,166 @@ def test_single_tweet_no_links_json(monkeypatch, tmp_path):
     client = TestClient(app)
     body = client.get("/api/tweets/t1").json()
     assert "links_json" not in body
+
+
+# ── Reactions endpoints ──────────────────────────────────────
+# Static-suffix routes (/reactions/summary, /reactions/export) must be
+# declared before /reactions/{tweet_id} or they get shadowed.
+
+
+def test_reactions_summary_not_shadowed(monkeypatch, tmp_path):
+    """GET /api/reactions/summary returns {summary: {...}}, not the {tweet_id, reactions} shape."""
+    _, app = _setup(monkeypatch, tmp_path)
+    body = TestClient(app).get("/api/reactions/summary").json()
+    assert "summary" in body, f"Expected summary key; got {sorted(body)}"
+    assert isinstance(body["summary"], dict)
+    # If shadowed by /{tweet_id}, body would have tweet_id="summary" — guard against regression.
+    assert "tweet_id" not in body
+
+
+def test_reactions_export_not_shadowed(monkeypatch, tmp_path):
+    """GET /api/reactions/export returns {count, reactions: [...]}, not the per-tweet shape."""
+    _, app = _setup(monkeypatch, tmp_path)
+    body = TestClient(app).get("/api/reactions/export").json()
+    assert set(body) >= {"count", "reactions"}, f"Got {sorted(body)}"
+    assert isinstance(body["reactions"], list)
+    assert isinstance(body["count"], int)
+
+
+def test_reactions_for_tweet_shape(monkeypatch, tmp_path):
+    """GET /api/reactions/{tweet_id} returns Reaction[] matching the TS interface."""
+    db_path, app = _setup(monkeypatch, tmp_path)
+    with get_connection(db_path) as conn:
+        _insert(conn)
+        insert_reaction(conn, tweet_id="t1", reaction_type=">>", reason="great point")
+        conn.commit()
+
+    body = TestClient(app).get("/api/reactions/t1").json()
+    assert body["tweet_id"] == "t1"
+    assert isinstance(body["reactions"], list) and body["reactions"]
+    expected = {"id", "reaction_type", "reason", "target", "created_at"}
+    missing = expected - set(body["reactions"][0])
+    assert not missing, f"Reaction missing keys: {missing}"
+
+
+def test_create_reaction_returns_id(monkeypatch, tmp_path):
+    """POST /api/react returns either {id, tweet_id, reaction_type} or {id, message}."""
+    db_path, app = _setup(monkeypatch, tmp_path)
+    with get_connection(db_path) as conn:
+        _insert(conn)
+        conn.commit()
+
+    body = (
+        TestClient(app)
+        .post(
+            "/api/react",
+            json={"tweet_id": "t1", "reaction_type": ">"},
+        )
+        .json()
+    )
+    assert "id" in body
+    # Non-mute path includes tweet_id and reaction_type
+    assert body["tweet_id"] == "t1"
+    assert body["reaction_type"] == ">"
+
+
+# ── Prompt endpoints ─────────────────────────────────────────
+
+
+def test_prompts_list_shape(monkeypatch, tmp_path):
+    """GET /api/prompts returns {prompts: Prompt[]} matching the TS interface."""
+    _, app = _setup(monkeypatch, tmp_path)
+    body = TestClient(app).get("/api/prompts").json()
+    assert "prompts" in body and isinstance(body["prompts"], list)
+    assert body["prompts"], "Default prompts should be seeded"
+    expected = {"id", "name", "template", "version", "updated_at", "updated_by"}
+    missing = expected - set(body["prompts"][0])
+    assert not missing, f"Prompt missing keys: {missing}"
+
+
+def test_prompt_history_shape(monkeypatch, tmp_path):
+    """GET /api/prompts/{name}/history returns entries with updated_at + updated_by.
+
+    Frontend ``PromptHistoryEntry`` requires both fields; the history table
+    only persists ``created_at`` so the route must alias it to ``updated_at``
+    and surface the prompts row's ``updated_by`` at the time of archival.
+    """
+    _, app = _setup(monkeypatch, tmp_path)
+    client = TestClient(app)
+
+    # Seed history by updating an existing prompt twice.
+    client.put("/api/prompts/triage", json={"template": "v2", "updated_by": "alice"})
+    client.put("/api/prompts/triage", json={"template": "v3", "updated_by": "bob"})
+
+    body = client.get("/api/prompts/triage/history").json()
+    assert body["name"] == "triage"
+    assert isinstance(body["history"], list) and len(body["history"]) >= 2
+    expected = {"version", "template", "updated_at", "updated_by"}
+    for entry in body["history"]:
+        missing = expected - set(entry)
+        assert not missing, f"PromptHistoryEntry missing keys: {missing} got={sorted(entry)}"
+        # updated_at must be ISO 8601 ("T" separator) so JS new Date() parses reliably.
+        assert "T" in entry["updated_at"], f"Non-ISO timestamp: {entry['updated_at']!r}"
+
+
+def test_get_prompt_shape(monkeypatch, tmp_path):
+    """GET /api/prompts/{name} returns the Prompt shape."""
+    _, app = _setup(monkeypatch, tmp_path)
+    body = TestClient(app).get("/api/prompts/triage").json()
+    expected = {"id", "name", "template", "version", "updated_at", "updated_by"}
+    missing = expected - set(body)
+    assert not missing, f"Prompt response missing keys: {missing}"
+
+
+# ── Context-command endpoints ────────────────────────────────
+
+
+def test_context_commands_list_shape(monkeypatch, tmp_path):
+    """GET /api/context-commands returns {commands: ContextCommand[]}."""
+    _, app = _setup(monkeypatch, tmp_path)
+    body = TestClient(app).get("/api/context-commands").json()
+    assert "commands" in body and isinstance(body["commands"], list)
+
+
+def test_context_command_create_and_fetch(monkeypatch, tmp_path):
+    """POST + GET /api/context-commands/{name} return the ContextCommand shape."""
+    _, app = _setup(monkeypatch, tmp_path)
+    client = TestClient(app)
+    client.post(
+        "/api/context-commands",
+        json={
+            "name": "ticker_grep",
+            "command_template": "grep {ticker} /tmp/foo",
+            "description": "demo",
+            "enabled": True,
+        },
+    )
+    body = client.get("/api/context-commands/ticker_grep").json()
+    expected = {"id", "name", "command_template", "description", "enabled", "created_at"}
+    missing = expected - set(body)
+    assert not missing, f"ContextCommand missing keys: {missing}"
+
+
+# ── Feed filters ─────────────────────────────────────────────
+
+
+def test_feed_accepts_all_filter_query_params(monkeypatch, tmp_path):
+    """The TS FeedFilters keys (since/min_score/signal_tier/category/ticker/author/bookmarked/sort)
+    are all accepted by GET /api/tweets without raising 422."""
+    _, app = _setup(monkeypatch, tmp_path)
+    r = TestClient(app).get(
+        "/api/tweets",
+        params={
+            "since": "today",
+            "min_score": 5,
+            "signal_tier": "high_signal",
+            "category": "fed_policy",
+            "ticker": "SPX",
+            "author": "alice",
+            "bookmarked": "true",
+            "sort": "latest",
+        },
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert {"tweets", "offset", "limit", "count", "has_more"} <= set(body)

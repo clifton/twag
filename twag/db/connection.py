@@ -161,6 +161,13 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
     if "quote_reprocessed_at" not in tweet_columns:
         conn.execute("ALTER TABLE tweets ADD COLUMN quote_reprocessed_at TIMESTAMP")
 
+    # Check prompt_history table columns
+    cursor = conn.execute("PRAGMA table_info(prompt_history)")
+    prompt_history_columns = {row[1] for row in cursor.fetchall()}
+
+    if prompt_history_columns and "updated_by" not in prompt_history_columns:
+        conn.execute("ALTER TABLE prompt_history ADD COLUMN updated_by TEXT")
+
     # Check accounts table columns
     cursor = conn.execute("PRAGMA table_info(accounts)")
     account_columns = {row[1] for row in cursor.fetchall()}
