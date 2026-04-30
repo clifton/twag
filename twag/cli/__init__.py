@@ -12,6 +12,7 @@ from ..db import get_connection, get_tweet_by_id, get_unprocessed_tweets, init_d
 from . import accounts as _accounts_mod
 from . import analyze as _analyze_mod
 from . import config_cmd as _config_mod
+from . import costs_cmd as _costs_mod
 from . import db_cmd as _db_mod
 from . import digest as _digest_mod
 from . import fetch as _fetch_mod
@@ -34,6 +35,17 @@ def cli():
     """Twitter aggregator for market-relevant signals."""
 
 
+@cli.result_callback()
+def _flush_metrics_after_command(_result, **_kwargs):
+    """Persist any in-memory metrics so ``twag costs --since`` can see them.
+
+    Runs after every subcommand. Failures are silent — see ``flush_metrics``.
+    """
+    from ..metrics import flush_metrics
+
+    flush_metrics()
+
+
 # Register commands
 cli.add_command(_init_mod.init)
 cli.add_command(_init_mod.doctor)
@@ -51,6 +63,7 @@ cli.add_command(_db_mod.db)
 cli.add_command(_search_mod.search)
 cli.add_command(_web_mod.web)
 cli.add_command(_metrics_mod.metrics)
+cli.add_command(_costs_mod.costs)
 
 
 if __name__ == "__main__":

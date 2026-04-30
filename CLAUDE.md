@@ -155,7 +155,7 @@ Defined in `twag/cli/`:
 - **Pipeline:** `fetch`, `process`, `analyze`, `digest`
 - **Accounts:** `list`, `add`, `promote`, `demote`, `mute`, `boost`, `decay`, `import`
 - **Query:** `search`, `narratives list`
-- **Maintenance:** `stats`, `prune`, `export`
+- **Maintenance:** `stats`, `prune`, `export`, `metrics`, `costs` (advisory USD estimate from token counters; supports `--since`, `--json`, `--pricing-file`)
 - **Config:** `show`, `path`, `set`
 - **Database:** `path`, `shell`, `init`, `rebuild-fts`, `dump`, `restore`
 - **Web:** `web`
