@@ -18,7 +18,6 @@ FETCH → PROCESS → DIGEST
 ```
 
 **Core packages:**
-- `twag/models/` — Pydantic data models (tweet, scoring, media, links, config, API, db_models)
 - `twag/auth.py` — Shared credential and env-file parsing
 - `twag/config.py` — Runtime config (paths, defaults, following file)
 - `twag/db/` — SQLite database layer (schema, connection, tweets, search, maintenance, accounts, narratives, reactions, prompts, context_commands, time_utils)
