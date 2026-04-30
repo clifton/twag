@@ -521,6 +521,14 @@ npm install
 npm run dev
 ```
 
+## Privacy
+
+twag is self-hosted: no analytics, no twag-operated server, all data on your
+machine. See [docs/PRIVACY.md](./docs/PRIVACY.md) for what data twag handles,
+which third parties (Gemini, optional Anthropic, optional Telegram, x.com via
+`bird`, link unfurling targets) receive what, and how to control it. The
+document cites the exact module that enforces each claim.
+
 ## License
 
 MIT. See [LICENSE](./LICENSE).
