@@ -1,10 +1,12 @@
 """Init and doctor commands."""
 
+import os
 import sys
 
 import rich_click as click
 from rich.panel import Panel
 
+from ..auth import get_api_key
 from ..config import (
     get_config_path,
     get_data_dir,
@@ -68,7 +70,7 @@ def init(force: bool):
 
     console.print("")
     console.print("Initialization complete! Next steps:")
-    console.print("  1. Set API keys: export GEMINI_API_KEY=... ANTHROPIC_API_KEY=...")
+    console.print("  1. Set API keys for configured models, e.g. GEMINI_API_KEY or DEEPSEEK_API_KEY")
     console.print("  2. Set Twitter auth: export AUTH_TOKEN=... CT0=...")
     console.print("  3. Run: twag doctor")
     console.print("  4. Add accounts: twag accounts add @handle")
@@ -86,7 +88,6 @@ def doctor():
     - bird CLI is available
     - Database is accessible
     """
-    import os
     import shutil
 
     issues = []
@@ -106,14 +107,16 @@ def doctor():
     # 2. Check config file
     config_path = get_config_path()
     console.print(f"\nConfig file: {config_path}")
+    cfg = {}
     if config_path.exists():
         try:
-            load_config()
+            cfg = load_config()
             console.print(f"  {status_icon(True)} Config file valid")
         except Exception as e:
             console.print(f"  {status_icon(False)} Config file invalid: {e}")
             issues.append("Fix or delete config file")
     else:
+        cfg = load_config()
         console.print("  [yellow]WARN[/yellow] Config file not found (using defaults)")
         warnings.append("Run 'twag init' to create config file")
 
@@ -145,19 +148,29 @@ def doctor():
     # 5. Check API keys
     console.print("\nAPI keys:")
 
-    gemini_key = os.environ.get("GEMINI_API_KEY")
-    if gemini_key:
-        console.print(f"  {status_icon(True)} GEMINI_API_KEY set ({len(gemini_key)} chars)")
-    else:
-        console.print(f"  {status_icon(False)} GEMINI_API_KEY not set")
-        issues.append("Set GEMINI_API_KEY environment variable")
+    provider_keys = {
+        "anthropic": "ANTHROPIC_API_KEY",
+        "deepseek": "DEEPSEEK_API_KEY",
+        "gemini": "GEMINI_API_KEY",
+    }
+    llm_config = cfg.get("llm", {})
+    required_keys = {
+        provider_keys[provider]
+        for provider in (
+            llm_config.get("triage_provider", "gemini"),
+            llm_config.get("enrichment_provider", "anthropic"),
+            llm_config.get("vision_provider", "gemini"),
+        )
+        if provider in provider_keys
+    }
 
-    anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
-    if anthropic_key:
-        console.print(f"  {status_icon(True)} ANTHROPIC_API_KEY set ({len(anthropic_key)} chars)")
-    else:
-        console.print("  [yellow]WARN[/yellow] ANTHROPIC_API_KEY not set (enrichment disabled)")
-        warnings.append("Set ANTHROPIC_API_KEY for enrichment features")
+    for key_name in sorted(required_keys):
+        try:
+            key_value = get_api_key(key_name)
+            console.print(f"  {status_icon(True)} {key_name} set ({len(key_value)} chars)")
+        except ValueError:
+            console.print(f"  {status_icon(False)} {key_name} not set")
+            issues.append(f"Set {key_name} environment variable or add it to ~/.env")
 
     # 6. Check Twitter auth
     console.print("\nTwitter auth:")

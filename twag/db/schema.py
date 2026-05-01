@@ -193,6 +193,37 @@ CREATE TABLE IF NOT EXISTS metrics (
     recorded_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 CREATE INDEX IF NOT EXISTS idx_metrics_name ON metrics(name, recorded_at DESC);
+
+-- LLM usage: persistent per-call inference usage and cost estimates
+CREATE TABLE IF NOT EXISTS llm_usage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    called_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    component TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    model TEXT NOT NULL,
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+    cached_input_tokens INTEGER NOT NULL DEFAULT 0,
+    total_tokens INTEGER NOT NULL DEFAULT 0,
+    max_tokens INTEGER,
+    latency_seconds REAL,
+    success INTEGER NOT NULL DEFAULT 1,
+    error_type TEXT,
+    error_message TEXT,
+    estimated_cost_usd REAL NOT NULL DEFAULT 0.0,
+    input_cost_per_million REAL,
+    output_cost_per_million REAL,
+    cached_input_cost_per_million REAL,
+    prompt_chars INTEGER,
+    response_chars INTEGER,
+    is_vision INTEGER NOT NULL DEFAULT 0,
+    status_id TEXT,
+    metadata_json TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_llm_usage_called_at ON llm_usage(called_at);
+CREATE INDEX IF NOT EXISTS idx_llm_usage_component ON llm_usage(component, called_at);
+CREATE INDEX IF NOT EXISTS idx_llm_usage_provider_model ON llm_usage(provider, model, called_at);
 """
 
 # FTS5 schema for full-text search

@@ -12,7 +12,7 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
-from ..auth import get_auth_env
+from ..auth import get_auth_env, load_env_file
 from ..config import load_config
 from .extractors import Tweet, _looks_truncated_text, _needs_retweet_hydration
 
@@ -22,15 +22,23 @@ _BIRD_RATE_LOCK = threading.Lock()
 _BIRD_LAST_CALL = 0.0
 _MAX_RETWEET_HYDRATIONS = 12
 
-_SENSITIVE_ENV_VARS = ("AUTH_TOKEN", "CT0", "GEMINI_API_KEY", "ANTHROPIC_API_KEY", "TELEGRAM_BOT_TOKEN")
+_SENSITIVE_ENV_VARS = (
+    "AUTH_TOKEN",
+    "CT0",
+    "GEMINI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "DEEPSEEK_API_KEY",
+    "TELEGRAM_BOT_TOKEN",
+)
 _HEX_PATTERN = re.compile(r"[0-9a-fA-F]{32,}")
 
 
 def _redact_stderr(stderr: str) -> str:
     """Strip credential values and long hex strings from bird stderr before logging."""
     redacted = stderr
+    env_file = load_env_file()
     for var in _SENSITIVE_ENV_VARS:
-        value = os.environ.get(var)
+        value = os.environ.get(var) or env_file.get(var)
         if value and value in redacted:
             redacted = redacted.replace(value, f"<{var}>")
     redacted = _HEX_PATTERN.sub("<redacted-hex>", redacted)

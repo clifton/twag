@@ -62,6 +62,7 @@ Thumbs.db
 # Local scratch artifacts (screenshots, exports, debug dumps)
 tmp/*
 !tmp/.gitkeep
+*.tmp
 .clawdhub/
 
 # Nightshift plan artifacts (keep out of version control)

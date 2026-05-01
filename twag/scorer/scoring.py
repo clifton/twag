@@ -82,7 +82,7 @@ def triage_tweets_batch(
     tweets_text = "\n\n".join(f"[{t['id']}] @{t['handle']}: {t['text']}" for t in tweets)
 
     prompt = BATCH_TRIAGE_PROMPT.format(tweets=tweets_text)
-    text = _call_llm(provider, model, prompt, max_tokens=16384)
+    text = _call_llm(provider, model, prompt, max_tokens=16384, component="triage")
     data = _parse_json_response(text)
 
     if not isinstance(data, list):
@@ -133,7 +133,7 @@ def enrich_tweet(
         image_description=image_description or "[none]",
     )
 
-    text = _call_llm(provider, model, prompt, max_tokens=2048, reasoning=reasoning)
+    text = _call_llm(provider, model, prompt, max_tokens=2048, reasoning=reasoning, component="enrichment")
     data = _parse_json_response(text)
 
     if isinstance(data, list):
@@ -161,7 +161,7 @@ def summarize_tweet(
     reasoning = config["llm"].get("enrichment_reasoning")
 
     prompt = SUMMARIZE_PROMPT.format(tweet_text=tweet_text, handle=handle)
-    text = _call_llm(provider, model, prompt, max_tokens=1024, reasoning=reasoning)
+    text = _call_llm(provider, model, prompt, max_tokens=1024, reasoning=reasoning, component="summarization")
 
     # Return raw text (not JSON)
     return text.strip()
@@ -179,7 +179,7 @@ def summarize_document_text(
     reasoning = config["llm"].get("enrichment_reasoning")
 
     prompt = DOCUMENT_SUMMARY_PROMPT.format(document_text=document_text)
-    text = _call_llm(provider, model, prompt, max_tokens=256, reasoning=reasoning)
+    text = _call_llm(provider, model, prompt, max_tokens=256, reasoning=reasoning, component="document_summary")
     return text.strip()
 
 
@@ -223,7 +223,14 @@ def summarize_x_article(
     data: dict[str, Any] | list[dict[str, Any]] | None = None
     for cand_provider, cand_model in candidates:
         try:
-            text = _call_llm(cand_provider, cand_model, prompt, max_tokens=4096, reasoning=reasoning)
+            text = _call_llm(
+                cand_provider,
+                cand_model,
+                prompt,
+                max_tokens=4096,
+                reasoning=reasoning,
+                component="article",
+            )
             data = _parse_json_response(text)
             break
         except Exception:
@@ -302,7 +309,7 @@ def analyze_image(
     model = model or config["llm"]["vision_model"]
     provider = provider or config["llm"].get("vision_provider", "anthropic")
 
-    text = _call_llm_vision(provider, model, image_url, MEDIA_PROMPT, max_tokens=4096)
+    text = _call_llm_vision(provider, model, image_url, MEDIA_PROMPT, max_tokens=4096, component="vision")
     data = _parse_json_response(text)
 
     if isinstance(data, list):

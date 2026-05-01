@@ -5,6 +5,7 @@ from .llm_client import (
     _call_llm_vision,
     _parse_json_response,
     get_anthropic_client,
+    get_deepseek_api_key,
     get_gemini_client,
 )
 from .scoring import (
@@ -33,6 +34,7 @@ __all__ = [
     "analyze_media",
     "enrich_tweet",
     "get_anthropic_client",
+    "get_deepseek_api_key",
     "get_gemini_client",
     "summarize_document_text",
     "summarize_tweet",

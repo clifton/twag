@@ -17,7 +17,7 @@ from twag.fetcher import (
     read_tweet,
     run_bird,
 )
-from twag.fetcher.bird_cli import read_tweet_with_diagnostics
+from twag.fetcher.bird_cli import _redact_stderr, read_tweet_with_diagnostics
 
 # ============================================================================
 # Fixtures
@@ -614,6 +614,16 @@ class TestGetAuthEnv:
             assert env.get("AUTH_TOKEN") == "secret123"
             assert env.get("CT0") == "csrf_token"
             assert env.get("QUOTED_VAR") == "quoted value"
+
+    def test_redact_stderr_uses_env_file(self, monkeypatch):
+        """Secrets loaded from ~/.env should be redacted from subprocess stderr."""
+        monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+        monkeypatch.setattr("twag.fetcher.bird_cli.load_env_file", lambda: {"DEEPSEEK_API_KEY": "sk-test-secret"})
+
+        redacted = _redact_stderr("provider rejected sk-test-secret")
+
+        assert "sk-test-secret" not in redacted
+        assert "<DEEPSEEK_API_KEY>" in redacted
 
 
 # ============================================================================
