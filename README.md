@@ -81,10 +81,12 @@ bird whoami
 
 **Optional:**
 - `ANTHROPIC_API_KEY` — For higher-quality enrichment on high-signal tweets
+- `DEEPSEEK_API_KEY` — For DeepSeek text triage/enrichment models
 
 ```bash
 export GEMINI_API_KEY="your_gemini_key"
 export ANTHROPIC_API_KEY="your_anthropic_key"  # optional
+export DEEPSEEK_API_KEY="your_deepseek_key"    # optional
 ```
 
 ## Installation
@@ -274,6 +276,9 @@ twag accounts import            # Import from following.txt
 twag stats                      # All-time stats
 twag stats --today              # Today's stats
 
+twag inference usage            # LLM token/cost report for last 30 days
+twag inference usage --all-time # Include all logged inference usage
+
 twag prune --days 14            # Delete old tweets
 twag prune --dry-run            # Preview prune
 
@@ -442,6 +447,7 @@ See [SUGGESTED_CRON_SCHEDULE.md](./SUGGESTED_CRON_SCHEDULE.md) for OpenClaw cron
 | `CT0` | Yes | Twitter ct0 cookie |
 | `GEMINI_API_KEY` | Yes | LLM triage/vision |
 | `ANTHROPIC_API_KEY` | No | Enhanced enrichment |
+| `DEEPSEEK_API_KEY` | No | DeepSeek text triage/enrichment |
 | `TELEGRAM_BOT_TOKEN` | No | Alert delivery |
 | `TELEGRAM_CHAT_ID` | No | Alert destination |
 | `TWAG_DATA_DIR` | No | Override data directory |

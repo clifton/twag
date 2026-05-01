@@ -97,6 +97,7 @@ twag doctor
 ```bash
 export GEMINI_API_KEY="..."  # Required
 export ANTHROPIC_API_KEY="..."  # Optional, for enrichment
+export DEEPSEEK_API_KEY="..."  # Optional, for DeepSeek text models
 ```
 
 ## Quick Reference
@@ -224,6 +225,8 @@ twag accounts import          # Import from following.txt
 ```bash
 twag stats                    # All-time
 twag stats --today            # Today
+twag inference usage          # LLM token/cost report for last 30 days
+twag inference usage --all-time  # Include all logged inference usage
 twag prune --days 14          # Delete old tweets
 twag export --days 7          # Export recent
 ```
@@ -285,8 +288,9 @@ twag config set key value     # Update setting
 |----------|----------|---------|
 | `AUTH_TOKEN` | Yes | Twitter auth cookie |
 | `CT0` | Yes | Twitter ct0 cookie |
-| `GEMINI_API_KEY` | Yes | LLM triage |
-| `ANTHROPIC_API_KEY` | No | Enrichment |
+| `GEMINI_API_KEY` | Yes | Gemini triage/vision |
+| `DEEPSEEK_API_KEY` | No | DeepSeek text triage/enrichment |
+| `ANTHROPIC_API_KEY` | No | Anthropic enrichment |
 | `TELEGRAM_BOT_TOKEN` | No | Alerts |
 | `TELEGRAM_CHAT_ID` | No | Alert destination |
 
