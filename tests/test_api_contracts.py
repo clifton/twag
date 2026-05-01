@@ -176,6 +176,35 @@ def test_list_tweet_reactions_is_list(monkeypatch, tmp_path):
     assert ">>" in t["reactions"]
 
 
+def test_reactions_summary_not_shadowed_by_tweet_id_route(monkeypatch, tmp_path):
+    """`/reactions/summary` must hit the summary route, not be matched as `tweet_id=summary`."""
+    db_path, app = _setup(monkeypatch, tmp_path)
+    with get_connection(db_path) as conn:
+        _insert(conn)
+        insert_reaction(conn, tweet_id="t1", reaction_type=">>")
+        conn.commit()
+
+    client = TestClient(app)
+    body = client.get("/api/reactions/summary").json()
+    assert "summary" in body, f"summary route shadowed by /reactions/{{tweet_id}}: {body}"
+    assert "tweet_id" not in body
+
+
+def test_reactions_export_not_shadowed_by_tweet_id_route(monkeypatch, tmp_path):
+    """`/reactions/export` must hit the export route, not be matched as `tweet_id=export`."""
+    db_path, app = _setup(monkeypatch, tmp_path)
+    with get_connection(db_path) as conn:
+        _insert(conn)
+        insert_reaction(conn, tweet_id="t1", reaction_type=">>")
+        conn.commit()
+
+    client = TestClient(app)
+    body = client.get("/api/reactions/export").json()
+    assert "count" in body, f"export route shadowed by /reactions/{{tweet_id}}: {body}"
+    assert "reactions" in body
+    assert isinstance(body["reactions"], list)
+
+
 # ── Enriched display fields ───────────────────────────────────
 
 
