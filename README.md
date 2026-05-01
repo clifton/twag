@@ -278,6 +278,9 @@ twag prune --days 14            # Delete old tweets
 twag prune --dry-run            # Preview prune
 
 twag export --days 7            # Export recent data
+
+twag metrics                    # Runtime metrics snapshot (counters, histograms)
+twag metrics --analyze          # Static AST coverage scan of metrics instrumentation
 ```
 
 ### Narratives

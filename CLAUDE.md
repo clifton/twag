@@ -159,6 +159,7 @@ Defined in `twag/cli/`:
 - **Config:** `show`, `path`, `set`
 - **Database:** `path`, `shell`, `init`, `rebuild-fts`, `dump`, `restore`
 - **Web:** `web`
+- **Metrics:** `metrics` (runtime snapshot; `--analyze` for static AST coverage scan)
 
 If command behavior changes, update `README.md` and `SKILL.md` in the same PR.
 
