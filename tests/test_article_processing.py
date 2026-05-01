@@ -304,3 +304,33 @@ def test_summarize_x_article_falls_back_to_triage_provider(monkeypatch) -> None:
     assert ("gemini", "gemini-3-flash-preview") in calls
     assert result.short_summary == "Structured summary"
     assert len(result.primary_points) == 1
+
+
+def test_summarize_x_article_bounds_long_prompt(monkeypatch) -> None:
+    import twag.scorer.scoring as scorer_mod
+
+    seen_prompt = ""
+
+    def _fake_call_llm(provider, model, prompt, max_tokens=2048, reasoning=None, component="unknown"):
+        nonlocal seen_prompt
+        seen_prompt = prompt
+        return '{"short_summary":"Bounded summary","primary_points":[],"actionable_items":[]}'
+
+    monkeypatch.setattr(scorer_mod, "_call_llm", _fake_call_llm)
+    monkeypatch.setattr(
+        scorer_mod,
+        "load_config",
+        lambda: {
+            "llm": {
+                "enrichment_model": "deepseek-v4-pro",
+                "enrichment_provider": "deepseek",
+            },
+            "scoring": {"max_article_summary_chars": 1200},
+        },
+    )
+
+    result = summarize_x_article("A" * 5000, article_title="Title")
+
+    assert result.short_summary == "Bounded summary"
+    assert "[...middle truncated to reduce analysis cost...]" in seen_prompt
+    assert seen_prompt.count("A") <= 1210

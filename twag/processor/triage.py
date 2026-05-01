@@ -15,7 +15,9 @@ if TYPE_CHECKING:
 
 from ..config import load_config
 from ..db import (
+    get_cached_media_analysis,
     get_tweet_by_id,
+    record_media_analysis,
     update_account_stats,
     update_tweet_analysis,
     update_tweet_article,
@@ -149,28 +151,51 @@ def _analyze_media_items(
     vision_provider: str | None = None,
 ) -> tuple[list[dict[str, Any]], bool]:
     updated = False
+    config = load_config()
+    effective_model = vision_model or config["llm"].get("vision_model")
+    effective_provider = vision_provider or config["llm"].get("vision_provider")
     for item in media_items:
         if item.get("kind") or item.get("prose_text") or item.get("short_description"):
             continue
         url = item.get("url")
         if not url:
             continue
+        cached = get_cached_media_analysis(url, provider=effective_provider, model=effective_model)
+        if cached:
+            _apply_media_analysis_to_item(item, cached)
+            updated = True
+            continue
         try:
             result = analyze_media(url, model=vision_model, provider=vision_provider)
         except Exception:
             continue
 
-        item["kind"] = result.kind
-        item["short_description"] = result.short_description
-        item["prose_text"] = result.prose_text
-        item["prose_summary"] = result.prose_summary
-        item["chart"] = result.chart
+        result_payload = {
+            "kind": result.kind,
+            "short_description": result.short_description,
+            "prose_text": result.prose_text,
+            "prose_summary": result.prose_summary,
+            "chart": result.chart,
+            "table": result.table,
+        }
+        _apply_media_analysis_to_item(item, result_payload)
+        record_media_analysis(url, provider=effective_provider, model=effective_model, result=result_payload)
         updated = True
 
     if _merge_document_media(media_items):
         updated = True
 
     return media_items, updated
+
+
+def _apply_media_analysis_to_item(item: dict[str, Any], result: dict[str, Any]) -> None:
+    """Copy cached or fresh media analysis fields onto a media item."""
+    item["kind"] = (result.get("kind") or "other").lower()
+    item["short_description"] = result.get("short_description", "")
+    item["prose_text"] = result.get("prose_text", "")
+    item["prose_summary"] = result.get("prose_summary", "")
+    item["chart"] = result.get("chart") or {}
+    item["table"] = result.get("table") or {}
 
 
 def _page_number_hint(text: str) -> int | None:
@@ -386,7 +411,7 @@ def _triage_rows(
     max_vision_workers = _normalized_worker_count(config.get("llm", {}).get("max_concurrency_vision", 3), 3)
     vision_model = config["llm"].get("vision_model")
     vision_provider = config["llm"].get("vision_provider")
-    analysis_min_score = config.get("scoring", {}).get("min_score_for_analysis", 3)
+    analysis_min_score = config.get("scoring", {}).get("min_score_for_analysis", 7)
     article_min_score = config.get("scoring", {}).get("min_score_for_article_processing", 5)
     tweets_for_triage = []
     tweet_map: dict[str, sqlite3.Row] = {}
@@ -614,7 +639,13 @@ def _triage_rows(
 
             task_count = 0
 
-            if allow_summarize and len(content) > 500 and not is_tier1 and result.score >= 5:
+            if (
+                allow_summarize
+                and len(content) > 500
+                and not is_tier1
+                and result.score >= 5
+                and (force_refresh or not tweet_row["content_summary"])
+            ):
                 if text_pool:
                     if status_cb:
                         status_cb(f"Queue summary @{handle}")

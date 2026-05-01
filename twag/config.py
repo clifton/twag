@@ -32,9 +32,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "alert_threshold": 8,
         "batch_size": 15,
         "min_score_for_reprocess": 3,
-        "min_score_for_media": 3,
-        "min_score_for_analysis": 3,
+        "min_score_for_media": 5,
+        "min_score_for_analysis": 7,
         "min_score_for_article_processing": 5,
+        "max_article_summary_chars": 20_000,
     },
     "notifications": {
         "telegram_enabled": True,
