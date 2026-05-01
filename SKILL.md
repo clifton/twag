@@ -31,7 +31,7 @@ metadata:
         bins: ["bird"]
         label: "Install bird CLI (brew)"
         os: ["darwin"]
-allowed-tools: Bash(twag:*), Bash(bird:*)
+allowed-tools: Bash(twag:*) Bash(bird:*)
 ---
 
 # twag — Twitter/X Market Signal Aggregator
@@ -181,8 +181,8 @@ twag search "query" --order score    # Sort: rank, score, or time
 
 ```bash
 twag fetch                    # Home + tier-1 + bookmarks
-twag fetch --no-tier1         # Home only
-twag fetch --source user -u @handle  # Specific user
+twag fetch --no-tier1 --no-bookmarks   # Home only
+twag fetch --source user -u @handle    # Specific user
 twag fetch --source search -q "query"  # Search tweets
 twag fetch --stagger 5        # Rotate: fetch 5 least-recent tier-1
 twag fetch --delay 5.0        # Pacing between tier-1 fetches (default: 3s)
@@ -225,7 +225,9 @@ twag accounts import          # Import from following.txt
 twag stats                    # All-time
 twag stats --today            # Today
 twag prune --days 14          # Delete old tweets
+twag prune --dry-run          # Preview prune
 twag export --days 7          # Export recent
+twag metrics                  # Show instrumentation coverage and counters
 ```
 
 ### Narratives
