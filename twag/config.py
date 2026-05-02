@@ -33,7 +33,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "batch_size": 15,
         "min_score_for_reprocess": 3,
         "min_score_for_media": 5,
-        "min_score_for_analysis": 7,
+        "min_score_for_analysis": 6,
         "min_score_for_article_processing": 5,
         "max_article_summary_chars": 20_000,
     },

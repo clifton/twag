@@ -323,7 +323,7 @@ twag config show                # Show current config
 twag config path                # Show config file path
 twag config set llm.triage_model gemini-2.0-flash
 twag config set scoring.alert_threshold 8
-twag config set scoring.min_score_for_analysis 7
+twag config set scoring.min_score_for_analysis 6
 twag config set scoring.max_article_summary_chars 20000
 ```
 

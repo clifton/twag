@@ -411,7 +411,7 @@ def _triage_rows(
     max_vision_workers = _normalized_worker_count(config.get("llm", {}).get("max_concurrency_vision", 3), 3)
     vision_model = config["llm"].get("vision_model")
     vision_provider = config["llm"].get("vision_provider")
-    analysis_min_score = config.get("scoring", {}).get("min_score_for_analysis", 7)
+    analysis_min_score = config.get("scoring", {}).get("min_score_for_analysis", 6)
     article_min_score = config.get("scoring", {}).get("min_score_for_article_processing", 5)
     tweets_for_triage = []
     tweet_map: dict[str, sqlite3.Row] = {}
