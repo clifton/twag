@@ -266,6 +266,7 @@ twag web --no-reload          # Disable auto-reload
 twag config show              # Show config
 twag config path              # Show path
 twag config set key value     # Update setting
+twag config set scoring.min_score_for_analysis 6
 ```
 
 ## Scoring Tiers

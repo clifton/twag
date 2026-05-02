@@ -1,6 +1,7 @@
 """Tests for twag.notifier — alert formatting and send-gating logic."""
 
 import logging
+from contextlib import contextmanager
 from unittest.mock import patch
 
 import httpx
@@ -192,7 +193,17 @@ def test_send_telegram_alert_returns_true_on_success(monkeypatch):
     class FakeResponse:
         status_code = 200
 
+    @contextmanager
+    def _fake_connection():
+        class FakeConnection:
+            def commit(self):
+                return None
+
+        yield FakeConnection()
+
     monkeypatch.setattr("twag.notifier.httpx.post", lambda *a, **kw: FakeResponse())
+    monkeypatch.setattr("twag.notifier.get_connection", _fake_connection)
+    monkeypatch.setattr("twag.notifier.log_alert", lambda *a, **kw: None)
 
     result = send_telegram_alert("test message")
     assert result is True

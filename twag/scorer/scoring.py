@@ -59,6 +59,23 @@ class XArticleSummaryResult:
     actionable_items: list[dict[str, Any]] = field(default_factory=list)
 
 
+def _bounded_article_text(article_text: str, max_chars: int) -> str:
+    """Bound long article bodies while preserving the opening and closing context."""
+    clean_text = (article_text or "").strip()
+    if len(clean_text) <= max_chars:
+        return clean_text
+    if max_chars <= 1000:
+        return clean_text[:max_chars].strip()
+
+    head_chars = int(max_chars * 0.75)
+    tail_chars = max_chars - head_chars
+    return (
+        clean_text[:head_chars].rstrip()
+        + "\n\n[...middle truncated to reduce analysis cost...]\n\n"
+        + clean_text[-tail_chars:].lstrip()
+    )
+
+
 def triage_tweets_batch(
     tweets: list[dict[str, str]],
     model: str | None = None,
@@ -202,11 +219,16 @@ def summarize_x_article(
         return XArticleSummaryResult(short_summary=(article_preview or article_title or "").strip())
 
     fallback_summary = (article_preview or article_title or clean_text[:400]).strip()
+    try:
+        max_article_chars = int(config.get("scoring", {}).get("max_article_summary_chars", 20_000))
+    except (TypeError, ValueError):
+        max_article_chars = 20_000
+    bounded_text = _bounded_article_text(clean_text, max_article_chars)
 
     prompt = ARTICLE_SUMMARY_PROMPT.format(
         article_title=(article_title or "").strip() or "[untitled]",
         article_preview=(article_preview or "").strip() or "[none]",
-        article_text=clean_text,
+        article_text=bounded_text,
     )
 
     fallback_provider = config["llm"].get("triage_provider", "gemini")
