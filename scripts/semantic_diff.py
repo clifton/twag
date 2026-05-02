@@ -134,13 +134,30 @@ def split_diff_per_file(diff_text: str) -> list[FileDiff]:
 
 
 def _parse_path_from_header(header: str) -> str:
-    """Pull a stable file path from a `diff --git a/<path> b/<path>` line."""
-    parts = header.strip().split()
-    for part in parts:
-        if part.startswith("b/"):
-            return part[2:]
-    if len(parts) >= 4:
-        return parts[-1].lstrip("b/")
+    """Pull a stable file path from a `diff --git a/<path> b/<path>` line.
+
+    Handles paths with embedded spaces by searching for a ` b/` split where
+    both halves match (the common case where source and destination paths are
+    equal). Falls back to the first ` b/` split for renames.
+    """
+    stripped = header.strip()
+    prefix = "diff --git a/"
+    if not stripped.startswith(prefix):
+        return "<unknown>"
+    rest = stripped[len(prefix) :]
+    idx = 0
+    while True:
+        pos = rest.find(" b/", idx)
+        if pos == -1:
+            break
+        candidate = rest[:pos]
+        after = rest[pos + 3 :]
+        if candidate == after:
+            return candidate
+        idx = pos + 1
+    pos = rest.find(" b/")
+    if pos != -1:
+        return rest[:pos]
     return "<unknown>"
 
 
@@ -229,6 +246,11 @@ def call_llm(diff_text: str, *, model: str) -> dict[str, Any]:
         max_tokens=2048,
         messages=[{"role": "user", "content": prompt}],
     )
+    if getattr(response, "stop_reason", None) == "max_tokens":
+        raise RuntimeError(
+            "LLM response was truncated at the max_tokens limit; rerun with a "
+            "smaller diff (e.g. --max-bytes 30000) or a narrower --range.",
+        )
     text_blocks = [getattr(b, "text", "") for b in response.content]
     text = next((t for t in text_blocks if isinstance(t, str) and t.strip()), "")
     parsed = _parse_json_response(text)
@@ -310,7 +332,11 @@ def main(argv: list[str] | None = None) -> int:
 
     prompt_diff = assemble_prompt_diff(files)
 
-    raw = call_llm(prompt_diff, model=args.model)
+    try:
+        raw = call_llm(prompt_diff, model=args.model)
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
     result = shape_response(raw)
 
     if args.as_json:

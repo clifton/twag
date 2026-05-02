@@ -84,6 +84,25 @@ def test_split_diff_detects_binary() -> None:
     assert files[0].path == "img.png"
 
 
+def test_parse_path_with_spaces() -> None:
+    header = "diff --git a/foo bar/baz qux.py b/foo bar/baz qux.py\n"
+    assert semantic_diff._parse_path_from_header(header) == "foo bar/baz qux.py"
+
+
+def test_parse_path_simple() -> None:
+    header = "diff --git a/src/lib.py b/src/lib.py\n"
+    assert semantic_diff._parse_path_from_header(header) == "src/lib.py"
+
+
+def test_parse_path_unknown_header() -> None:
+    assert semantic_diff._parse_path_from_header("not a diff header\n") == "<unknown>"
+
+
+def test_parse_path_rename_falls_back_to_first_split() -> None:
+    header = "diff --git a/old.py b/new.py\n"
+    assert semantic_diff._parse_path_from_header(header) == "old.py"
+
+
 def test_truncate_per_file_marks_truncated() -> None:
     big_body = "diff --git a/a b/a\n--- a/a\n+++ b/a\n" + "+x\n" * 5000
     files = semantic_diff.split_diff_per_file(big_body)
@@ -204,6 +223,55 @@ def test_main_truncation_notice(monkeypatch, capsys) -> None:
     assert rc == 0
     captured = capsys.readouterr()
     assert "truncated" in captured.err.lower()
+
+
+def test_main_llm_truncation_returns_two(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(semantic_diff, "run_git_diff", lambda cmd: SAMPLE_DIFF)
+
+    def _raise(diff_text: str, model: str) -> dict[str, Any]:
+        raise RuntimeError(
+            "LLM response was truncated at the max_tokens limit; rerun with a "
+            "smaller diff (e.g. --max-bytes 30000) or a narrower --range.",
+        )
+
+    monkeypatch.setattr(semantic_diff, "call_llm", _raise)
+    rc = semantic_diff.main(["--no-color"])
+    assert rc == 2
+    captured = capsys.readouterr()
+    assert "max_tokens" in captured.err
+
+
+def test_call_llm_raises_on_max_tokens_stop_reason(monkeypatch) -> None:
+    from typing import ClassVar
+
+    import twag.scorer as scorer_module
+
+    class _FakeBlock:
+        def __init__(self, text: str) -> None:
+            self.text = text
+
+    class _FakeResponse:
+        stop_reason: ClassVar[str] = "max_tokens"
+        content: ClassVar[list[_FakeBlock]] = [_FakeBlock('{"intent": "incomplete')]
+
+    class _FakeMessages:
+        def create(self, **kwargs: Any) -> _FakeResponse:
+            return _FakeResponse()
+
+    class _FakeClient:
+        messages: ClassVar[_FakeMessages] = _FakeMessages()
+
+    def _make_client() -> _FakeClient:
+        return _FakeClient()
+
+    def _no_parse(text: str) -> dict[str, Any]:
+        return {}
+
+    monkeypatch.setattr(scorer_module, "get_anthropic_client", _make_client)
+    monkeypatch.setattr(scorer_module, "_parse_json_response", _no_parse)
+
+    with pytest.raises(RuntimeError, match="max_tokens"):
+        semantic_diff.call_llm("some diff", model="test-model")
 
 
 def test_main_git_failure_returns_two(monkeypatch, capsys) -> None:
