@@ -302,6 +302,8 @@ twag db dump                    # Backup database (auto-named file)
 twag db dump --stdout           # Backup to stdout
 twag db restore backup.sql      # Restore from backup
 twag db restore backup.sql --force  # Restore without confirmation
+twag db advise                  # Schema-evolution advisor (read-only drift report)
+twag db advise --skip-db        # Only check migrations vs declarative SCHEMA
 ```
 
 ### Web Interface

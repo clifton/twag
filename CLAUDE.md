@@ -157,7 +157,7 @@ Defined in `twag/cli/`:
 - **Query:** `search`, `narratives list`
 - **Maintenance:** `stats`, `prune`, `export`
 - **Config:** `show`, `path`, `set`
-- **Database:** `path`, `shell`, `init`, `rebuild-fts`, `dump`, `restore`
+- **Database:** `path`, `shell`, `init`, `rebuild-fts`, `dump`, `restore`, `advise`
 - **Web:** `web`
 
 If command behavior changes, update `README.md` and `SKILL.md` in the same PR.
