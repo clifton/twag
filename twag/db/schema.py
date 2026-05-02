@@ -224,6 +224,20 @@ CREATE TABLE IF NOT EXISTS llm_usage (
 CREATE INDEX IF NOT EXISTS idx_llm_usage_called_at ON llm_usage(called_at);
 CREATE INDEX IF NOT EXISTS idx_llm_usage_component ON llm_usage(component, called_at);
 CREATE INDEX IF NOT EXISTS idx_llm_usage_provider_model ON llm_usage(provider, model, called_at);
+
+-- Media analysis cache: reuse OCR/chart extraction across duplicate media URLs
+CREATE TABLE IF NOT EXISTS media_analysis_cache (
+    media_url TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    model TEXT NOT NULL,
+    result_json TEXT NOT NULL,
+    hit_count INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    PRIMARY KEY (media_url, provider, model)
+);
+CREATE INDEX IF NOT EXISTS idx_media_analysis_cache_updated
+ON media_analysis_cache(updated_at DESC);
 """
 
 # FTS5 schema for full-text search

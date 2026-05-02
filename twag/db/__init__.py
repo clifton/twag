@@ -36,6 +36,12 @@ from .maintenance import (
     prune_old_tweets,
     restore_sql,
 )
+from .media_cache import (
+    ensure_media_analysis_cache_table,
+    get_cached_media_analysis,
+    increment_media_analysis_cache_hit,
+    record_media_analysis,
+)
 from .narratives import (
     archive_stale_narratives,
     get_active_narratives,
@@ -120,6 +126,7 @@ __all__ = [
     "demote_account",
     "dump_sql",
     "ensure_llm_usage_table",
+    "ensure_media_analysis_cache_table",
     "estimate_cost_usd",
     "get_accounts",
     "get_active_narratives",
@@ -127,6 +134,7 @@ __all__ = [
     "get_all_prompts",
     "get_authors_to_promote",
     "get_bookmark_counts_by_author",
+    "get_cached_media_analysis",
     "get_connection",
     "get_context_command",
     "get_feed_tweets",
@@ -144,6 +152,7 @@ __all__ = [
     "get_tweets_by_ids",
     "get_tweets_for_digest",
     "get_unprocessed_tweets",
+    "increment_media_analysis_cache_hit",
     "init_db",
     "insert_reaction",
     "insert_tweet",
@@ -161,6 +170,7 @@ __all__ = [
     "query_suggests_equity_context",
     "rebuild_fts",
     "record_llm_usage",
+    "record_media_analysis",
     "restore_sql",
     "rollback_prompt",
     "search_tweets",

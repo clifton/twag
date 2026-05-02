@@ -16,6 +16,7 @@ from ..config import load_config
 from ..db import (
     get_accounts,
     get_connection,
+    get_tweet_by_id,
     get_tweets_by_ids,
     get_unprocessed_tweets,
 )
@@ -25,6 +26,7 @@ from ..scorer import EnrichmentResult, TriageResult, enrich_tweet
 from .dependencies import _expand_links_for_rows, _expand_unprocessed_with_dependencies
 from .triage import (
     _normalized_worker_count,
+    _save_enrichment_result,
     _triage_rows,
     ensure_media_analysis,
 )
@@ -51,7 +53,7 @@ def process_unprocessed(
     config = load_config()
     batch_size = config["scoring"]["batch_size"]
     high_threshold = config["scoring"]["high_signal_threshold"]
-    media_min_score = config["scoring"].get("min_score_for_media", 3)
+    media_min_score = config["scoring"].get("min_score_for_media", 5)
     quote_depth = config.get("fetch", {}).get("quote_depth", 0)
     quote_delay = config.get("fetch", {}).get("quote_delay", 1.0)
     url_expansion_workers = _normalized_worker_count(
@@ -230,7 +232,7 @@ def reprocess_today_quoted(
             tier1_handles=tier1_handles,
             update_stats=False,
             allow_summarize=False,
-            media_min_score=config["scoring"].get("min_score_for_media", 3),
+            media_min_score=config["scoring"].get("min_score_for_media", 5),
             progress_cb=progress_cb,
             status_cb=status_cb,
         )
@@ -265,8 +267,8 @@ def enrich_high_signal(
             WHERE relevance_score >= ?
             AND signal_tier IS NOT NULL
             AND (
+                analysis_json IS NULL OR
                 (has_quote = 1 AND quote_tweet_id IS NOT NULL AND media_analysis IS NULL)
-                OR (has_link = 1 AND link_summary IS NULL)
                 OR (has_media = 1 AND media_analysis IS NULL)
             )
             ORDER BY relevance_score DESC
@@ -316,6 +318,8 @@ def enrich_high_signal(
 
                 media_items = ensure_media_analysis(conn, tweet)
                 media_context = build_media_context(media_items) if media_items else (tweet["media_analysis"] or "")
+                if tweet["analysis_json"]:
+                    continue
 
                 author_category = account_categories.get(tweet["author_handle"]) or "unknown"
 
@@ -330,7 +334,7 @@ def enrich_high_signal(
                         image_description=media_context,
                         model=enrich_model,
                     )
-                    futures[future] = (tweet["id"], tweet["signal_tier"])
+                    futures[future] = tweet["id"]
                 else:
                     result = enrich_tweet(
                         tweet_text=tweet["content"],
@@ -342,23 +346,16 @@ def enrich_high_signal(
                         model=enrich_model,
                     )
                     results.append(result)
-
-                    if result.signal_tier != tweet["signal_tier"]:
-                        conn.execute(
-                            "UPDATE tweets SET signal_tier = ? WHERE id = ?",
-                            (result.signal_tier, tweet["id"]),
-                        )
+                    _save_enrichment_result(conn, tweet["id"], tweet, result)
 
             for future in as_completed(list(futures.keys())):
-                tweet_id, current_tier = futures.pop(future)
+                tweet_id = futures.pop(future)
                 try:
                     result = future.result()
                     results.append(result)
-                    if result.signal_tier != current_tier:
-                        conn.execute(
-                            "UPDATE tweets SET signal_tier = ? WHERE id = ?",
-                            (result.signal_tier, tweet_id),
-                        )
+                    row = get_tweet_by_id(conn, tweet_id)
+                    if row:
+                        _save_enrichment_result(conn, tweet_id, row, result)
                 except Exception:
                     log.exception("Enrichment failed for tweet %s", tweet_id)
                     continue

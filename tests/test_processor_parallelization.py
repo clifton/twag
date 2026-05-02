@@ -220,6 +220,9 @@ def test_enrich_high_signal_prefers_local_quote_row(monkeypatch, tmp_path) -> No
 
     assert len(results) == 1
     assert seen["quoted_tweet"] == "@quotedacct: Quoted local context"
+    with get_connection(db_path, readonly=True) as conn:
+        row = conn.execute("SELECT analysis_json FROM tweets WHERE id = ?", ("main-1",)).fetchone()
+    assert row["analysis_json"] is not None
 
 
 def test_triage_parallel_db_access_stays_on_owner_thread(monkeypatch, tmp_path) -> None:
@@ -414,6 +417,9 @@ def test_enrich_high_signal_parallel_db_access_stays_on_owner_thread(monkeypatch
     results = pipeline_mod.enrich_high_signal(limit=5, enrich_model="dummy-model")
 
     assert len(results) == 1
+    with get_connection(db_path, readonly=True) as conn:
+        row = conn.execute("SELECT analysis_json FROM tweets WHERE id = ?", ("main-1",)).fetchone()
+    assert row["analysis_json"] is not None
 
 
 def test_expand_links_parallel_db_access_stays_on_owner_thread(monkeypatch, tmp_path) -> None:
