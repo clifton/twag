@@ -26,6 +26,10 @@ def init_db(db_path: Path | None = None) -> None:
     for attempt in range(max_attempts):
         try:
             with get_connection(db_path) as conn:
+                # Add legacy columns BEFORE executescript so SCHEMA's CREATE INDEX
+                # statements (e.g. idx_tweets_bookmarked) don't trip on missing columns
+                # when upgrading an old DB.
+                _migrate_legacy_columns(conn)
                 conn.executescript(SCHEMA)
                 _run_migrations(conn)
                 conn.commit()
@@ -75,6 +79,31 @@ def executemany_with_retry(conn: sqlite3.Connection, sql: str, seq_of_params):
 def commit_with_retry(conn: sqlite3.Connection) -> None:
     """Commit with retries when SQLite reports a transient lock."""
     _with_lock_retry("sqlite commit", conn.commit)
+
+
+def _migrate_legacy_columns(conn: sqlite3.Connection) -> None:
+    """Add columns that newer SCHEMA indexes depend on.
+
+    Runs before ``executescript(SCHEMA)`` so that index definitions referencing
+    post-original columns (e.g. ``idx_tweets_bookmarked`` on ``bookmarked``)
+    don't fail when upgrading a legacy DB.
+    """
+    # Skip on a fresh DB — no tweets table means executescript will create it.
+    cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='tweets'")
+    if not cursor.fetchone():
+        return
+
+    cursor = conn.execute("PRAGMA table_info(tweets)")
+    tweet_columns = {row[1] for row in cursor.fetchall()}
+
+    if "bookmarked" not in tweet_columns:
+        conn.execute("ALTER TABLE tweets ADD COLUMN bookmarked INTEGER DEFAULT 0")
+    if "bookmarked_at" not in tweet_columns:
+        conn.execute("ALTER TABLE tweets ADD COLUMN bookmarked_at TIMESTAMP")
+    if "quote_tweet_id" not in tweet_columns:
+        conn.execute("ALTER TABLE tweets ADD COLUMN quote_tweet_id TEXT")
+    if "in_reply_to_tweet_id" not in tweet_columns:
+        conn.execute("ALTER TABLE tweets ADD COLUMN in_reply_to_tweet_id TEXT")
 
 
 def _run_migrations(conn: sqlite3.Connection) -> None:
