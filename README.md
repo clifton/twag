@@ -529,6 +529,24 @@ npm install
 npm run dev
 ```
 
+### Developer tools
+
+`scripts/semantic_diff.py` explains the intent behind a git diff using the
+project's existing Anthropic client. It's a developer-only utility — not part
+of the `twag` CLI surface — and requires `ANTHROPIC_API_KEY`.
+
+```bash
+# Explain working-tree changes vs HEAD
+python scripts/semantic_diff.py
+
+# Explain a range or staged changes
+python scripts/semantic_diff.py --range main..HEAD
+python scripts/semantic_diff.py --staged
+
+# Emit raw JSON for scripting
+python scripts/semantic_diff.py --json
+```
+
 ## License
 
 MIT. See [LICENSE](./LICENSE).
