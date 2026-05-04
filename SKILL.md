@@ -192,7 +192,7 @@ twag process                  # Score unprocessed (no alerts by default)
 twag process -n 100           # Limit batch
 twag process --dry-run        # Preview
 twag process --notify         # Send alerts
-twag process --no-reprocess-quotes     # Skip reprocessing dependency tweets
+twag process --reprocess-quotes        # Reprocess dependency tweets
 twag process --reprocess-min-score 5   # Min score for reprocessing (default: 3)
 ```
 

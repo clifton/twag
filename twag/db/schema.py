@@ -218,6 +218,8 @@ CREATE TABLE IF NOT EXISTS llm_usage (
     prompt_chars INTEGER,
     response_chars INTEGER,
     is_vision INTEGER NOT NULL DEFAULT 0,
+    attempt_status TEXT NOT NULL DEFAULT 'completed',
+    completed_at TEXT,
     status_id TEXT,
     metadata_json TEXT
 );

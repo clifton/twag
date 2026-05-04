@@ -23,13 +23,14 @@ from . import process as _process_mod
 from . import search as _search_mod
 from . import stats as _stats_mod
 from . import web as _web_mod
+from ._logging import LoggedGroup
 from .analyze import _analysis_wrap_width as _analysis_wrap_width
 from .analyze import _echo_labeled as _echo_labeled
 from .analyze import _echo_wrapped as _echo_wrapped
 from .analyze import _print_status_analysis as _print_status_analysis
 
 
-@click.group()
+@click.group(cls=LoggedGroup)
 @click.version_option(version=__version__)
 def cli():
     """Twitter aggregator for market-relevant signals."""

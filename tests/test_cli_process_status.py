@@ -58,7 +58,7 @@ def test_process_status_id_fast_path(monkeypatch):
     assert result.exit_code == 0
     assert "Processing status 2019488673935552978..." in result.output
     assert "No unprocessed tweets found." in result.output
-    assert "Skipping dependency reprocessing for single-status mode." in result.output
+    assert "Skipping dependency reprocessing for single-status mode." not in result.output
     assert calls["limit"] == 250
     assert isinstance(calls["rows"], list)
     assert len(calls["rows"]) == 1
@@ -160,15 +160,17 @@ def test_process_skips_notifications_by_default(monkeypatch):
             ),
         ],
     )
-    monkeypatch.setattr(processor_mod, "reprocess_today_quoted", lambda **kwargs: [])
+    reprocess_calls: list[dict] = []
+    monkeypatch.setattr(processor_mod, "reprocess_today_quoted", lambda **kwargs: reprocess_calls.append(kwargs) or [])
     monkeypatch.setattr(notifier_mod, "notify_high_signal_tweet", lambda **kwargs: notified.append(kwargs["tweet_id"]))
 
     runner = CliRunner()
 
-    result = runner.invoke(cli, ["process", "--no-reprocess-quotes"])
+    result = runner.invoke(cli, ["process"])
 
     assert result.exit_code == 0
     assert notified == []
+    assert reprocess_calls == []
 
 
 def test_process_notifies_when_explicitly_enabled(monkeypatch):
@@ -218,12 +220,14 @@ def test_process_notifies_when_explicitly_enabled(monkeypatch):
             ),
         ],
     )
-    monkeypatch.setattr(processor_mod, "reprocess_today_quoted", lambda **kwargs: [])
+    reprocess_calls: list[dict] = []
+    monkeypatch.setattr(processor_mod, "reprocess_today_quoted", lambda **kwargs: reprocess_calls.append(kwargs) or [])
     monkeypatch.setattr(notifier_mod, "notify_high_signal_tweet", lambda **kwargs: notified.append(kwargs["tweet_id"]))
 
     runner = CliRunner()
 
-    result = runner.invoke(cli, ["process", "--notify", "--no-reprocess-quotes"])
+    result = runner.invoke(cli, ["process", "--notify"])
 
     assert result.exit_code == 0
     assert notified == ["2019488673935552978"]
+    assert reprocess_calls == []

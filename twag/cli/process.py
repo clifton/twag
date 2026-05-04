@@ -19,7 +19,7 @@ from ._progress import RichProgressReporter, create_progress, make_callbacks
 @click.option("--notify/--no-notify", default=False, help="Send Telegram alerts")
 @click.option(
     "--reprocess-quotes/--no-reprocess-quotes",
-    default=True,
+    default=False,
     help="Reprocess today's dependency tweets (quotes/replies)",
 )
 @click.option("--reprocess-min-score", type=float, default=None, help="Min score for reprocessing dependency tweets")

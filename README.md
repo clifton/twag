@@ -188,7 +188,7 @@ twag process --dry-run          # Preview only
 twag process --notify           # Send Telegram alerts
 
 # Quote/reply reprocessing
-twag process --no-reprocess-quotes       # Skip reprocessing dependency tweets
+twag process --reprocess-quotes          # Reprocess dependency tweets
 twag process --reprocess-min-score 5     # Min score for reprocessing (default: 3)
 
 # Process specific tweet

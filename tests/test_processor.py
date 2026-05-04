@@ -70,6 +70,10 @@ def test_process_unprocessed_expands_links_and_persists_before_triage(monkeypatc
     captured_rows: list[dict] = []
 
     def _fake_triage_rows(_conn, **kwargs):
+        with get_connection(db_path, readonly=True) as check_conn:
+            committed_row = get_tweet_by_id(check_conn, "1001")
+            assert committed_row is not None
+            assert committed_row["links_expanded_at"] is not None
         tweet_rows = kwargs["tweet_rows"]
         captured_rows.extend(tweet_rows)
         return []
@@ -152,6 +156,57 @@ def test_process_unprocessed_skips_already_expanded_links(monkeypatch, tmp_path)
         row = get_tweet_by_id(conn, "1002")
         assert row is not None
         assert row["links_expanded_at"] == expanded_at
+
+
+def test_failed_link_expansion_remains_retryable(monkeypatch, tmp_path) -> None:
+    db_path = tmp_path / "twag_link_expansion_retryable.db"
+    init_db(db_path)
+
+    with get_connection(db_path) as conn:
+        inserted = insert_tweet(
+            conn,
+            tweet_id="retry-link",
+            author_handle="root_user",
+            content="Retry this https://t.co/ext",
+            created_at=_FIXED_TS,
+            source="test",
+            has_link=True,
+            links=[{"url": "https://t.co/ext", "expanded_url": "https://t.co/ext"}],
+        )
+        assert inserted is True
+        conn.commit()
+
+        def _fail_expand(_links: list[dict]) -> list[dict]:
+            raise RuntimeError("temporary expansion failure")
+
+        monkeypatch.setattr(deps_mod, "expand_links_in_place", _fail_expand)
+        refreshed_rows = deps_mod._expand_links_for_rows(
+            conn,
+            conn.execute("SELECT * FROM tweets").fetchall(),
+            max_workers=1,
+            quote_depth=0,
+        )
+
+        assert refreshed_rows[0]["links_expanded_at"] is None
+        row = get_tweet_by_id(conn, "retry-link")
+        assert row is not None
+        assert row["links_expanded_at"] is None
+
+        monkeypatch.setattr(
+            deps_mod,
+            "expand_links_in_place",
+            lambda _links: [{"url": "https://t.co/ext", "expanded_url": "https://example.com"}],
+        )
+        refreshed_rows = deps_mod._expand_links_for_rows(
+            conn,
+            conn.execute("SELECT * FROM tweets").fetchall(),
+            max_workers=1,
+            quote_depth=0,
+        )
+
+        assert refreshed_rows[0]["links_expanded_at"] is not None
+        parsed = json.loads(refreshed_rows[0]["links_json"])
+        assert parsed[0]["expanded_url"] == "https://example.com"
 
 
 def test_reprocess_today_quoted_expands_quote_row_links(monkeypatch, tmp_path) -> None:
@@ -364,6 +419,80 @@ def test_process_unprocessed_adds_thread_linked_tweet_to_processing_stack(monkey
     assert results == []
     ids = {row["id"] for row in captured_rows}
     assert ids == {"r2", "10001"}
+
+
+def test_process_unprocessed_adds_thread_link_revealed_by_url_expansion(monkeypatch, tmp_path) -> None:
+    db_path = tmp_path / "twag_process_expanded_thread_link.db"
+    init_db(db_path)
+
+    with get_connection(db_path) as conn:
+        inserted_linked = insert_tweet(
+            conn,
+            tweet_id="10002",
+            author_handle="thread_user",
+            content="Earlier post revealed after expansion",
+            created_at=_FIXED_TS,
+            source="test",
+        )
+        assert inserted_linked is True
+
+        inserted_root = insert_tweet(
+            conn,
+            tweet_id="r3",
+            author_handle="root_user",
+            content="Continuation https://t.co/thread2",
+            created_at=_FIXED_TS,
+            source="test",
+            has_link=True,
+            links=[
+                {
+                    "url": "https://t.co/thread2",
+                    "expanded_url": "https://t.co/thread2",
+                    "display_url": "t.co/thread2",
+                },
+            ],
+        )
+        assert inserted_root is True
+        conn.commit()
+
+    monkeypatch.setattr(pipeline_mod, "get_connection", lambda: get_connection(db_path))
+    monkeypatch.setattr(
+        pipeline_mod,
+        "load_config",
+        lambda: {
+            "scoring": {
+                "batch_size": 10,
+                "high_signal_threshold": 7,
+                "min_score_for_media": 3,
+            },
+            "fetch": {"quote_depth": 3, "quote_delay": 0.0},
+            "processing": {"max_concurrency_url_expansion": 2},
+        },
+    )
+    monkeypatch.setattr(
+        deps_mod,
+        "expand_links_in_place",
+        lambda _links: [
+            {
+                "url": "https://t.co/thread2",
+                "expanded_url": "https://x.com/thread_user/status/10002",
+                "display_url": "x.com/thread_user/status/10002",
+            },
+        ],
+    )
+
+    captured_rows: list[dict] = []
+
+    def _fake_triage_rows(_conn, **kwargs):
+        captured_rows.extend(kwargs["tweet_rows"])
+        return []
+
+    monkeypatch.setattr(pipeline_mod, "_triage_rows", _fake_triage_rows)
+
+    results = pipeline_mod.process_unprocessed(limit=10)
+    assert results == []
+    ids = {row["id"] for row in captured_rows}
+    assert ids == {"r3", "10002"}
 
 
 def test_process_unprocessed_fetches_dependency_with_malformed_unicode_without_crashing(monkeypatch, tmp_path) -> None:
