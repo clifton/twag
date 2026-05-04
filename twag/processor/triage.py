@@ -977,6 +977,12 @@ def _triage_rows(
         while len(all_futures) >= max_pending_worker_futures:
             _drain_worker_futures(block=True)
 
+    def _oldest_worker_age() -> float:
+        if not all_futures:
+            return 0.0
+        now = time.monotonic()
+        return max(now - future_started_at.get(future, now) for future in all_futures)
+
     try:
         if triage_pool:
             batch_queue = deque(
@@ -989,7 +995,11 @@ def _triage_rows(
             batch_futures: dict[Any, tuple[int, int, float]] = {}
 
             def _queue_triage_batches() -> None:
-                while batch_queue and len(batch_futures) < max_triage_workers:
+                while (
+                    batch_queue
+                    and len(batch_futures) < max_triage_workers
+                    and len(all_futures) < max_pending_worker_futures
+                ):
                     batch_index, batch = batch_queue.popleft()
                     if status_cb:
                         status_cb(f"Queue batch {batch_index}/{total_batches}")
@@ -1003,55 +1013,78 @@ def _triage_rows(
                         len(batch_futures),
                     )
 
-            _queue_triage_batches()
-            while batch_futures:
-                done, _pending = wait(
-                    list(batch_futures.keys()),
-                    timeout=worker_poll_seconds,
-                    return_when=FIRST_COMPLETED,
+            def _oldest_triage_age() -> float:
+                if not batch_futures:
+                    return 0.0
+                now = time.monotonic()
+                return max(now - submitted_at for _, _, submitted_at in batch_futures.values())
+
+            def _handle_triage_future(future: Any) -> None:
+                batch_index, batch_size_count, submitted_at = batch_futures.pop(future)
+                if status_cb:
+                    status_cb(f"Scored batch {batch_index}/{total_batches}")
+                status = "success"
+                try:
+                    results = future.result()
+                except Exception:
+                    status = "error"
+                    log.exception("Triage batch %d failed", batch_index)
+                    m.inc("pipeline.triage.batch_errors")
+                    if status_cb:
+                        status_cb(f"Batch {batch_index} failed")
+                    if progress_cb:
+                        progress_cb(batch_size_count)
+                    results = []
+                log.info(
+                    "triage_batch_done batch=%d total_batches=%d size=%d results=%d status=%s elapsed=%.3fs",
+                    batch_index,
+                    total_batches,
+                    batch_size_count,
+                    len(results),
+                    status,
+                    time.monotonic() - submitted_at,
                 )
-                if not done:
-                    oldest_age = max(time.monotonic() - submitted_at for _, _, submitted_at in batch_futures.values())
-                    log.warning(
-                        "Waiting on %d triage batch futures; no completion within %.1fs oldest_age=%.1fs",
-                        len(batch_futures),
-                        worker_poll_seconds,
-                        oldest_age,
-                    )
-                    _drain_worker_futures(block=False)
+                all_results.extend(results)
+                if results:
+                    _handle_results(results)
+
+            _queue_triage_batches()
+            while batch_queue or batch_futures or all_futures:
+                if len(all_futures) < max_pending_worker_futures:
+                    _queue_triage_batches()
+
+                if len(all_futures) >= max_pending_worker_futures and all_futures:
+                    wait_futures = list(all_futures.keys())
+                    wait_reason = "worker_backlog"
+                else:
+                    wait_futures = list(batch_futures.keys()) + list(all_futures.keys())
+                    wait_reason = "mixed"
+
+                if not wait_futures:
                     continue
 
-                for future in done:
-                    batch_index, batch_size_count, submitted_at = batch_futures.pop(future)
-                    if status_cb:
-                        status_cb(f"Scored batch {batch_index}/{total_batches}")
-                    status = "success"
-                    try:
-                        results = future.result()
-                    except Exception:
-                        status = "error"
-                        log.exception("Triage batch %d failed", batch_index)
-                        m.inc("pipeline.triage.batch_errors")
-                        if status_cb:
-                            status_cb(f"Batch {batch_index} failed")
-                        if progress_cb:
-                            progress_cb(batch_size_count)
-                        results = []
-                    log.info(
-                        "triage_batch_done batch=%d total_batches=%d size=%d results=%d status=%s elapsed=%.3fs",
-                        batch_index,
-                        total_batches,
-                        batch_size_count,
-                        len(results),
-                        status,
-                        time.monotonic() - submitted_at,
+                done, _pending = wait(wait_futures, timeout=worker_poll_seconds, return_when=FIRST_COMPLETED)
+                if not done:
+                    log.warning(
+                        "Waiting on futures; reason=%s triage_pending=%d worker_pending=%d no completion within %.1fs "
+                        "oldest_triage_age=%.1fs oldest_worker_age=%.1fs",
+                        wait_reason,
+                        len(batch_futures),
+                        len(all_futures),
+                        worker_poll_seconds,
+                        _oldest_triage_age(),
+                        _oldest_worker_age(),
                     )
-                    all_results.extend(results)
-                    if results:
-                        _handle_results(results)
-                    _drain_worker_futures(block=False)
-                    _throttle_worker_backlog()
-                _queue_triage_batches()
+                    continue
+
+                # Worker completions can unblock queued enrichment, so handle them before
+                # triage completions that may submit more worker work.
+                for future in done:
+                    if future in all_futures:
+                        _handle_worker_future(future)
+                for future in done:
+                    if future in batch_futures:
+                        _handle_triage_future(future)
         else:
             for i in range(0, total, batch_size):
                 batch_index = (i // batch_size) + 1
