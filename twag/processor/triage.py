@@ -27,6 +27,7 @@ from ..db import (
     update_tweet_enrichment,
     update_tweet_processing,
 )
+from ..db.connection import commit_with_retry
 from ..media import build_media_context, build_media_summary, parse_media_items
 from ..scorer import (
     TriageResult,
@@ -862,6 +863,7 @@ def _triage_rows(
                 _submit_enrichment(result.tweet_id, tweet_row)
             elif not task_count and progress_cb:
                 progress_cb(1)
+        commit_with_retry(conn)
 
     def _handle_worker_future(future: Any) -> None:
         tag, data = all_futures.pop(future)
@@ -942,6 +944,7 @@ def _triage_rows(
                     log.exception("Enrich worker failed for tweet %s", tweet_id)
                 _complete_task(tweet_id)
         finally:
+            commit_with_retry(conn)
             elapsed = time.monotonic() - submitted_at if submitted_at is not None else 0.0
             log.info(
                 "worker_future_done tag=%s tweet_id=%s status=%s elapsed=%.3fs pending=%d",
