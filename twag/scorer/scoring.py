@@ -59,6 +59,80 @@ class XArticleSummaryResult:
     actionable_items: list[dict[str, Any]] = field(default_factory=list)
 
 
+TRIAGE_BATCH_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "items": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "score": {"type": "number"},
+                    "categories": {"type": "array", "items": {"type": "string"}},
+                    "summary": {"type": "string"},
+                    "tickers": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["id", "score", "categories", "summary", "tickers"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["items"],
+    "additionalProperties": False,
+}
+
+ENRICHMENT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "signal_tier": {"type": "string"},
+        "insight": {"type": "string"},
+        "implications": {"type": "string"},
+        "narratives": {"type": "array", "items": {"type": "string"}},
+        "tickers": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["signal_tier", "insight", "implications", "narratives", "tickers"],
+    "additionalProperties": False,
+}
+
+ARTICLE_SUMMARY_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "short_summary": {"type": "string"},
+        "primary_points": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "point": {"type": "string"},
+                    "reasoning": {"type": "string"},
+                    "evidence": {"type": "string"},
+                },
+                "required": ["point", "reasoning", "evidence"],
+                "additionalProperties": False,
+            },
+        },
+        "actionable_items": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string"},
+                    "trigger": {"type": "string"},
+                    "horizon": {"type": "string"},
+                    "confidence": {"type": "number"},
+                    "tickers": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["action", "trigger", "horizon", "confidence", "tickers"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["short_summary", "primary_points", "actionable_items"],
+    "additionalProperties": False,
+}
+
+
 def _bounded_article_text(article_text: str, max_chars: int) -> str:
     """Bound long article bodies while preserving the opening and closing context."""
     clean_text = (article_text or "").strip()
@@ -94,13 +168,28 @@ def triage_tweets_batch(
     config = load_config()
     model = model or config["llm"]["triage_model"]
     provider = provider or config["llm"].get("triage_provider", "anthropic")
+    max_tokens = int(config["llm"].get("triage_max_tokens") or 4096)
+    reasoning = config["llm"].get("triage_reasoning")
+    if provider != "deepseek":
+        reasoning = None
 
     # Format tweets for prompt
     tweets_text = "\n\n".join(f"[{t['id']}] @{t['handle']}: {t['text']}" for t in tweets)
 
     prompt = BATCH_TRIAGE_PROMPT.format(tweets=tweets_text)
-    text = _call_llm(provider, model, prompt, max_tokens=16384, component="triage")
+    text = _call_llm(
+        provider,
+        model,
+        prompt,
+        max_tokens=max_tokens,
+        reasoning=reasoning,
+        component="triage",
+        json_schema=TRIAGE_BATCH_SCHEMA,
+        json_tool_name="emit_triage_batch",
+    )
     data = _parse_json_response(text)
+    if isinstance(data, dict) and isinstance(data.get("items"), list):
+        data = data["items"]
 
     if not isinstance(data, list):
         data = [data]
@@ -150,7 +239,16 @@ def enrich_tweet(
         image_description=image_description or "[none]",
     )
 
-    text = _call_llm(provider, model, prompt, max_tokens=2048, reasoning=reasoning, component="enrichment")
+    text = _call_llm(
+        provider,
+        model,
+        prompt,
+        max_tokens=2048,
+        reasoning=reasoning,
+        component="enrichment",
+        json_schema=ENRICHMENT_SCHEMA,
+        json_tool_name="emit_enrichment",
+    )
     data = _parse_json_response(text)
 
     if isinstance(data, list):
@@ -252,6 +350,8 @@ def summarize_x_article(
                 max_tokens=4096,
                 reasoning=reasoning,
                 component="article",
+                json_schema=ARTICLE_SUMMARY_SCHEMA,
+                json_tool_name="emit_article_summary",
             )
             data = _parse_json_response(text)
             break

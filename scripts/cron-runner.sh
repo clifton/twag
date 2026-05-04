@@ -46,6 +46,8 @@ MODE="${1:-full}"
 ERRORS=""
 LOG_DIR="${TWAG_LOG_DIR:-$HOME/.local/share/twag/logs}"
 LOG_FILE="$LOG_DIR/cron-$(date '+%Y-%m-%d').log"
+PROCESS_LIMIT="${TWAG_PROCESS_LIMIT:-50}"
+PROCESS_REPROCESS_QUOTES="${TWAG_REPROCESS_QUOTES:-0}"
 
 # Ensure log directory exists
 mkdir -p "$LOG_DIR"
@@ -111,12 +113,38 @@ run_cmd() {
     return 0
 }
 
+run_process() {
+    if is_process_running; then
+        log "Another twag process is running, skipping process"
+        return 0
+    fi
+
+    local args=(twag process --limit "$PROCESS_LIMIT")
+    case "${PROCESS_REPROCESS_QUOTES,,}" in
+        1|true|yes|on)
+            ;;
+        *)
+            args+=(--no-reprocess-quotes)
+            ;;
+    esac
+
+    run_cmd "process" "${args[@]}"
+}
+
+is_process_running() {
+    pgrep -f "[t]wag process" >/dev/null 2>&1
+}
+
 case "$MODE" in
     full)
         # Full cycle: fetch, process, digest, maintenance
+        if is_process_running; then
+            log "Another twag process is running, skipping full cycle"
+            exit 0
+        fi
         log "Running full cycle..."
         run_cmd "fetch" twag fetch || true
-        run_cmd "process" twag process || true
+        run_process || true
         run_cmd "digest" twag digest || true
         run_cmd "decay" twag accounts decay || true
         run_cmd "prune" twag prune --days 14 || true
@@ -128,7 +156,7 @@ case "$MODE" in
         ;;
     process-only)
         log "Running process only..."
-        run_cmd "process" twag process || true
+        run_process || true
         ;;
     digest-only)
         log "Running digest only..."

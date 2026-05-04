@@ -24,6 +24,8 @@ from .context_commands import (
 from .inference import (
     MODEL_PRICES,
     ModelPrice,
+    begin_llm_usage_attempt,
+    complete_llm_usage_attempt,
     ensure_llm_usage_table,
     estimate_cost_usd,
     record_llm_usage,
@@ -120,7 +122,9 @@ __all__ = [
     "_is_fts_statement",
     "apply_account_decay",
     "archive_stale_narratives",
+    "begin_llm_usage_attempt",
     "boost_account",
+    "complete_llm_usage_attempt",
     "delete_context_command",
     "delete_reaction",
     "demote_account",

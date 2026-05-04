@@ -56,6 +56,7 @@ def usage(days: int, all_time: bool, provider: str | None, model: str | None, co
     table.add_column("Provider", overflow="fold")
     table.add_column("Model", overflow="fold")
     table.add_column("Calls", justify="right")
+    table.add_column("Open", justify="right")
     table.add_column("Fail", justify="right")
     table.add_column("Input", justify="right")
     table.add_column("Cached", justify="right")
@@ -66,6 +67,7 @@ def usage(days: int, all_time: bool, provider: str | None, model: str | None, co
 
     totals = {
         "calls": 0,
+        "incomplete_attempts": 0,
         "failures": 0,
         "input_tokens": 0,
         "cached_input_tokens": 0,
@@ -83,6 +85,7 @@ def usage(days: int, all_time: bool, provider: str | None, model: str | None, co
             str(row["provider"]),
             str(row["model"]),
             _fmt_int(row["calls"]),
+            _fmt_int(row.get("incomplete_attempts")),
             _fmt_int(row["failures"]),
             _fmt_int(row["input_tokens"]),
             _fmt_int(row["cached_input_tokens"]),
@@ -98,6 +101,7 @@ def usage(days: int, all_time: bool, provider: str | None, model: str | None, co
         "",
         "",
         _fmt_int(totals["calls"]),
+        _fmt_int(totals["incomplete_attempts"]),
         _fmt_int(totals["failures"]),
         _fmt_int(totals["input_tokens"]),
         _fmt_int(totals["cached_input_tokens"]),

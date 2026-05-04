@@ -40,6 +40,8 @@ CREATE TABLE IF NOT EXISTS llm_usage (
     prompt_chars INTEGER,
     response_chars INTEGER,
     is_vision INTEGER NOT NULL DEFAULT 0,
+    attempt_status TEXT NOT NULL DEFAULT 'completed',
+    completed_at TEXT,
     status_id TEXT,
     metadata_json TEXT
 );
@@ -63,6 +65,8 @@ _LLM_USAGE_COLUMNS: dict[str, str] = {
     "prompt_chars": "INTEGER",
     "response_chars": "INTEGER",
     "is_vision": "INTEGER NOT NULL DEFAULT 0",
+    "attempt_status": "TEXT NOT NULL DEFAULT 'completed'",
+    "completed_at": "TEXT",
     "status_id": "TEXT",
     "metadata_json": "TEXT",
 }
@@ -161,6 +165,197 @@ def ensure_llm_usage_table(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_llm_usage_provider_model ON llm_usage(provider, model, called_at)")
 
 
+def begin_llm_usage_attempt(
+    *,
+    component: str,
+    provider: str,
+    model: str,
+    max_tokens: int | None = None,
+    prompt_chars: int | None = None,
+    is_vision: bool = False,
+    status_id: str | None = None,
+    metadata: dict[str, Any] | None = None,
+    db_path: Path | None = None,
+) -> int | None:
+    """Persist a provider attempt before the network request is made."""
+    try:
+        metadata_json = json.dumps(metadata, sort_keys=True) if metadata else None
+        with get_connection(db_path) as conn:
+            ensure_llm_usage_table(conn)
+            cursor = conn.execute(
+                """
+                INSERT INTO llm_usage (
+                    called_at, component, provider, model,
+                    max_tokens, success, estimated_cost_usd, prompt_chars,
+                    is_vision, status_id, metadata_json, attempt_status
+                )
+                VALUES (?, ?, ?, ?, ?, 0, 0.0, ?, ?, ?, ?, 'started')
+                """,
+                (
+                    datetime.now(timezone.utc).isoformat(),
+                    component,
+                    provider,
+                    model,
+                    max_tokens,
+                    prompt_chars,
+                    1 if is_vision else 0,
+                    status_id,
+                    metadata_json,
+                ),
+            )
+            commit_with_retry(conn)
+            return cursor.lastrowid
+    except Exception:
+        log.debug("Failed to begin LLM usage attempt", exc_info=True)
+        return None
+
+
+def complete_llm_usage_attempt(
+    attempt_id: int | None,
+    *,
+    component: str,
+    provider: str,
+    model: str,
+    input_tokens: int = 0,
+    output_tokens: int = 0,
+    reasoning_tokens: int = 0,
+    cached_input_tokens: int = 0,
+    total_tokens: int = 0,
+    max_tokens: int | None = None,
+    latency_seconds: float | None = None,
+    success: bool = True,
+    error_type: str | None = None,
+    error_message: str | None = None,
+    prompt_chars: int | None = None,
+    response_chars: int | None = None,
+    is_vision: bool = False,
+    status_id: str | None = None,
+    metadata: dict[str, Any] | None = None,
+    db_path: Path | None = None,
+) -> None:
+    """Update a started provider attempt, falling back to an insert if needed."""
+    if attempt_id is None:
+        record_llm_usage(
+            component=component,
+            provider=provider,
+            model=model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            reasoning_tokens=reasoning_tokens,
+            cached_input_tokens=cached_input_tokens,
+            total_tokens=total_tokens,
+            max_tokens=max_tokens,
+            latency_seconds=latency_seconds,
+            success=success,
+            error_type=error_type,
+            error_message=error_message,
+            prompt_chars=prompt_chars,
+            response_chars=response_chars,
+            is_vision=is_vision,
+            status_id=status_id,
+            metadata=metadata,
+            db_path=db_path,
+        )
+        return
+
+    try:
+        estimated_cost, price = estimate_cost_usd(
+            provider,
+            model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            reasoning_tokens=reasoning_tokens,
+            cached_input_tokens=cached_input_tokens,
+        )
+        metadata_json = json.dumps(metadata, sort_keys=True) if metadata else None
+        with get_connection(db_path) as conn:
+            ensure_llm_usage_table(conn)
+            cursor = conn.execute(
+                """
+                UPDATE llm_usage
+                SET
+                    component = ?,
+                    provider = ?,
+                    model = ?,
+                    input_tokens = ?,
+                    output_tokens = ?,
+                    reasoning_tokens = ?,
+                    cached_input_tokens = ?,
+                    total_tokens = ?,
+                    max_tokens = ?,
+                    latency_seconds = ?,
+                    success = ?,
+                    error_type = ?,
+                    error_message = ?,
+                    estimated_cost_usd = ?,
+                    input_cost_per_million = ?,
+                    output_cost_per_million = ?,
+                    cached_input_cost_per_million = ?,
+                    prompt_chars = COALESCE(?, prompt_chars),
+                    response_chars = ?,
+                    is_vision = ?,
+                    status_id = COALESCE(?, status_id),
+                    metadata_json = ?,
+                    attempt_status = ?,
+                    completed_at = ?
+                WHERE id = ?
+                """,
+                (
+                    component,
+                    provider,
+                    model,
+                    int(input_tokens or 0),
+                    int(output_tokens or 0),
+                    int(reasoning_tokens or 0),
+                    int(cached_input_tokens or 0),
+                    int(total_tokens or 0),
+                    max_tokens,
+                    latency_seconds,
+                    1 if success else 0,
+                    error_type,
+                    (error_message or "")[:500] if error_message else None,
+                    estimated_cost,
+                    price.input_per_million if price else None,
+                    price.output_per_million if price else None,
+                    price.cached_input_per_million if price else None,
+                    prompt_chars,
+                    response_chars,
+                    1 if is_vision else 0,
+                    status_id,
+                    metadata_json,
+                    "success" if success else "error",
+                    datetime.now(timezone.utc).isoformat(),
+                    attempt_id,
+                ),
+            )
+            if cursor.rowcount == 0:
+                raise RuntimeError(f"LLM usage attempt {attempt_id} was not found")
+            commit_with_retry(conn)
+    except Exception:
+        log.debug("Failed to complete LLM usage attempt", exc_info=True)
+        record_llm_usage(
+            component=component,
+            provider=provider,
+            model=model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            reasoning_tokens=reasoning_tokens,
+            cached_input_tokens=cached_input_tokens,
+            total_tokens=total_tokens,
+            max_tokens=max_tokens,
+            latency_seconds=latency_seconds,
+            success=success,
+            error_type=error_type,
+            error_message=error_message,
+            prompt_chars=prompt_chars,
+            response_chars=response_chars,
+            is_vision=is_vision,
+            status_id=status_id,
+            metadata=metadata,
+            db_path=db_path,
+        )
+
+
 def record_llm_usage(
     *,
     component: str,
@@ -207,9 +402,10 @@ def record_llm_usage(
                     input_tokens, output_tokens, reasoning_tokens, cached_input_tokens, total_tokens,
                     max_tokens, latency_seconds, success, error_type, error_message,
                     estimated_cost_usd, input_cost_per_million, output_cost_per_million,
-                    cached_input_cost_per_million, prompt_chars, response_chars, is_vision, status_id, metadata_json
+                    cached_input_cost_per_million, prompt_chars, response_chars, is_vision,
+                    attempt_status, completed_at, status_id, metadata_json
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     datetime.now(timezone.utc).isoformat(),
@@ -233,6 +429,8 @@ def record_llm_usage(
                     prompt_chars,
                     response_chars,
                     1 if is_vision else 0,
+                    "success" if success else "error",
+                    datetime.now(timezone.utc).isoformat(),
                     status_id,
                     metadata_json,
                 ),
@@ -285,7 +483,8 @@ def summarize_llm_usage(
                 model,
                 COUNT(*) AS calls,
                 SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) AS successes,
-                SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) AS failures,
+                SUM(CASE WHEN success = 0 AND COALESCE(attempt_status, 'completed') != 'started' THEN 1 ELSE 0 END) AS failures,
+                SUM(CASE WHEN COALESCE(attempt_status, 'completed') = 'started' THEN 1 ELSE 0 END) AS incomplete_attempts,
                 SUM(input_tokens) AS input_tokens,
                 SUM(output_tokens) AS output_tokens,
                 SUM(reasoning_tokens) AS reasoning_tokens,

@@ -140,6 +140,87 @@ def test_triage_overlap_with_summaries_using_dedicated_pool(monkeypatch, tmp_pat
         assert summary_before_triage_2.is_set(), "summary should have started before triage batch 2 completed"
 
 
+def test_triage_payload_includes_direct_dependency_context(monkeypatch, tmp_path) -> None:
+    """Triage should score a tweet with already-fetched quote/reply/link context in the prompt."""
+    db_path = tmp_path / "triage_context.db"
+    init_db(db_path)
+
+    with get_connection(db_path) as conn:
+        assert insert_tweet(
+            conn,
+            tweet_id="parent-1",
+            author_handle="parentacct",
+            content="Parent says supplier revenue is accelerating",
+            created_at=_FIXED_TS,
+            source="test",
+        )
+        assert insert_tweet(
+            conn,
+            tweet_id="root-1",
+            author_handle="rootacct",
+            content="This changes the setup",
+            created_at=_FIXED_TS,
+            source="test",
+            in_reply_to_tweet_id="parent-1",
+        )
+        conn.commit()
+
+        rows = conn.execute("SELECT * FROM tweets ORDER BY id DESC").fetchall()
+
+        monkeypatch.setattr(
+            triage_mod,
+            "load_config",
+            lambda: {
+                "llm": {
+                    "max_concurrency_text": 1,
+                    "max_concurrency_triage": 1,
+                    "max_concurrency_vision": 1,
+                    "vision_model": None,
+                    "vision_provider": None,
+                },
+                "scoring": {
+                    "min_score_for_analysis": 99,
+                    "min_score_for_article_processing": 99,
+                },
+            },
+        )
+
+        captured_batches: list[list[dict[str, str]]] = []
+
+        def _fake_triage_tweets_batch(batch, model=None, provider=None):
+            captured_batches.append(batch)
+            return [
+                TriageResult(
+                    tweet_id=item["id"],
+                    score=4.0,
+                    categories=["news"],
+                    summary="scored",
+                )
+                for item in batch
+            ]
+
+        monkeypatch.setattr(triage_mod, "triage_tweets_batch", _fake_triage_tweets_batch)
+
+        results = triage_mod._triage_rows(
+            conn,
+            tweet_rows=rows,
+            batch_size=10,
+            triage_model=None,
+            enrich_model=None,
+            high_threshold=7.0,
+            tier1_handles=set(),
+            update_stats=False,
+            allow_summarize=False,
+            media_min_score=None,
+        )
+
+        assert len(results) == 2
+        root_payload = next(item for item in captured_batches[0] if item["id"] == "root-1")
+        assert "Direct context:" in root_payload["text"]
+        assert "Reply parent @parentacct" in root_payload["text"]
+        assert "supplier revenue is accelerating" in root_payload["text"]
+
+
 def test_enrich_high_signal_prefers_local_quote_row(monkeypatch, tmp_path) -> None:
     """Enrichment should use quoted tweet content from local DB when available."""
     db_path = tmp_path / "enrich_local_quote.db"
@@ -342,6 +423,129 @@ def test_triage_parallel_db_access_stays_on_owner_thread(monkeypatch, tmp_path) 
 
         assert len(results) == 1
         assert conn.write_calls >= 4
+
+
+def test_article_media_processing_feeds_enrichment_once(monkeypatch, tmp_path) -> None:
+    """Article processing should own media analysis and enrich after article/media context is stored."""
+    db_path = tmp_path / "article_enrichment_context.db"
+    init_db(db_path)
+
+    with get_connection(db_path) as raw_conn:
+        assert insert_tweet(
+            raw_conn,
+            tweet_id="article-1",
+            author_handle="analyst",
+            content="Article wrapper",
+            created_at=_FIXED_TS,
+            source="test",
+            has_media=True,
+            media_items=[{"url": "https://example.com/chart.png"}],
+            is_x_article=True,
+            article_title="Capex Outlook",
+            article_preview="Preview",
+            article_text="Capex body " * 40,
+        )
+        raw_conn.commit()
+
+        rows = raw_conn.execute("SELECT * FROM tweets WHERE id = ?", ("article-1",)).fetchall()
+
+        monkeypatch.setattr(
+            triage_mod,
+            "load_config",
+            lambda: {
+                "llm": {
+                    "max_concurrency_text": 2,
+                    "max_concurrency_triage": 1,
+                    "max_concurrency_vision": 2,
+                    "vision_model": None,
+                    "vision_provider": None,
+                },
+                "scoring": {
+                    "min_score_for_analysis": 3,
+                    "min_score_for_article_processing": 5,
+                },
+            },
+        )
+        monkeypatch.setattr(
+            triage_mod,
+            "triage_tweets_batch",
+            lambda batch, model=None, provider=None: [
+                TriageResult(
+                    tweet_id=item["id"],
+                    score=8.0,
+                    categories=["news"],
+                    summary="scored",
+                    tickers=["NVDA"],
+                )
+                for item in batch
+            ],
+        )
+
+        media_calls = 0
+
+        def _fake_analyze_media_items(media_items, **kwargs):
+            nonlocal media_calls
+            media_calls += 1
+            return (
+                [
+                    {
+                        **media_items[0],
+                        "kind": "chart",
+                        "short_description": "AI capex chart",
+                        "prose_text": "Capex reaches 100",
+                        "prose_summary": "Capex rises",
+                        "chart": {
+                            "description": "Capex trend",
+                            "insight": "Capex reaches 100",
+                            "implication": "Supplier demand improves",
+                        },
+                    },
+                ],
+                True,
+            )
+
+        seen_enrichment: dict[str, str] = {}
+
+        def _fake_enrich_tweet(**kwargs):
+            seen_enrichment["article_summary"] = kwargs["article_summary"]
+            seen_enrichment["image_description"] = kwargs["image_description"]
+            return EnrichmentResult(
+                signal_tier="high_signal",
+                insight="insight",
+                implications="implications",
+                narratives=[],
+                tickers=["NVDA"],
+            )
+
+        monkeypatch.setattr(triage_mod, "_analyze_media_items", _fake_analyze_media_items)
+        monkeypatch.setattr(
+            triage_mod,
+            "summarize_x_article",
+            lambda *args, **kwargs: XArticleSummaryResult(
+                short_summary="article summary",
+                primary_points=[{"point": "Capex rises", "reasoning": "Demand grows", "evidence": "100"}],
+                actionable_items=[{"action": "Track capex", "trigger": "Next quarter"}],
+            ),
+        )
+        monkeypatch.setattr(triage_mod, "enrich_tweet", _fake_enrich_tweet)
+
+        results = triage_mod._triage_rows(
+            raw_conn,
+            tweet_rows=rows,
+            batch_size=1,
+            triage_model=None,
+            enrich_model=None,
+            high_threshold=7.0,
+            tier1_handles=set(),
+            update_stats=False,
+            allow_summarize=False,
+            media_min_score=3,
+        )
+
+        assert len(results) == 1
+        assert media_calls == 1
+        assert seen_enrichment["article_summary"] == "article summary"
+        assert "Capex reaches 100" in seen_enrichment["image_description"]
 
 
 def test_enrich_high_signal_parallel_db_access_stays_on_owner_thread(monkeypatch, tmp_path) -> None:
