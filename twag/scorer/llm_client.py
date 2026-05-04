@@ -373,13 +373,20 @@ def _call_gemini(
 
 
 def _normalize_deepseek_reasoning(reasoning: str | None) -> str | None:
-    """Map twag reasoning labels onto DeepSeek's documented effort values."""
+    """Map twag reasoning labels onto DeepSeek's documented effort values.
+
+    DeepSeek V4 exposes only high/max thinking efforts. The API accepts low and
+    medium for compatibility, but maps them to high. Treat twag's low as
+    non-thinking so low-cost triage does not silently run high thinking.
+    """
     if not reasoning:
         return None
     normalized = reasoning.strip().lower()
-    if normalized in {"disabled", "off", "none"}:
+    if normalized in {"disabled", "off", "none", "low"}:
         return None
-    if normalized in {"low", "medium", "high"}:
+    if normalized == "medium":
+        return "high"
+    if normalized == "high":
         return normalized
     if normalized in {"xhigh", "max"}:
         return "max"

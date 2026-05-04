@@ -171,7 +171,7 @@ def test_call_deepseek_uses_json_mode_for_schema_with_reasoning(monkeypatch) -> 
         "deepseek-v4-pro",
         "return json",
         max_tokens=32,
-        reasoning="low",
+        reasoning="high",
         json_schema=schema,
         json_tool_name="emit_enrichment",
     )
@@ -182,14 +182,50 @@ def test_call_deepseek_uses_json_mode_for_schema_with_reasoning(monkeypatch) -> 
     assert "tool_choice" not in seen["json"]
     assert seen["json"]["response_format"] == {"type": "json_object"}
     assert seen["json"]["thinking"] == {"type": "enabled"}
-    assert seen["json"]["reasoning_effort"] == "low"
+    assert seen["json"]["reasoning_effort"] == "high"
+
+
+def test_call_deepseek_treats_low_reasoning_as_non_thinking(monkeypatch) -> None:
+    seen: dict = {}
+    schema = {
+        "type": "object",
+        "properties": {"signal_tier": {"type": "string"}, "tickers": {"type": "array", "items": {"type": "string"}}},
+        "required": ["signal_tier", "tickers"],
+        "additionalProperties": False,
+    }
+
+    def _fake_post(url, *, headers, json, timeout):
+        seen["url"] = url
+        seen["json"] = json
+        return _FakeDeepSeekToolResponse()
+
+    monkeypatch.setattr(llm_client, "get_deepseek_api_key", lambda: "test-key")
+    monkeypatch.setattr(llm_client, "load_config", lambda: {"llm": {}})
+    monkeypatch.setattr(httpx, "post", _fake_post)
+    monkeypatch.setattr(llm_client, "begin_llm_usage_attempt", lambda **kwargs: 123)
+    monkeypatch.setattr(llm_client, "complete_llm_usage_attempt", lambda attempt_id, **kwargs: None)
+
+    result = llm_client._call_deepseek(
+        "deepseek-v4-pro",
+        "return json",
+        max_tokens=32,
+        reasoning="low",
+        json_schema=schema,
+        json_tool_name="emit_enrichment",
+    )
+
+    assert result == '{"signal_tier":"high_signal","tickers":["TSLA"]}'
+    assert seen["url"] == "https://api.deepseek.com/beta/chat/completions"
+    assert seen["json"]["thinking"] == {"type": "disabled"}
+    assert "reasoning_effort" not in seen["json"]
+    assert seen["json"]["tools"][0]["function"]["strict"] is True
 
 
 @pytest.mark.parametrize(
     ("reasoning", "expected"),
     [
-        ("low", "low"),
-        ("medium", "medium"),
+        ("low", None),
+        ("medium", "high"),
         ("high", "high"),
         ("xhigh", "max"),
         ("max", "max"),
