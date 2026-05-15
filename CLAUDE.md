@@ -167,4 +167,8 @@ If command behavior changes, update `README.md` and `SKILL.md` in the same PR.
 - Keep commits focused and atomic
 - Run formatting/lint/tests before committing
 - Don't commit temporary artifacts unless explicitly requested
-- Write descriptive commit messages
+- Use [Conventional Commits](https://www.conventionalcommits.org/) format: `type(scope): description`
+  - Allowed types: `feat`, `fix`, `docs`, `chore`, `perf`, `refactor`, `test`, `ci`, `build`, `style`, `revert`
+  - Description must start with a lowercase letter
+  - Subject line max 72 characters
+  - A `commit-msg` hook enforces this automatically (symlinked from `scripts/hooks/commit-msg`)
