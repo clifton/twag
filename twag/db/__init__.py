@@ -45,8 +45,6 @@ from .media_cache import (
 from .narratives import (
     archive_stale_narratives,
     get_active_narratives,
-    link_tweet_narrative,
-    upsert_narrative,
 )
 from .prompts import (
     DEFAULT_PROMPTS,
@@ -157,7 +155,6 @@ __all__ = [
     "insert_reaction",
     "insert_tweet",
     "is_tweet_seen",
-    "link_tweet_narrative",
     "log_alert",
     "log_fetch",
     "mark_tweet_bookmarked",
@@ -186,6 +183,5 @@ __all__ = [
     "update_tweet_processing",
     "upsert_account",
     "upsert_context_command",
-    "upsert_narrative",
     "upsert_prompt",
 ]
