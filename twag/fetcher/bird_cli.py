@@ -378,6 +378,40 @@ def fetch_search(query: str, count: int = 30) -> list[Tweet]:
     return _hydrate_truncated_retweets(tweets)
 
 
+def fetch_thread(tweet_url_or_id: str, *, all_pages: bool = False, max_pages: int | None = None) -> list[Tweet]:
+    """Fetch the conversation thread containing a tweet."""
+    args = ["thread", tweet_url_or_id, "--json"]
+    if all_pages:
+        args.append("--all")
+    if max_pages is not None:
+        args.extend(["--max-pages", str(max_pages)])
+
+    stdout, stderr, code = run_bird(args)
+
+    if code != 0:
+        raise RuntimeError(f"bird thread failed for {tweet_url_or_id} (exit {code}): {stderr.strip()}")
+
+    tweets = _parse_bird_output(stdout)
+    return _hydrate_truncated_retweets(tweets)
+
+
+def fetch_replies(tweet_url_or_id: str, *, all_pages: bool = False, max_pages: int | None = None) -> list[Tweet]:
+    """Fetch direct replies to a tweet."""
+    args = ["replies", tweet_url_or_id, "--json"]
+    if all_pages:
+        args.append("--all")
+    if max_pages is not None:
+        args.extend(["--max-pages", str(max_pages)])
+
+    stdout, stderr, code = run_bird(args)
+
+    if code != 0:
+        raise RuntimeError(f"bird replies failed for {tweet_url_or_id} (exit {code}): {stderr.strip()}")
+
+    tweets = _parse_bird_output(stdout)
+    return _hydrate_truncated_retweets(tweets)
+
+
 def fetch_bookmarks(count: int = 100) -> list[Tweet]:
     """Fetch user's bookmarked tweets."""
     stdout, stderr, code = run_bird(["bookmarks", "-n", str(count), "--json"])
