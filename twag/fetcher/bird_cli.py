@@ -67,6 +67,30 @@ def _is_rate_limited(stderr: str) -> bool:
     return "429" in stderr or "Rate limit" in stderr or "rate limit" in stderr
 
 
+def _is_retryable_bird_failure(stderr: str) -> bool:
+    """Check if bird CLI stderr indicates a transient X/API failure."""
+    lower = stderr.lower()
+    return _is_rate_limited(stderr) or any(
+        token in lower
+        for token in (
+            "500",
+            "502",
+            "503",
+            "504",
+            "bad gateway",
+            "gateway timeout",
+            "internal server error",
+            "service unavailable",
+            "temporarily unavailable",
+            "try again",
+            "connection reset",
+            "connection refused",
+            "connection aborted",
+            "network",
+        )
+    )
+
+
 def _rate_limit_bird() -> None:
     config = load_config()
     min_interval = config.get("bird", {}).get("min_interval_seconds", 1.0)
@@ -122,7 +146,7 @@ def _run_bird_once(
 
 
 def run_bird(args: list[str], timeout: int = 60, *, log_failures: bool = True) -> tuple[str, str, int]:
-    """Run bird CLI command with retry on rate limit, returning (stdout, stderr, returncode)."""
+    """Run bird CLI command with retry on transient failures, returning (stdout, stderr, returncode)."""
     from twag.metrics import get_collector
 
     m = get_collector()
@@ -155,14 +179,18 @@ def run_bird(args: list[str], timeout: int = 60, *, log_failures: bool = True) -
     for attempt in range(max_attempts):
         stdout, stderr, returncode = _run_bird_once(cmd, env, args, timeout, log_failures=log_failures)
 
-        if returncode == 0 or not _is_rate_limited(stderr):
+        if returncode == 0 or not _is_retryable_bird_failure(stderr):
             m.observe("fetcher.latency_seconds", time.monotonic() - t0)
             if returncode != 0:
                 m.inc("fetcher.errors")
             return stdout, stderr, returncode
 
         if attempt + 1 >= max_attempts:
-            log.error("bird %s rate-limited after %d attempts, giving up", args[0] if args else "?", max_attempts)
+            log.error(
+                "bird %s retryable failure after %d attempts, giving up",
+                args[0] if args else "?",
+                max_attempts,
+            )
             m.observe("fetcher.latency_seconds", time.monotonic() - t0)
             m.inc("fetcher.errors")
             return stdout, stderr, returncode
@@ -172,7 +200,7 @@ def run_bird(args: list[str], timeout: int = 60, *, log_failures: bool = True) -
         jitter = random.uniform(0, delay * 0.25)
         wait = delay + jitter
         log.warning(
-            "bird %s rate-limited (attempt %d/%d), retrying in %.0fs",
+            "bird %s retryable failure (attempt %d/%d), retrying in %.0fs",
             args[0] if args else "?",
             attempt + 1,
             max_attempts,

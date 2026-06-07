@@ -688,6 +688,45 @@ class TestRunBird:
         assert code == 1
         assert "not found" in stderr.lower()
 
+    def test_run_bird_retries_transient_server_errors(self, mock_subprocess, mock_auth_env):
+        """Transient X/Bird server failures should be retried."""
+        calls = 0
+
+        def _fake_run(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                return MagicMock(stderr="Failed to fetch tweets: HTTP 503", returncode=1)
+            tmp = kwargs.get("stdout")
+            if tmp and hasattr(tmp, "write"):
+                tmp.write("[]")
+            return MagicMock(stderr="", returncode=0)
+
+        mock_subprocess.side_effect = _fake_run
+
+        with (
+            patch("twag.fetcher.bird_cli.load_config", return_value={"bird": {"retry_base_seconds": 0}}),
+            patch("twag.fetcher.bird_cli.time.sleep") as sleep,
+        ):
+            stdout, stderr, code = run_bird(["user-tweets", "@test", "-n", "1", "--json"])
+
+        assert stdout == "[]"
+        assert stderr == ""
+        assert code == 0
+        assert mock_subprocess.call_count == 2
+        sleep.assert_called()
+
+    def test_run_bird_does_not_retry_not_found(self, mock_subprocess, mock_auth_env):
+        """Unavailable users should not be retried as transient failures."""
+        mock_subprocess.return_value = MagicMock(stderr="User @missing not found", returncode=1)
+
+        stdout, stderr, code = run_bird(["user-tweets", "@missing", "-n", "1", "--json"])
+
+        assert stdout == ""
+        assert stderr == "User @missing not found"
+        assert code == 1
+        mock_subprocess.assert_called_once()
+
 
 # ============================================================================
 # Tests: Fetch functions
