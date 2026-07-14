@@ -397,6 +397,7 @@ def _triage_rows(
     progress_cb: Callable[[int], None] | None = None,
     status_cb: Callable[[str], None] | None = None,
     force_refresh: bool = False,
+    enrich_results: bool = True,
 ) -> list[TriageResult]:
     """Run triage on provided rows and persist results."""
     from ..metrics import get_collector
@@ -677,7 +678,7 @@ def _triage_rows(
                     is_high_signal=result.score >= high_threshold,
                 )
 
-            if media_min_score is not None and result.score >= media_min_score:
+            if enrich_results and media_min_score is not None and result.score >= media_min_score:
                 media_items = parse_media_items(tweet_row["media_items"])
                 if media_items:
                     if not _needs_media_analysis(media_items):
@@ -717,7 +718,8 @@ def _triage_rows(
                         )
 
             needs_analysis = (
-                analysis_min_score is not None
+                enrich_results
+                and analysis_min_score is not None
                 and result.score >= analysis_min_score
                 and tweet_row is not None
                 and (force_refresh or not tweet_row["analysis_json"])
@@ -726,7 +728,8 @@ def _triage_rows(
                 task_count += 1
 
             needs_article = (
-                tweet_row is not None
+                enrich_results
+                and tweet_row is not None
                 and bool(tweet_row["is_x_article"])
                 and (force_refresh or not tweet_row["article_processed_at"])
                 and result.score >= article_min_score

@@ -44,6 +44,7 @@ def process_unprocessed(
     status_cb: Callable[[str], None] | None = None,
     total_cb: Callable[[int], None] | None = None,
     force_refresh: bool = False,
+    triage_only: bool = False,
 ) -> list[TriageResult]:
     """Process tweets that haven't been scored yet."""
     from ..metrics import get_collector
@@ -67,7 +68,7 @@ def process_unprocessed(
         if not unprocessed:
             return []
 
-        if quote_depth > 0:
+        if not triage_only and quote_depth > 0:
             if status_cb:
                 status_cb("Expanding dependency tweets")
             unprocessed = _expand_unprocessed_with_dependencies(
@@ -80,7 +81,7 @@ def process_unprocessed(
                 total_cb=total_cb,
             )
 
-        if not dry_run:
+        if not dry_run and not triage_only:
             unprocessed = _expand_links_for_rows(
                 conn,
                 unprocessed,
@@ -135,12 +136,13 @@ def process_unprocessed(
             enrich_model=enrich_model,
             high_threshold=high_threshold,
             tier1_handles=tier1_handles,
-            update_stats=True,
-            allow_summarize=True,
-            media_min_score=media_min_score,
+            update_stats=not triage_only,
+            allow_summarize=not triage_only,
+            media_min_score=None if triage_only else media_min_score,
             progress_cb=progress_cb,
             status_cb=status_cb,
             force_refresh=force_refresh,
+            enrich_results=not triage_only,
         )
 
         conn.commit()

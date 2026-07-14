@@ -169,6 +169,8 @@ twag search -c fed_policy --time 7d  # Browse by category
 
 # Full-text search mode
 twag search "query"                  # FTS5 search
+twag search "query" --live           # Fresh public X results through bird
+twag search "query" --cached         # Explicit local-only search (default)
 twag search "query" -c fed_policy    # Filter by category
 twag search "query" -a handle        # Filter by author
 twag search "query" --ticker AAPL    # Filter by ticker
@@ -187,6 +189,15 @@ twag search "query" --order score    # Sort: rank, score, or time
 - Phrase: `"rate hike"` (exact)
 - Boolean: `inflation AND fed`, `fed NOT fomc`
 - Prefix: `infla*` (wildcard)
+- Cashtag: `twag search '$BLND OR "Blend Labs"' --live` (single quotes preserve `$BLND`)
+
+Query searches are local-only by default. `--live` queries fresh public X
+results through authenticated `bird search`, stores the in-window result set,
+and limits output to those fetched IDs. New live rows are classified when score,
+category, tier, ticker, or score-order filters need model metadata. Bird is
+bounded to 30 seconds; classification defaults to a killable 120-second overall
+timeout. Live syntax supports X terms, phrases, `OR`, and cashtags; FTS prefixes
+and column expressions are cache-only.
 
 ### Fetch & Process
 

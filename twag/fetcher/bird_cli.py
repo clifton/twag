@@ -366,15 +366,21 @@ def fetch_user_tweets(handle: str, count: int = 50) -> list[Tweet]:
     return _hydrate_truncated_retweets(tweets)
 
 
-def fetch_search(query: str, count: int = 30) -> list[Tweet]:
+def fetch_search(
+    query: str,
+    count: int = 30,
+    *,
+    hydrate_retweets: bool = True,
+    timeout: int = 60,
+) -> list[Tweet]:
     """Search for tweets matching a query."""
-    stdout, stderr, code = run_bird(["search", query, "-n", str(count), "--json"])
+    stdout, stderr, code = run_bird(["search", query, "-n", str(count), "--json"], timeout=timeout)
 
     if code != 0:
         raise RuntimeError(f"bird search failed (exit {code}): {stderr.strip()}")
 
     tweets = _parse_bird_output(stdout)
-    return _hydrate_truncated_retweets(tweets)
+    return _hydrate_truncated_retweets(tweets) if hydrate_retweets else tweets
 
 
 def fetch_thread(tweet_url_or_id: str, *, all_pages: bool = False, max_pages: int | None = None) -> list[Tweet]:

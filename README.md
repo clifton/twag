@@ -201,6 +201,12 @@ twag process 1234567890123456789
 # Basic search
 twag search "inflation fed"
 
+# Query fresh public X results through authenticated bird
+twag search "NVIDIA" --live --time 1h
+
+# Explicit cache-only behavior (--cached is the default)
+twag search "inflation fed" --cached
+
 # With filters
 twag search "rate hike" --category fed_policy
 twag search "NVDA" --author zerohedge
@@ -219,6 +225,9 @@ twag search "fed" --format json             # JSON output
 # Score threshold
 twag search "market" --min-score 7          # High-signal only
 
+# Cashtag query: single quotes prevent the shell from expanding $BLND
+twag search '$BLND OR "Blend Labs"' --live --time 30d --min-score 4
+
 # Additional filters
 twag search --bookmarks                     # Only bookmarked tweets
 twag search "fed" --tier 1                  # Filter by signal tier
@@ -230,6 +239,19 @@ twag search "fed" --order score             # Sort by: rank, score, or time
 - Phrase: `"rate hike"` (exact match)
 - Boolean: `inflation AND fed`, `fed NOT fomc`
 - Prefix: `infla*` (wildcard)
+- Cashtags: `'$BLND OR "Blend Labs"'` (cashtags are normalized for FTS5; single-quote the whole query in the shell)
+- Column: `author_handle:zerohedge`
+
+Query searches use the local FTS5 index by default. Pass `--live` to query fresh
+public X results through authenticated `bird search`; twag stores only the
+current bird result set inside the requested time range and restricts output to
+those IDs. New live rows are classified only when score, category, tier, ticker,
+or score ordering needs model metadata. The bird call is capped at 30 seconds,
+and classification has a killable 120-second overall timeout (adjustable with
+`--classification-timeout`). Live syntax supports X terms, phrases, `OR`, and
+cashtags; FTS-only prefix and column expressions are cache-only syntax. A local
+empty result recommends `--live`, while a bird or classification failure exits
+nonzero with a separate credential-safe error.
 
 ### Narrative Commands
 
