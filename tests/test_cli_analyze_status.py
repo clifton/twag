@@ -38,6 +38,35 @@ def _sample_tweet() -> Tweet:
     )
 
 
+def _sample_reply(tweet_id: str = "reply-1", parent_id: str = "2019488673935552978") -> Tweet:
+    return Tweet(
+        id=tweet_id,
+        author_handle="reply_user",
+        author_name="Reply User",
+        content="Context reply",
+        created_at=None,
+        has_quote=False,
+        quote_tweet_id=None,
+        in_reply_to_tweet_id=parent_id,
+        conversation_id=parent_id,
+        has_media=False,
+        media_items=[],
+        has_link=False,
+        is_x_article=False,
+        article_title=None,
+        article_preview=None,
+        article_text=None,
+        is_retweet=False,
+        retweeted_by_handle=None,
+        retweeted_by_name=None,
+        original_tweet_id=None,
+        original_author_handle=None,
+        original_author_name=None,
+        original_content=None,
+        raw={},
+    )
+
+
 @contextmanager
 def _fake_connection(readonly=False):
     yield object()
@@ -113,6 +142,16 @@ def test_analyze_status_success(monkeypatch):
     monkeypatch.setattr(analyze_mod, "init_db", lambda: None)
     monkeypatch.setattr(analyze_mod, "get_connection", _fake_connection)
     monkeypatch.setattr(fetcher_mod, "read_tweet", lambda _status: _sample_tweet())
+    monkeypatch.setattr(
+        fetcher_mod,
+        "fetch_thread",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("thread fetch must be opt-in")),
+    )
+    monkeypatch.setattr(
+        fetcher_mod,
+        "fetch_replies",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("reply fetch must be opt-in")),
+    )
     monkeypatch.setattr(
         processor_mod,
         "store_fetched_tweets",
@@ -212,6 +251,178 @@ def test_analyze_status_not_found(monkeypatch):
 
     assert result.exit_code == 1
     assert "Status not found or unreadable: 999" in result.output
+
+
+def test_analyze_status_stores_thread_and_reply_context(monkeypatch):
+    """Requested context should be stored while processing remains target-only."""
+    import twag.cli.analyze as analyze_mod
+    import twag.fetcher as fetcher_mod
+    import twag.processor as processor_mod
+
+    row = _sample_row(processed_at=None)
+    target = _sample_tweet()
+    reply = _sample_reply()
+    stored_ids: list[str] = []
+    processed_rows: list[dict] = []
+    fetch_calls: list[tuple[str, str, dict]] = []
+
+    monkeypatch.setattr(analyze_mod, "init_db", lambda: None)
+    monkeypatch.setattr(analyze_mod, "get_connection", _fake_connection)
+    monkeypatch.setattr(analyze_mod, "get_tweet_by_id", lambda _conn, _tweet_id: row)
+    monkeypatch.setattr(fetcher_mod, "read_tweet", lambda _status: target)
+    monkeypatch.setattr(
+        fetcher_mod,
+        "fetch_thread",
+        lambda status, **kwargs: fetch_calls.append(("thread", status, kwargs)) or [target],
+    )
+    monkeypatch.setattr(
+        fetcher_mod,
+        "fetch_replies",
+        lambda status, **kwargs: fetch_calls.append(("replies", status, kwargs)) or [reply],
+    )
+
+    def _fake_store(tweets, **kwargs):
+        stored_ids.extend(tweet.id for tweet in tweets)
+        return len(tweets), len(tweets)
+
+    def _fake_process(**kwargs):
+        processed_rows.extend(kwargs["rows"])
+        return []
+
+    monkeypatch.setattr(processor_mod, "store_fetched_tweets", _fake_store)
+    monkeypatch.setattr(processor_mod, "process_unprocessed", _fake_process)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "analyze",
+            "2019488673935552978",
+            "--thread",
+            "--replies",
+            "--reply-depth",
+            "2",
+            "--max-reply-nodes",
+            "25",
+            "--max-pages",
+            "5",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert stored_ids == ["2019488673935552978", "reply-1"]
+    assert [r["id"] for r in processed_rows] == ["2019488673935552978"]
+    assert fetch_calls == [
+        ("thread", "2019488673935552978", {"all_pages": False, "max_pages": 5}),
+        ("replies", "2019488673935552978", {"all_pages": False, "max_pages": 5}),
+        ("replies", "reply-1", {"all_pages": False, "max_pages": 5}),
+    ]
+
+
+def test_context_reply_depth_filters_descendants_and_caps_total(monkeypatch):
+    """Reply traversal is breadth-first, direct-child only, and globally capped."""
+    import twag.cli.analyze as analyze_mod
+    import twag.fetcher as fetcher_mod
+
+    target = _sample_tweet()
+    direct_one = _sample_reply("reply-1", target.id)
+    direct_two = _sample_reply("reply-2", target.id)
+    nested_one = _sample_reply("nested-1", direct_one.id)
+    nested_two = _sample_reply("nested-2", direct_one.id)
+    calls: list[tuple[str, dict]] = []
+
+    monkeypatch.setattr(fetcher_mod, "fetch_thread", lambda *_args, **_kwargs: [])
+
+    replies_by_id = {
+        target.id: [direct_one, nested_one, direct_two],
+        direct_one.id: [nested_one, nested_two],
+        direct_two.id: [],
+    }
+
+    def _fake_fetch_replies(status_id, **kwargs):
+        calls.append((status_id, kwargs))
+        return replies_by_id.get(status_id, [])
+
+    monkeypatch.setattr(fetcher_mod, "fetch_replies", _fake_fetch_replies)
+
+    context = analyze_mod._fetch_context_tweets(
+        target.id,
+        target,
+        include_thread=False,
+        include_replies=True,
+        reply_depth=2,
+        max_reply_nodes=3,
+        max_pages=None,
+    )
+
+    assert [tweet.id for tweet in context] == [target.id, "reply-1", "reply-2", "nested-1"]
+    assert calls == [
+        (target.id, {"all_pages": True, "max_pages": None}),
+        ("reply-1", {"all_pages": True, "max_pages": None}),
+    ]
+
+
+def test_context_max_reply_nodes_also_caps_empty_source_fetches(monkeypatch):
+    """A large thread cannot create unbounded reply-source requests."""
+    import twag.cli.analyze as analyze_mod
+    import twag.fetcher as fetcher_mod
+
+    target = _sample_tweet()
+    thread_tweets = [target, _sample_reply("thread-2", target.id), _sample_reply("thread-3", "thread-2")]
+    reply_sources: list[str] = []
+
+    monkeypatch.setattr(fetcher_mod, "fetch_thread", lambda *_args, **_kwargs: thread_tweets)
+    monkeypatch.setattr(
+        fetcher_mod,
+        "fetch_replies",
+        lambda status_id, **_kwargs: reply_sources.append(status_id) or [],
+    )
+
+    context = analyze_mod._fetch_context_tweets(
+        target.id,
+        target,
+        include_thread=True,
+        include_replies=True,
+        reply_depth=2,
+        max_reply_nodes=2,
+        max_pages=5,
+    )
+
+    assert [tweet.id for tweet in context] == [target.id, "thread-2", "thread-3"]
+    assert reply_sources == [target.id, "thread-2"]
+
+
+def test_analyze_context_failure_is_secret_safe_and_nonzero(monkeypatch):
+    """Explicit context fetches fail closed without echoing bird credentials/errors."""
+    import twag.cli.analyze as analyze_mod
+    import twag.fetcher as fetcher_mod
+
+    monkeypatch.setattr(analyze_mod, "init_db", lambda: None)
+    monkeypatch.setattr(fetcher_mod, "read_tweet", lambda _status: _sample_tweet())
+    monkeypatch.setattr(
+        fetcher_mod,
+        "fetch_thread",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("AUTH_TOKEN=top-secret")),
+    )
+
+    result = CliRunner().invoke(cli, ["analyze", _sample_tweet().id, "--thread"])
+
+    assert result.exit_code == 1
+    assert "bird could not fetch thread context" in result.output
+    assert "top-secret" not in result.output
+
+
+def test_analyze_context_bounds_are_validated():
+    """Negative reply bounds and zero page caps are rejected by Click."""
+    runner = CliRunner()
+
+    depth = runner.invoke(cli, ["analyze", "123", "--reply-depth", "-1"])
+    nodes = runner.invoke(cli, ["analyze", "123", "--max-reply-nodes", "-1"])
+    pages = runner.invoke(cli, ["analyze", "123", "--max-pages", "0"])
+
+    assert depth.exit_code == 2
+    assert nodes.exit_code == 2
+    assert pages.exit_code == 2
 
 
 def test_print_status_analysis_wraps_and_labels_long_fields(monkeypatch, capsys):
