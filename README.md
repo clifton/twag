@@ -244,7 +244,22 @@ twag analyze 1234567890123456789              # Analyze by ID
 twag analyze https://x.com/user/status/123    # Analyze by URL
 twag analyze 1234567890123456789 --reprocess  # Force re-analyze
 twag analyze 1234567890123456789 -m gemini-2.0-flash  # Override model
+twag analyze 1234567890123456789 --thread              # Persist the full conversation thread
+twag analyze 1234567890123456789 --replies --reply-depth 2  # Persist target replies + one nested level
+twag analyze 1234567890123456789 --thread --replies \
+  --reply-depth 2 --max-reply-nodes 25 --max-pages 5
 ```
+
+By default, `twag analyze` retains its original target-only behavior. `--thread` adds the conversation returned by
+`bird thread`; `--replies` performs a breadth-first reply traversal seeded by the target, or by every fetched thread
+status when combined with `--thread`. `--reply-depth 1` means direct replies only, while `2` adds one nested level.
+`--max-reply-nodes` is a global cap on both reply statuses stored and reply-source requests visited. `--max-pages`
+caps every Bird thread/replies request; without it, explicitly requested context uses all available pages.
+
+The target, thread statuses, and replies use the same storage path, so reply relationships, conversation IDs, links,
+media, and X Article fields are persisted consistently. Only the requested target is classified/reprocessed and printed;
+context is stored for downstream extraction and research. An explicit context-fetch failure exits nonzero instead of
+silently continuing with target-only data.
 
 ### Digest Commands
 

@@ -145,7 +145,17 @@ twag search "AAPL" -s 6 --time 7d
 ```bash
 twag analyze https://x.com/user/status/123456789
 twag analyze 123456789 --reprocess  # Force re-analyze
+twag analyze 123456789 --thread --replies \
+  --reply-depth 2 --max-reply-nodes 25 --max-pages 5
 ```
+
+Analyze is target-only by default. `--thread` persists the full Bird thread, and `--replies` persists a bounded
+breadth-first reply tree (`--reply-depth 1` is direct replies only). When both are enabled, every fetched thread status
+can seed reply traversal. `--max-reply-nodes` caps both stored reply statuses and visited reply-source nodes;
+`--max-pages` caps each Bird request, while omitting it requests all available pages. Thread/reply context keeps the
+normal link, media, X Article, reply relationship, and conversation metadata, but only the target is classified and
+printed. Explicit context-fetch failures return nonzero so extraction workflows cannot mistake partial context for a
+complete fetch.
 
 ## Commands
 
