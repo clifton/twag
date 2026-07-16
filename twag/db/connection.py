@@ -214,6 +214,16 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
 
     ensure_metrics_table(conn)
 
+    # Ensure persistent LLM usage table exists
+    from .inference import ensure_llm_usage_table
+
+    ensure_llm_usage_table(conn)
+
+    # Ensure persistent media analysis cache exists
+    from .media_cache import ensure_media_analysis_cache_table
+
+    ensure_media_analysis_cache_table(conn)
+
 
 def _init_fts(conn: sqlite3.Connection) -> None:
     """Initialize FTS5 virtual table and triggers."""

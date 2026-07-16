@@ -81,10 +81,12 @@ bird whoami
 
 **Optional:**
 - `ANTHROPIC_API_KEY` — For higher-quality enrichment on high-signal tweets
+- `DEEPSEEK_API_KEY` — For DeepSeek text triage/enrichment models
 
 ```bash
 export GEMINI_API_KEY="your_gemini_key"
 export ANTHROPIC_API_KEY="your_anthropic_key"  # optional
+export DEEPSEEK_API_KEY="your_deepseek_key"    # optional
 ```
 
 ## Installation
@@ -199,6 +201,12 @@ twag process 1234567890123456789
 # Basic search
 twag search "inflation fed"
 
+# Query fresh public X results through authenticated bird
+twag search "NVIDIA" --live --time 1h
+
+# Explicit cache-only behavior (--cached is the default)
+twag search "inflation fed" --cached
+
 # With filters
 twag search "rate hike" --category fed_policy
 twag search "NVDA" --author zerohedge
@@ -217,6 +225,9 @@ twag search "fed" --format json             # JSON output
 # Score threshold
 twag search "market" --min-score 7          # High-signal only
 
+# Cashtag query: single quotes prevent the shell from expanding $BLND
+twag search '$BLND OR "Blend Labs"' --live --time 30d --min-score 4
+
 # Additional filters
 twag search --bookmarks                     # Only bookmarked tweets
 twag search "fed" --tier 1                  # Filter by signal tier
@@ -228,6 +239,19 @@ twag search "fed" --order score             # Sort by: rank, score, or time
 - Phrase: `"rate hike"` (exact match)
 - Boolean: `inflation AND fed`, `fed NOT fomc`
 - Prefix: `infla*` (wildcard)
+- Cashtags: `'$BLND OR "Blend Labs"'` (cashtags are normalized for FTS5; single-quote the whole query in the shell)
+- Column: `author_handle:zerohedge`
+
+Query searches use the local FTS5 index by default. Pass `--live` to query fresh
+public X results through authenticated `bird search`; twag stores only the
+current bird result set inside the requested time range and restricts output to
+those IDs. New live rows are classified only when score, category, tier, ticker,
+or score ordering needs model metadata. The bird call is capped at 30 seconds,
+and classification has a killable 120-second overall timeout (adjustable with
+`--classification-timeout`). Live syntax supports X terms, phrases, `OR`, and
+cashtags; FTS-only prefix and column expressions are cache-only syntax. A local
+empty result recommends `--live`, while a bird or classification failure exits
+nonzero with a separate credential-safe error.
 
 ### Narrative Commands
 
@@ -242,7 +266,22 @@ twag analyze 1234567890123456789              # Analyze by ID
 twag analyze https://x.com/user/status/123    # Analyze by URL
 twag analyze 1234567890123456789 --reprocess  # Force re-analyze
 twag analyze 1234567890123456789 -m gemini-2.0-flash  # Override model
+twag analyze 1234567890123456789 --thread              # Persist the full conversation thread
+twag analyze 1234567890123456789 --replies --reply-depth 2  # Persist target replies + one nested level
+twag analyze 1234567890123456789 --thread --replies \
+  --reply-depth 2 --max-reply-nodes 25 --max-pages 5
 ```
+
+By default, `twag analyze` retains its original target-only behavior. `--thread` adds the conversation returned by
+`bird thread`; `--replies` performs a breadth-first reply traversal seeded by the target, or by every fetched thread
+status when combined with `--thread`. `--reply-depth 1` means direct replies only, while `2` adds one nested level.
+`--max-reply-nodes` is a global cap on both reply statuses stored and reply-source requests visited. `--max-pages`
+caps every Bird thread/replies request; without it, explicitly requested context uses all available pages.
+
+The target, thread statuses, and replies use the same storage path, so reply relationships, conversation IDs, links,
+media, and X Article fields are persisted consistently. Only the requested target is classified/reprocessed and printed;
+context is stored for downstream extraction and research. An explicit context-fetch failure exits nonzero instead of
+silently continuing with target-only data.
 
 ### Digest Commands
 
@@ -273,6 +312,9 @@ twag accounts import            # Import from following.txt
 ```bash
 twag stats                      # All-time stats
 twag stats --today              # Today's stats
+
+twag inference usage            # LLM token/cost report for last 30 days
+twag inference usage --all-time # Include all logged inference usage
 
 twag prune --days 14            # Delete old tweets
 twag prune --dry-run            # Preview prune
@@ -318,6 +360,8 @@ twag config show                # Show current config
 twag config path                # Show config file path
 twag config set llm.triage_model gemini-2.0-flash
 twag config set scoring.alert_threshold 8
+twag config set scoring.min_score_for_analysis 6
+twag config set scoring.max_article_summary_chars 20000
 ```
 
 ## Data Paths
@@ -442,6 +486,7 @@ See [SUGGESTED_CRON_SCHEDULE.md](./SUGGESTED_CRON_SCHEDULE.md) for OpenClaw cron
 | `CT0` | Yes | Twitter ct0 cookie |
 | `GEMINI_API_KEY` | Yes | LLM triage/vision |
 | `ANTHROPIC_API_KEY` | No | Enhanced enrichment |
+| `DEEPSEEK_API_KEY` | No | DeepSeek text triage/enrichment |
 | `TELEGRAM_BOT_TOKEN` | No | Alert delivery |
 | `TELEGRAM_CHAT_ID` | No | Alert destination |
 | `TWAG_DATA_DIR` | No | Override data directory |

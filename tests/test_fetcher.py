@@ -10,14 +10,16 @@ from twag.fetcher import (
     _parse_bird_output,
     fetch_bookmarks,
     fetch_home_timeline,
+    fetch_replies,
     fetch_search,
+    fetch_thread,
     fetch_user_tweets,
     get_auth_env,
     get_tweet_url,
     read_tweet,
     run_bird,
 )
-from twag.fetcher.bird_cli import read_tweet_with_diagnostics
+from twag.fetcher.bird_cli import _redact_stderr, read_tweet_with_diagnostics
 
 # ============================================================================
 # Fixtures
@@ -539,6 +541,22 @@ class TestParseBirdOutput:
         assert len(tweets) == 1
         assert tweets[0].id == "123"
 
+    def test_parse_paged_tweets_object(self, tweet_array_json):
+        """Bird thread/replies wrappers expose tweets plus a pagination cursor."""
+        output = json.dumps({"tweets": tweet_array_json, "nextCursor": "cursor-value"})
+
+        tweets = _parse_bird_output(output)
+
+        assert [tweet.id for tweet in tweets] == ["1", "2"]
+
+    def test_parse_nested_tweet_arrays(self, tweet_array_json):
+        """Nested page arrays are flattened without creating wrapper tweets."""
+        output = json.dumps([tweet_array_json[:1], tweet_array_json[1:]])
+
+        tweets = _parse_bird_output(output)
+
+        assert [tweet.id for tweet in tweets] == ["1", "2"]
+
     def test_parse_ndjson_format(self):
         """Parse newline-delimited JSON."""
         lines = [
@@ -614,6 +632,16 @@ class TestGetAuthEnv:
             assert env.get("AUTH_TOKEN") == "secret123"
             assert env.get("CT0") == "csrf_token"
             assert env.get("QUOTED_VAR") == "quoted value"
+
+    def test_redact_stderr_uses_env_file(self, monkeypatch):
+        """Secrets loaded from ~/.env should be redacted from subprocess stderr."""
+        monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+        monkeypatch.setattr("twag.fetcher.bird_cli.load_env_file", lambda: {"DEEPSEEK_API_KEY": "sk-test-secret"})
+
+        redacted = _redact_stderr("provider rejected sk-test-secret")
+
+        assert "sk-test-secret" not in redacted
+        assert "<DEEPSEEK_API_KEY>" in redacted
 
 
 # ============================================================================
@@ -797,6 +825,60 @@ class TestFetchFunctions:
 
         with pytest.raises(RuntimeError, match="bird search failed"):
             fetch_search("query")
+
+    @pytest.mark.parametrize(
+        ("fetch", "command"),
+        [(fetch_thread, "thread"), (fetch_replies, "replies")],
+    )
+    def test_fetch_context_uses_page_cap_and_parses_wrapper(
+        self,
+        mock_run_bird,
+        single_tweet_json,
+        fetch,
+        command,
+    ):
+        """Thread/replies requests forward caps and parse bird's paged object."""
+        mock_run_bird.return_value = (
+            json.dumps({"tweets": [single_tweet_json], "nextCursor": None}),
+            "",
+            0,
+        )
+
+        tweets = fetch("123", max_pages=5)
+
+        assert [tweet.id for tweet in tweets] == ["123"]
+        mock_run_bird.assert_called_once_with([command, "123", "--json", "--max-pages", "5"])
+
+    @pytest.mark.parametrize(
+        ("fetch", "command"),
+        [(fetch_thread, "thread"), (fetch_replies, "replies")],
+    )
+    def test_fetch_context_all_pages(self, mock_run_bird, fetch, command):
+        """Full-context mode uses bird's explicit all-pages switch."""
+        mock_run_bird.return_value = (json.dumps({"tweets": [], "nextCursor": None}), "", 0)
+
+        assert fetch("123", all_pages=True) == []
+
+        mock_run_bird.assert_called_once_with([command, "123", "--json", "--all"])
+
+    @pytest.mark.parametrize("fetch", [fetch_thread, fetch_replies])
+    def test_fetch_context_error(self, mock_run_bird, fetch):
+        """Context fetch failures are surfaced to the analyze command."""
+        mock_run_bird.return_value = ("", "Upstream unavailable", 1)
+
+        with pytest.raises(RuntimeError, match=r"bird (thread|replies) failed"):
+            fetch("123")
+
+    def test_fetch_search_can_skip_hydration_and_bound_timeout(self, mock_run_bird, single_tweet_json):
+        """Live search can avoid sequential retweet reads and cap the bird call."""
+        mock_run_bird.return_value = (json.dumps([single_tweet_json]), "", 0)
+
+        with patch("twag.fetcher.bird_cli._hydrate_truncated_retweets") as hydrate:
+            tweets = fetch_search("query", hydrate_retweets=False, timeout=30)
+
+        assert len(tweets) == 1
+        hydrate.assert_not_called()
+        assert mock_run_bird.call_args.kwargs["timeout"] == 30
 
     def test_fetch_bookmarks_success(self, mock_run_bird, single_tweet_json):
         """Successful bookmarks fetch."""

@@ -35,7 +35,6 @@ from .triage import (
     _page_number_hint,
     _prefer_stronger_signal_tier,
     _select_article_top_visual,
-    _tokenize_for_overlap,
     _triage_rows,
     ensure_media_analysis,
 )
@@ -61,7 +60,6 @@ __all__ = [
     "_prefer_stronger_signal_tier",
     "_row_get",
     "_select_article_top_visual",
-    "_tokenize_for_overlap",
     "_triage_rows",
     "auto_promote_bookmarked_authors",
     "enrich_high_signal",

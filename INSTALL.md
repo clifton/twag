@@ -99,6 +99,14 @@ For higher-quality tweet enrichment:
 export ANTHROPIC_API_KEY="your_anthropic_key"
 ```
 
+### DeepSeek (Optional)
+
+For DeepSeek text triage/enrichment models:
+
+```bash
+export DEEPSEEK_API_KEY="your_deepseek_key"
+```
+
 ## Step 5: Install twag
 
 ### From PyPI
@@ -275,6 +283,7 @@ export CT0="def456..."
 # LLM APIs
 export GEMINI_API_KEY="AIza..."
 export ANTHROPIC_API_KEY="sk-ant-..."  # optional
+export DEEPSEEK_API_KEY="sk-..."       # optional
 
 # Telegram alerts (optional)
 export TELEGRAM_BOT_TOKEN="123456:ABC..."

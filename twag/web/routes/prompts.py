@@ -3,7 +3,7 @@
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from ...db import (
@@ -67,7 +67,7 @@ async def get_prompt_by_name(request: Request, name: str) -> dict[str, Any]:
         prompt = get_prompt(conn, name)
 
     if not prompt:
-        return {"error": "Prompt not found"}
+        raise HTTPException(status_code=404, detail="Prompt not found")
 
     return {
         "id": prompt.id,
@@ -128,7 +128,7 @@ async def rollback_to_version(
 
     if success:
         return {"message": f"Rolled back {name} to version {version}"}
-    return {"error": f"Version {version} not found for prompt {name}"}
+    raise HTTPException(status_code=404, detail=f"Version {version} not found for prompt {name}")
 
 
 @router.post("/prompts/tune")
@@ -148,7 +148,7 @@ async def tune_prompt(request: Request, tune_req: TuneRequest) -> dict[str, Any]
         # Get current prompt
         prompt = get_prompt(conn, tune_req.prompt_name)
         if not prompt:
-            return {"error": f"Prompt '{tune_req.prompt_name}' not found"}
+            raise HTTPException(status_code=404, detail=f"Prompt '{tune_req.prompt_name}' not found")
 
         # Get reactions with tweets
         high_importance = get_reactions_with_tweets(conn, ">>", tune_req.reaction_limit)
@@ -257,9 +257,9 @@ SUGGESTED PROMPT:
             },
         }
 
-    except Exception:
+    except Exception as e:
         log.exception("Prompt tuning LLM call failed for %s", tune_req.prompt_name)
-        return {"error": "Prompt tuning failed due to an internal error"}
+        raise HTTPException(status_code=500, detail=f"LLM call failed: {e!s}") from e
 
 
 @router.post("/prompts/{name}/apply-suggestion")

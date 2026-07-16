@@ -3,11 +3,23 @@
 import json
 from datetime import datetime, timezone
 
+import pytest
+
 import twag.processor.dependencies as deps_mod
 import twag.processor.pipeline as pipeline_mod
 from twag.db import get_connection, get_tweet_by_id, init_db, insert_tweet, update_tweet_processing
 from twag.fetcher import Tweet
 from twag.fetcher.bird_cli import ReadTweetFailure, ReadTweetResult
+
+_FIXED_TS = datetime(2025, 6, 15, 12, 0, tzinfo=timezone.utc)
+
+
+@pytest.fixture(autouse=True)
+def _clear_skipped_dependency_fetches():
+    """Reset module-level skip cache before each test to prevent cross-test contamination."""
+    deps_mod._SKIPPED_DEPENDENCY_FETCHES.clear()
+    yield
+    deps_mod._SKIPPED_DEPENDENCY_FETCHES.clear()
 
 
 def test_process_unprocessed_expands_links_and_persists_before_triage(monkeypatch, tmp_path) -> None:
@@ -20,7 +32,7 @@ def test_process_unprocessed_expands_links_and_persists_before_triage(monkeypatc
             tweet_id="1001",
             author_handle="root_user",
             content="Interesting thread https://t.co/ext",
-            created_at=datetime.now(timezone.utc),
+            created_at=_FIXED_TS,
             source="test",
             has_link=True,
             links=[{"url": "https://t.co/ext", "expanded_url": "https://t.co/ext"}],
@@ -84,6 +96,62 @@ def test_process_unprocessed_expands_links_and_persists_before_triage(monkeypatc
         assert row["links_expanded_at"] is not None
 
 
+def test_process_unprocessed_triage_only_skips_context_enrichment(monkeypatch, tmp_path) -> None:
+    """Live-search triage should not expand dependencies, links, or enrichment."""
+    db_path = tmp_path / "twag_process_triage_only.db"
+    init_db(db_path)
+
+    with get_connection(db_path) as conn:
+        insert_tweet(
+            conn,
+            tweet_id="live-1",
+            author_handle="live_user",
+            content="Fresh result https://t.co/ext",
+            created_at=_FIXED_TS,
+            source="search",
+            has_link=True,
+            links=[{"url": "https://t.co/ext", "expanded_url": "https://t.co/ext"}],
+        )
+        conn.commit()
+
+    monkeypatch.setattr(pipeline_mod, "get_connection", lambda: get_connection(db_path))
+    monkeypatch.setattr(
+        pipeline_mod,
+        "load_config",
+        lambda: {
+            "scoring": {"batch_size": 10, "high_signal_threshold": 7, "min_score_for_media": 3},
+            "fetch": {"quote_depth": 3, "quote_delay": 1.0},
+            "processing": {"max_concurrency_url_expansion": 4},
+        },
+    )
+    monkeypatch.setattr(
+        pipeline_mod,
+        "_expand_unprocessed_with_dependencies",
+        lambda *args, **kwargs: pytest.fail("dependency expansion should be skipped"),
+    )
+    monkeypatch.setattr(
+        pipeline_mod,
+        "_expand_links_for_rows",
+        lambda *args, **kwargs: pytest.fail("link expansion should be skipped"),
+    )
+
+    captured = {}
+
+    def _fake_triage_rows(_conn, **kwargs):
+        captured.update(kwargs)
+        return []
+
+    monkeypatch.setattr(pipeline_mod, "_triage_rows", _fake_triage_rows)
+
+    results = pipeline_mod.process_unprocessed(limit=10, triage_only=True)
+
+    assert results == []
+    assert captured["update_stats"] is False
+    assert captured["allow_summarize"] is False
+    assert captured["media_min_score"] is None
+    assert captured["enrich_results"] is False
+
+
 def test_process_unprocessed_skips_already_expanded_links(monkeypatch, tmp_path) -> None:
     db_path = tmp_path / "twag_process_skip_expanded_links.db"
     init_db(db_path)
@@ -94,7 +162,7 @@ def test_process_unprocessed_skips_already_expanded_links(monkeypatch, tmp_path)
             tweet_id="1002",
             author_handle="root_user",
             content="Already expanded https://github.com/example/project",
-            created_at=datetime.now(timezone.utc),
+            created_at=_FIXED_TS,
             source="test",
             has_link=True,
             links=[
@@ -106,7 +174,7 @@ def test_process_unprocessed_skips_already_expanded_links(monkeypatch, tmp_path)
             ],
         )
         assert inserted is True
-        expanded_at = datetime.now(timezone.utc).isoformat()
+        expanded_at = _FIXED_TS.isoformat()
         conn.execute(
             "UPDATE tweets SET links_expanded_at = ? WHERE id = ?",
             (expanded_at, "1002"),
@@ -152,7 +220,7 @@ def test_reprocess_today_quoted_expands_quote_row_links(monkeypatch, tmp_path) -
             tweet_id="q1",
             author_handle="quoted_user",
             content="Quoted text https://t.co/ext",
-            created_at=datetime.now(timezone.utc),
+            created_at=_FIXED_TS,
             source="test",
             has_link=True,
             links=[{"url": "https://t.co/ext", "expanded_url": "https://t.co/ext"}],
@@ -173,7 +241,7 @@ def test_reprocess_today_quoted_expands_quote_row_links(monkeypatch, tmp_path) -
             tweet_id="r1",
             author_handle="root_user",
             content="Root text",
-            created_at=datetime.now(timezone.utc),
+            created_at=_FIXED_TS,
             source="test",
             has_quote=True,
             quote_tweet_id="q1",
@@ -242,7 +310,7 @@ def test_process_unprocessed_adds_reply_parent_to_processing_stack(monkeypatch, 
             tweet_id="p1",
             author_handle="parent_user",
             content="Parent in thread",
-            created_at=datetime.now(timezone.utc),
+            created_at=_FIXED_TS,
             source="test",
         )
         assert inserted_parent is True
@@ -252,7 +320,7 @@ def test_process_unprocessed_adds_reply_parent_to_processing_stack(monkeypatch, 
             tweet_id="r1",
             author_handle="root_user",
             content="Reply child",
-            created_at=datetime.now(timezone.utc),
+            created_at=_FIXED_TS,
             source="test",
             in_reply_to_tweet_id="p1",
             conversation_id="c1",
@@ -300,7 +368,7 @@ def test_process_unprocessed_adds_thread_linked_tweet_to_processing_stack(monkey
             tweet_id="10001",
             author_handle="thread_user",
             content="Earlier thread post",
-            created_at=datetime.now(timezone.utc),
+            created_at=_FIXED_TS,
             source="test",
         )
         assert inserted_linked is True
@@ -310,7 +378,7 @@ def test_process_unprocessed_adds_thread_linked_tweet_to_processing_stack(monkey
             tweet_id="r2",
             author_handle="root_user",
             content="Continuation https://t.co/thread1",
-            created_at=datetime.now(timezone.utc),
+            created_at=_FIXED_TS,
             source="test",
             has_link=True,
             links=[
@@ -364,7 +432,7 @@ def test_process_unprocessed_fetches_dependency_with_malformed_unicode_without_c
             tweet_id="root-1",
             author_handle="root_user",
             content="Root text",
-            created_at=datetime.now(timezone.utc),
+            created_at=_FIXED_TS,
             source="test",
             has_quote=True,
             quote_tweet_id="dep-\ud83d",
@@ -396,7 +464,7 @@ def test_process_unprocessed_fetches_dependency_with_malformed_unicode_without_c
                 author_handle="dep_user\ud83d",
                 author_name="Dep \udc49 User",
                 content="Dependency \ud83d[\udc49 content",
-                created_at=datetime.now(timezone.utc),
+                created_at=_FIXED_TS,
                 has_quote=False,
                 quote_tweet_id=None,
                 in_reply_to_tweet_id=None,
@@ -453,7 +521,6 @@ def test_process_unprocessed_fetches_dependency_with_malformed_unicode_without_c
 def test_dependency_fetch_skips_repeated_non_retryable_failures_in_same_run(monkeypatch, tmp_path, caplog) -> None:
     db_path = tmp_path / "twag_dependency_skip_non_retryable.db"
     init_db(db_path)
-    deps_mod._SKIPPED_DEPENDENCY_FETCHES.clear()
 
     failure = ReadTweetFailure(reason="tweet unavailable or missing: Tweet not found in response", retryable=False)
     calls = {"count": 0}
@@ -475,7 +542,6 @@ def test_dependency_fetch_skips_repeated_non_retryable_failures_in_same_run(monk
 def test_dependency_fetch_does_not_cache_auth_failures(monkeypatch, tmp_path, caplog) -> None:
     db_path = tmp_path / "twag_dependency_keep_auth_retryable.db"
     init_db(db_path)
-    deps_mod._SKIPPED_DEPENDENCY_FETCHES.clear()
 
     failure = ReadTweetFailure(
         reason="authentication/authorization failure: 403 Forbidden: auth token expired",

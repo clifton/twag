@@ -12,7 +12,7 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
-from ..auth import get_auth_env
+from ..auth import get_auth_env, load_env_file
 from ..config import load_config
 from .extractors import Tweet, _looks_truncated_text, _needs_retweet_hydration
 
@@ -22,15 +22,23 @@ _BIRD_RATE_LOCK = threading.Lock()
 _BIRD_LAST_CALL = 0.0
 _MAX_RETWEET_HYDRATIONS = 12
 
-_SENSITIVE_ENV_VARS = ("AUTH_TOKEN", "CT0", "GEMINI_API_KEY", "ANTHROPIC_API_KEY", "TELEGRAM_BOT_TOKEN")
+_SENSITIVE_ENV_VARS = (
+    "AUTH_TOKEN",
+    "CT0",
+    "GEMINI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "DEEPSEEK_API_KEY",
+    "TELEGRAM_BOT_TOKEN",
+)
 _HEX_PATTERN = re.compile(r"[0-9a-fA-F]{32,}")
 
 
 def _redact_stderr(stderr: str) -> str:
     """Strip credential values and long hex strings from bird stderr before logging."""
     redacted = stderr
+    env_file = load_env_file()
     for var in _SENSITIVE_ENV_VARS:
-        value = os.environ.get(var)
+        value = os.environ.get(var) or env_file.get(var)
         if value and value in redacted:
             redacted = redacted.replace(value, f"<{var}>")
     redacted = _HEX_PATTERN.sub("<redacted-hex>", redacted)
@@ -241,10 +249,11 @@ def _summarize_read_failure(stderr: str, *, code: int) -> ReadTweetFailure:
 def _parse_bird_output(stdout: str) -> list[Tweet]:
     """Parse bird JSON output into Tweet objects.
 
-    Handles three formats:
+    Handles four formats:
     1. A complete JSON array: ``[{...}, {...}]``
-    2. NDJSON (one JSON object per line)
-    3. A *truncated* JSON array (bird may clip stdout for large responses) —
+    2. A paged response: ``{"tweets": [{...}], "nextCursor": ...}``
+    3. NDJSON (one JSON object per line)
+    4. A *truncated* JSON array (bird may clip stdout for large responses) —
        we recover every complete object before the truncation point.
     """
     if not stdout.strip():
@@ -253,16 +262,18 @@ def _parse_bird_output(stdout: str) -> list[Tweet]:
     tweets: list[Tweet] = []
 
     def _append_item(item: Any) -> None:
-        if isinstance(item, dict):
+        if isinstance(item, list):
+            for nested_item in item:
+                _append_item(nested_item)
+        elif isinstance(item, dict) and isinstance(item.get("tweets"), list):
+            # bird thread/replies pagination wraps payloads in a tweets array.
+            _append_item(item["tweets"])
+        elif isinstance(item, dict) and any(item.get(key) for key in ("id", "id_str", "tweetId", "rest_id")):
             tweets.append(Tweet.from_bird_json(item))
 
     try:
         data = json.loads(stdout)
-        if isinstance(data, list):
-            for item in data:
-                _append_item(item)
-        else:
-            _append_item(data)
+        _append_item(data)
     except json.JSONDecodeError:
         text = stdout.strip()
         # Try NDJSON first (one JSON value per line)
@@ -272,11 +283,7 @@ def _parse_bird_output(stdout: str) -> list[Tweet]:
                 continue
             try:
                 item = json.loads(line)
-                if isinstance(item, list):
-                    for i in item:
-                        _append_item(i)
-                else:
-                    _append_item(item)
+                _append_item(item)
             except json.JSONDecodeError:
                 continue
         # If NDJSON found nothing and it looks like a truncated JSON array
@@ -359,12 +366,52 @@ def fetch_user_tweets(handle: str, count: int = 50) -> list[Tweet]:
     return _hydrate_truncated_retweets(tweets)
 
 
-def fetch_search(query: str, count: int = 30) -> list[Tweet]:
+def fetch_search(
+    query: str,
+    count: int = 30,
+    *,
+    hydrate_retweets: bool = True,
+    timeout: int = 60,
+) -> list[Tweet]:
     """Search for tweets matching a query."""
-    stdout, stderr, code = run_bird(["search", query, "-n", str(count), "--json"])
+    stdout, stderr, code = run_bird(["search", query, "-n", str(count), "--json"], timeout=timeout)
 
     if code != 0:
         raise RuntimeError(f"bird search failed (exit {code}): {stderr.strip()}")
+
+    tweets = _parse_bird_output(stdout)
+    return _hydrate_truncated_retweets(tweets) if hydrate_retweets else tweets
+
+
+def fetch_thread(tweet_url_or_id: str, *, all_pages: bool = False, max_pages: int | None = None) -> list[Tweet]:
+    """Fetch the conversation thread containing a tweet."""
+    args = ["thread", tweet_url_or_id, "--json"]
+    if all_pages:
+        args.append("--all")
+    if max_pages is not None:
+        args.extend(["--max-pages", str(max_pages)])
+
+    stdout, stderr, code = run_bird(args)
+
+    if code != 0:
+        raise RuntimeError(f"bird thread failed for {tweet_url_or_id} (exit {code}): {stderr.strip()}")
+
+    tweets = _parse_bird_output(stdout)
+    return _hydrate_truncated_retweets(tweets)
+
+
+def fetch_replies(tweet_url_or_id: str, *, all_pages: bool = False, max_pages: int | None = None) -> list[Tweet]:
+    """Fetch direct replies to a tweet."""
+    args = ["replies", tweet_url_or_id, "--json"]
+    if all_pages:
+        args.append("--all")
+    if max_pages is not None:
+        args.extend(["--max-pages", str(max_pages)])
+
+    stdout, stderr, code = run_bird(args)
+
+    if code != 0:
+        raise RuntimeError(f"bird replies failed for {tweet_url_or_id} (exit {code}): {stderr.strip()}")
 
     tweets = _parse_bird_output(stdout)
     return _hydrate_truncated_retweets(tweets)

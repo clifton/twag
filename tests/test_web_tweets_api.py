@@ -7,6 +7,8 @@ from fastapi.testclient import TestClient
 from twag.db import get_connection, insert_tweet, update_tweet_processing
 from twag.web.app import create_app
 
+_FIXED_TS = datetime(2025, 6, 15, 12, 0, tzinfo=timezone.utc)
+
 
 def _insert_processed_tweet(conn, *, tweet_id: str, author_handle: str, content: str, **kwargs) -> None:
     inserted = insert_tweet(
@@ -14,7 +16,7 @@ def _insert_processed_tweet(conn, *, tweet_id: str, author_handle: str, content:
         tweet_id=tweet_id,
         author_handle=author_handle,
         content=content,
-        created_at=datetime.now(timezone.utc),
+        created_at=_FIXED_TS,
         source="test",
         **kwargs,
     )
@@ -58,7 +60,7 @@ def test_list_tweets_retweet_display_fields(monkeypatch, tmp_path):
         conn.commit()
 
     client = TestClient(app)
-    response = client.get("/api/tweets", params={"sort": "latest", "since": "30d"})
+    response = client.get("/api/tweets", params={"sort": "latest", "since": "9999d"})
     assert response.status_code == 200
     tweets = response.json()["tweets"]
 
@@ -85,7 +87,7 @@ def test_list_tweets_legacy_rt_text_fallback(monkeypatch, tmp_path):
         conn.commit()
 
     client = TestClient(app)
-    response = client.get("/api/tweets", params={"author": "retweeter", "sort": "latest", "since": "30d"})
+    response = client.get("/api/tweets", params={"author": "retweeter", "sort": "latest", "since": "9999d"})
     assert response.status_code == 200
     tweets = response.json()["tweets"]
     assert len(tweets) == 1
@@ -123,7 +125,7 @@ def test_list_tweets_decodes_html_entities_in_content_and_display(monkeypatch, t
         conn.commit()
 
     client = TestClient(app)
-    response = client.get("/api/tweets", params={"sort": "latest", "since": "30d"})
+    response = client.get("/api/tweets", params={"sort": "latest", "since": "9999d"})
     assert response.status_code == 200
     tweets = response.json()["tweets"]
 
@@ -152,7 +154,7 @@ def test_list_tweets_legacy_rt_truncated_text_does_not_override_display_content(
         conn.commit()
 
     client = TestClient(app)
-    response = client.get("/api/tweets", params={"author": "retweeter", "sort": "latest", "since": "30d"})
+    response = client.get("/api/tweets", params={"author": "retweeter", "sort": "latest", "since": "9999d"})
     assert response.status_code == 200
     tweets = response.json()["tweets"]
     assert len(tweets) == 1
@@ -198,7 +200,7 @@ def test_list_tweets_builds_recursive_quote_embed(monkeypatch, tmp_path):
         conn.commit()
 
     client = TestClient(app)
-    response = client.get("/api/tweets", params={"author": "root_user", "since": "30d"})
+    response = client.get("/api/tweets", params={"author": "root_user", "since": "9999d"})
     assert response.status_code == 200
     tweets = response.json()["tweets"]
     assert len(tweets) == 1
@@ -247,7 +249,7 @@ def test_list_tweets_normalizes_self_and_inline_links(monkeypatch, tmp_path):
         conn.commit()
 
     client = TestClient(app)
-    response = client.get("/api/tweets", params={"author": "root_user", "since": "30d"})
+    response = client.get("/api/tweets", params={"author": "root_user", "since": "9999d"})
     assert response.status_code == 200
     tweet = response.json()["tweets"][0]
 
@@ -292,7 +294,7 @@ def test_list_tweets_builds_multiple_inline_quote_embeds(monkeypatch, tmp_path):
         conn.commit()
 
     client = TestClient(app)
-    response = client.get("/api/tweets", params={"author": "root2_user", "since": "30d"})
+    response = client.get("/api/tweets", params={"author": "root2_user", "since": "9999d"})
     assert response.status_code == 200
     tweet = response.json()["tweets"][0]
 
@@ -316,7 +318,7 @@ def test_list_tweets_drops_unresolved_short_media_link(monkeypatch, tmp_path):
         conn.commit()
 
     client = TestClient(app)
-    response = client.get("/api/tweets", params={"author": "media_user", "since": "30d"})
+    response = client.get("/api/tweets", params={"author": "media_user", "since": "9999d"})
     assert response.status_code == 200
     tweet = response.json()["tweets"][0]
 
@@ -347,7 +349,7 @@ def test_list_tweets_drops_trailing_unresolved_short_link_when_other_link_resolv
         conn.commit()
 
     client = TestClient(app)
-    response = client.get("/api/tweets", params={"author": "mixed_user", "since": "30d"})
+    response = client.get("/api/tweets", params={"author": "mixed_user", "since": "9999d"})
     assert response.status_code == 200
     tweet = response.json()["tweets"][0]
 
@@ -386,7 +388,7 @@ def test_list_tweets_does_not_expand_short_urls_on_request(monkeypatch, tmp_path
         conn.commit()
 
     client = TestClient(app)
-    response = client.get("/api/tweets", params={"author": "runtime_user", "since": "30d"})
+    response = client.get("/api/tweets", params={"author": "runtime_user", "since": "9999d"})
     assert response.status_code == 200
     tweet = response.json()["tweets"][0]
     assert tweet["display_content"] == "No runtime expansion https://github.com/example/project"

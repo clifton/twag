@@ -101,7 +101,7 @@ def test_triage_overlap_with_summaries_using_dedicated_pool(monkeypatch, tmp_pat
             batch_no = 1 if tweet_id == "tweet-1" else 2
             if batch_no == 2:
                 # Block batch 2 briefly so the summary task can start first.
-                summary_started.wait(timeout=5)
+                summary_started.wait(timeout=15)
                 triage_2_done.set()
             return [
                 TriageResult(
@@ -220,6 +220,9 @@ def test_enrich_high_signal_prefers_local_quote_row(monkeypatch, tmp_path) -> No
 
     assert len(results) == 1
     assert seen["quoted_tweet"] == "@quotedacct: Quoted local context"
+    with get_connection(db_path, readonly=True) as conn:
+        row = conn.execute("SELECT analysis_json FROM tweets WHERE id = ?", ("main-1",)).fetchone()
+    assert row["analysis_json"] is not None
 
 
 def test_triage_parallel_db_access_stays_on_owner_thread(monkeypatch, tmp_path) -> None:
@@ -414,6 +417,9 @@ def test_enrich_high_signal_parallel_db_access_stays_on_owner_thread(monkeypatch
     results = pipeline_mod.enrich_high_signal(limit=5, enrich_model="dummy-model")
 
     assert len(results) == 1
+    with get_connection(db_path, readonly=True) as conn:
+        row = conn.execute("SELECT analysis_json FROM tweets WHERE id = ?", ("main-1",)).fetchone()
+    assert row["analysis_json"] is not None
 
 
 def test_expand_links_parallel_db_access_stays_on_owner_thread(monkeypatch, tmp_path) -> None:

@@ -59,6 +59,23 @@ class XArticleSummaryResult:
     actionable_items: list[dict[str, Any]] = field(default_factory=list)
 
 
+def _bounded_article_text(article_text: str, max_chars: int) -> str:
+    """Bound long article bodies while preserving the opening and closing context."""
+    clean_text = (article_text or "").strip()
+    if len(clean_text) <= max_chars:
+        return clean_text
+    if max_chars <= 1000:
+        return clean_text[:max_chars].strip()
+
+    head_chars = int(max_chars * 0.75)
+    tail_chars = max_chars - head_chars
+    return (
+        clean_text[:head_chars].rstrip()
+        + "\n\n[...middle truncated to reduce analysis cost...]\n\n"
+        + clean_text[-tail_chars:].lstrip()
+    )
+
+
 def triage_tweets_batch(
     tweets: list[dict[str, str]],
     model: str | None = None,
@@ -82,7 +99,7 @@ def triage_tweets_batch(
     tweets_text = "\n\n".join(f"[{t['id']}] @{t['handle']}: {t['text']}" for t in tweets)
 
     prompt = BATCH_TRIAGE_PROMPT.format(tweets=tweets_text)
-    text = _call_llm(provider, model, prompt, max_tokens=16384)
+    text = _call_llm(provider, model, prompt, max_tokens=16384, component="triage")
     data = _parse_json_response(text)
 
     if not isinstance(data, list):
@@ -133,7 +150,7 @@ def enrich_tweet(
         image_description=image_description or "[none]",
     )
 
-    text = _call_llm(provider, model, prompt, max_tokens=2048, reasoning=reasoning)
+    text = _call_llm(provider, model, prompt, max_tokens=2048, reasoning=reasoning, component="enrichment")
     data = _parse_json_response(text)
 
     if isinstance(data, list):
@@ -161,7 +178,7 @@ def summarize_tweet(
     reasoning = config["llm"].get("enrichment_reasoning")
 
     prompt = SUMMARIZE_PROMPT.format(tweet_text=tweet_text, handle=handle)
-    text = _call_llm(provider, model, prompt, max_tokens=1024, reasoning=reasoning)
+    text = _call_llm(provider, model, prompt, max_tokens=1024, reasoning=reasoning, component="summarization")
 
     # Return raw text (not JSON)
     return text.strip()
@@ -179,7 +196,7 @@ def summarize_document_text(
     reasoning = config["llm"].get("enrichment_reasoning")
 
     prompt = DOCUMENT_SUMMARY_PROMPT.format(document_text=document_text)
-    text = _call_llm(provider, model, prompt, max_tokens=256, reasoning=reasoning)
+    text = _call_llm(provider, model, prompt, max_tokens=256, reasoning=reasoning, component="document_summary")
     return text.strip()
 
 
@@ -202,11 +219,16 @@ def summarize_x_article(
         return XArticleSummaryResult(short_summary=(article_preview or article_title or "").strip())
 
     fallback_summary = (article_preview or article_title or clean_text[:400]).strip()
+    try:
+        max_article_chars = int(config.get("scoring", {}).get("max_article_summary_chars", 20_000))
+    except (TypeError, ValueError):
+        max_article_chars = 20_000
+    bounded_text = _bounded_article_text(clean_text, max_article_chars)
 
     prompt = ARTICLE_SUMMARY_PROMPT.format(
         article_title=(article_title or "").strip() or "[untitled]",
         article_preview=(article_preview or "").strip() or "[none]",
-        article_text=clean_text,
+        article_text=bounded_text,
     )
 
     fallback_provider = config["llm"].get("triage_provider", "gemini")
@@ -223,7 +245,14 @@ def summarize_x_article(
     data: dict[str, Any] | list[dict[str, Any]] | None = None
     for cand_provider, cand_model in candidates:
         try:
-            text = _call_llm(cand_provider, cand_model, prompt, max_tokens=4096, reasoning=reasoning)
+            text = _call_llm(
+                cand_provider,
+                cand_model,
+                prompt,
+                max_tokens=4096,
+                reasoning=reasoning,
+                component="article",
+            )
             data = _parse_json_response(text)
             break
         except Exception:
@@ -302,7 +331,7 @@ def analyze_image(
     model = model or config["llm"]["vision_model"]
     provider = provider or config["llm"].get("vision_provider", "anthropic")
 
-    text = _call_llm_vision(provider, model, image_url, MEDIA_PROMPT, max_tokens=4096)
+    text = _call_llm_vision(provider, model, image_url, MEDIA_PROMPT, max_tokens=4096, component="vision")
     data = _parse_json_response(text)
 
     if isinstance(data, list):

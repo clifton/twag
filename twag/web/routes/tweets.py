@@ -5,10 +5,11 @@ import re
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 
 from ...db import get_connection, get_feed_tweets, get_tweet_by_id, get_tweets_by_ids, parse_time_range
 from ...media import parse_media_items
+from ...text_utils import looks_truncated_text as _looks_truncated_text
 from ..tweet_utils import (
     decode_html_entities,
     normalize_links_for_display,
@@ -26,13 +27,6 @@ def _inline_quote_id_from_links(tweet_id: str, links: list[dict[str, str]]) -> s
         if linked_tweet_id and linked_tweet_id != tweet_id:
             return linked_tweet_id
     return None
-
-
-def _looks_truncated_text(text: str | None) -> bool:
-    if not text:
-        return False
-    stripped = text.rstrip()
-    return bool(stripped) and stripped.endswith(("\u2026", "..."))
 
 
 def _build_quote_embed(
@@ -380,7 +374,7 @@ async def get_tweet(request: Request, tweet_id: str) -> dict[str, Any]:
         tweet = get_tweet_by_id(conn, tweet_id)
 
         if not tweet:
-            return {"error": "Tweet not found"}
+            raise HTTPException(status_code=404, detail="Tweet not found")
 
         # Parse JSON fields
         categories = []
@@ -588,8 +582,6 @@ async def list_categories(request: Request) -> dict[str, Any]:
         raw_counts = {row["category"]: row["count"] for row in cursor.fetchall()}
 
     # Parse and aggregate categories (they may be JSON arrays)
-    import json
-
     category_counts: dict[str, int] = {}
     for cat_raw, count in raw_counts.items():
         try:
@@ -611,8 +603,6 @@ async def list_categories(request: Request) -> dict[str, Any]:
 @router.get("/tickers")
 async def list_tickers(request: Request, limit: int = 50) -> dict[str, Any]:
     """Get list of mentioned tickers with counts."""
-    import json
-
     db_path = request.app.state.db_path
 
     with get_connection(db_path, readonly=True) as conn:

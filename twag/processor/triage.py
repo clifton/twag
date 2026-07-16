@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
@@ -14,7 +15,9 @@ if TYPE_CHECKING:
 
 from ..config import load_config
 from ..db import (
+    get_cached_media_analysis,
     get_tweet_by_id,
+    record_media_analysis,
     update_account_stats,
     update_tweet_analysis,
     update_tweet_article,
@@ -31,6 +34,8 @@ from ..scorer import (
     summarize_x_article,
     triage_tweets_batch,
 )
+
+log = logging.getLogger(__name__)
 
 _SIGNAL_TIER_RANK = {
     "noise": 0,
@@ -146,28 +151,51 @@ def _analyze_media_items(
     vision_provider: str | None = None,
 ) -> tuple[list[dict[str, Any]], bool]:
     updated = False
+    config = load_config()
+    effective_model = vision_model or config["llm"].get("vision_model")
+    effective_provider = vision_provider or config["llm"].get("vision_provider")
     for item in media_items:
         if item.get("kind") or item.get("prose_text") or item.get("short_description"):
             continue
         url = item.get("url")
         if not url:
             continue
+        cached = get_cached_media_analysis(url, provider=effective_provider, model=effective_model)
+        if cached:
+            _apply_media_analysis_to_item(item, cached)
+            updated = True
+            continue
         try:
             result = analyze_media(url, model=vision_model, provider=vision_provider)
         except Exception:
             continue
 
-        item["kind"] = result.kind
-        item["short_description"] = result.short_description
-        item["prose_text"] = result.prose_text
-        item["prose_summary"] = result.prose_summary
-        item["chart"] = result.chart
+        result_payload = {
+            "kind": result.kind,
+            "short_description": result.short_description,
+            "prose_text": result.prose_text,
+            "prose_summary": result.prose_summary,
+            "chart": result.chart,
+            "table": result.table,
+        }
+        _apply_media_analysis_to_item(item, result_payload)
+        record_media_analysis(url, provider=effective_provider, model=effective_model, result=result_payload)
         updated = True
 
     if _merge_document_media(media_items):
         updated = True
 
     return media_items, updated
+
+
+def _apply_media_analysis_to_item(item: dict[str, Any], result: dict[str, Any]) -> None:
+    """Copy cached or fresh media analysis fields onto a media item."""
+    item["kind"] = (result.get("kind") or "other").lower()
+    item["short_description"] = result.get("short_description", "")
+    item["prose_text"] = result.get("prose_text", "")
+    item["prose_summary"] = result.get("prose_summary", "")
+    item["chart"] = result.get("chart") or {}
+    item["table"] = result.get("table") or {}
 
 
 def _page_number_hint(text: str) -> int | None:
@@ -369,6 +397,7 @@ def _triage_rows(
     progress_cb: Callable[[int], None] | None = None,
     status_cb: Callable[[str], None] | None = None,
     force_refresh: bool = False,
+    enrich_results: bool = True,
 ) -> list[TriageResult]:
     """Run triage on provided rows and persist results."""
     from ..metrics import get_collector
@@ -383,7 +412,7 @@ def _triage_rows(
     max_vision_workers = _normalized_worker_count(config.get("llm", {}).get("max_concurrency_vision", 3), 3)
     vision_model = config["llm"].get("vision_model")
     vision_provider = config["llm"].get("vision_provider")
-    analysis_min_score = config.get("scoring", {}).get("min_score_for_analysis", 3)
+    analysis_min_score = config.get("scoring", {}).get("min_score_for_analysis", 6)
     article_min_score = config.get("scoring", {}).get("min_score_for_article_processing", 5)
     tweets_for_triage = []
     tweet_map: dict[str, sqlite3.Row] = {}
@@ -487,7 +516,7 @@ def _triage_rows(
                 )
                 _save_enrichment_result(conn, tweet_id, row, result)
             except Exception:
-                pass
+                log.exception("Enrichment failed for tweet %s", tweet_id)
             _complete_task(tweet_id)
 
     def _submit_article(tweet_id: str, tweet_row: sqlite3.Row) -> None:
@@ -577,7 +606,7 @@ def _triage_rows(
                         media_items=media_items,
                     )
             except Exception:
-                pass
+                log.exception("Article processing failed for tweet %s", tweet_id)
             _complete_task(tweet_id)
 
     def _handle_results(results: list[TriageResult]) -> None:
@@ -611,7 +640,13 @@ def _triage_rows(
 
             task_count = 0
 
-            if allow_summarize and len(content) > 500 and not is_tier1 and result.score >= 5:
+            if (
+                allow_summarize
+                and len(content) > 500
+                and not is_tier1
+                and result.score >= 5
+                and (force_refresh or not tweet_row["content_summary"])
+            ):
                 if text_pool:
                     if status_cb:
                         status_cb(f"Queue summary @{handle}")
@@ -633,7 +668,7 @@ def _triage_rows(
                             content_summary=content_summary,
                         )
                     except Exception:
-                        pass
+                        log.exception("Summarization failed for tweet %s", result.tweet_id)
 
             if update_stats:
                 update_account_stats(
@@ -643,7 +678,7 @@ def _triage_rows(
                     is_high_signal=result.score >= high_threshold,
                 )
 
-            if media_min_score is not None and result.score >= media_min_score:
+            if enrich_results and media_min_score is not None and result.score >= media_min_score:
                 media_items = parse_media_items(tweet_row["media_items"])
                 if media_items:
                     if not _needs_media_analysis(media_items):
@@ -683,7 +718,8 @@ def _triage_rows(
                         )
 
             needs_analysis = (
-                analysis_min_score is not None
+                enrich_results
+                and analysis_min_score is not None
                 and result.score >= analysis_min_score
                 and tweet_row is not None
                 and (force_refresh or not tweet_row["analysis_json"])
@@ -692,7 +728,8 @@ def _triage_rows(
                 task_count += 1
 
             needs_article = (
-                tweet_row is not None
+                enrich_results
+                and tweet_row is not None
                 and bool(tweet_row["is_x_article"])
                 and (force_refresh or not tweet_row["article_processed_at"])
                 and result.score >= article_min_score
@@ -730,6 +767,7 @@ def _triage_rows(
                 try:
                     results = future.result()
                 except Exception:
+                    log.exception("Triage batch %d failed", batch_index)
                     m.inc("pipeline.triage.batch_errors")
                     if status_cb:
                         status_cb(f"Batch {batch_index} failed")
@@ -763,7 +801,7 @@ def _triage_rows(
                             content_summary=content_summary,
                         )
                 except Exception:
-                    pass
+                    log.exception("Summary worker failed for tweet %s", tweet_id)
                 _complete_task(tweet_id)
             elif tag == "media":
                 tweet_id = data
@@ -777,7 +815,7 @@ def _triage_rows(
                         media_items=updated_items,
                     )
                 except Exception:
-                    pass
+                    log.exception("Media worker failed for tweet %s", tweet_id)
                 _complete_task(tweet_id)
             elif tag == "article":
                 tweet_id, row = data
@@ -808,7 +846,7 @@ def _triage_rows(
                             media_items=analyzed_items,
                         )
                 except Exception:
-                    pass
+                    log.exception("Article worker failed for tweet %s", tweet_id)
                 _complete_task(tweet_id)
             elif tag == "enrich":
                 tweet_id, row = data
@@ -816,7 +854,7 @@ def _triage_rows(
                     result = future.result()
                     _save_enrichment_result(conn, tweet_id, row, result)
                 except Exception:
-                    pass
+                    log.exception("Enrich worker failed for tweet %s", tweet_id)
                 _complete_task(tweet_id)
     finally:
         if triage_pool:

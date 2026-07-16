@@ -6,9 +6,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from ..text_utils import looks_truncated_text as _looks_truncated_text
 from ..text_utils import sanitize_nested_strings, sanitize_text
-
-_TRUNCATION_SUFFIXES = ("\u2026", "...")
 
 
 @dataclass
@@ -283,13 +282,6 @@ def _extract_retweeted_tweet(data: dict[str, Any]) -> dict[str, Any] | None:
         return nested_result
 
     return None
-
-
-def _looks_truncated_text(text: str | None) -> bool:
-    if not text:
-        return False
-    stripped = text.rstrip()
-    return bool(stripped) and stripped.endswith(_TRUNCATION_SUFFIXES)
 
 
 def _needs_retweet_hydration(tweet: Tweet) -> bool:

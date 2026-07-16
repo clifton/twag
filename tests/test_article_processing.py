@@ -16,6 +16,8 @@ from twag.fetcher import Tweet
 from twag.processor import _build_triage_text, _prefer_stronger_signal_tier, _select_article_top_visual
 from twag.scorer import summarize_x_article
 
+_FIXED_TS = datetime(2025, 6, 15, 12, 0, tzinfo=timezone.utc)
+
 
 def _load_real_article_fixture() -> dict:
     fixture_path = Path(__file__).parent / "fixtures" / "tweet_2019488673935552978.json"
@@ -132,7 +134,7 @@ def test_article_fields_round_trip_in_feed(tmp_path) -> None:
             tweet_id="article-1",
             author_handle="analyst",
             content="Long-form article tweet",
-            created_at=datetime.now(timezone.utc),
+            created_at=_FIXED_TS,
             source="test",
             has_link=True,
             is_x_article=True,
@@ -159,7 +161,7 @@ def test_article_fields_round_trip_in_feed(tmp_path) -> None:
             actionable_items=[{"action": "Monitor GOOGL", "trigger": "Q/Q cloud growth > 40%"}],
             top_visual=None,
             set_top_visual=True,
-            processed_at=datetime.now(timezone.utc).isoformat(),
+            processed_at=_FIXED_TS.isoformat(),
         )
         conn.commit()
 
@@ -186,7 +188,7 @@ def test_duplicate_insert_upgrades_article_payload(tmp_path) -> None:
             tweet_id="dup-1",
             author_handle="analyst",
             content="Short teaser",
-            created_at=datetime.now(timezone.utc),
+            created_at=_FIXED_TS,
             source="status",
             has_link=True,
             is_x_article=True,
@@ -202,7 +204,7 @@ def test_duplicate_insert_upgrades_article_payload(tmp_path) -> None:
             tweet_id="dup-1",
             author_handle="analyst",
             content="Longer full article body " * 100,
-            created_at=datetime.now(timezone.utc),
+            created_at=_FIXED_TS,
             source="status",
             has_link=True,
             is_x_article=True,
@@ -272,7 +274,7 @@ def test_summarize_x_article_falls_back_to_triage_provider(monkeypatch) -> None:
 
     calls: list[tuple[str, str]] = []
 
-    def _fake_call_llm(provider, model, prompt, max_tokens=2048, reasoning=None):
+    def _fake_call_llm(provider, model, prompt, max_tokens=2048, reasoning=None, component="unknown"):
         calls.append((provider, model))
         if provider == "anthropic":
             raise RuntimeError("ANTHROPIC_API_KEY not set")
@@ -302,3 +304,33 @@ def test_summarize_x_article_falls_back_to_triage_provider(monkeypatch) -> None:
     assert ("gemini", "gemini-3-flash-preview") in calls
     assert result.short_summary == "Structured summary"
     assert len(result.primary_points) == 1
+
+
+def test_summarize_x_article_bounds_long_prompt(monkeypatch) -> None:
+    import twag.scorer.scoring as scorer_mod
+
+    seen_prompt = ""
+
+    def _fake_call_llm(provider, model, prompt, max_tokens=2048, reasoning=None, component="unknown"):
+        nonlocal seen_prompt
+        seen_prompt = prompt
+        return '{"short_summary":"Bounded summary","primary_points":[],"actionable_items":[]}'
+
+    monkeypatch.setattr(scorer_mod, "_call_llm", _fake_call_llm)
+    monkeypatch.setattr(
+        scorer_mod,
+        "load_config",
+        lambda: {
+            "llm": {
+                "enrichment_model": "deepseek-v4-pro",
+                "enrichment_provider": "deepseek",
+            },
+            "scoring": {"max_article_summary_chars": 1200},
+        },
+    )
+
+    result = summarize_x_article("A" * 5000, article_title="Title")
+
+    assert result.short_summary == "Bounded summary"
+    assert "[...middle truncated to reduce analysis cost...]" in seen_prompt
+    assert seen_prompt.count("A") <= 1210

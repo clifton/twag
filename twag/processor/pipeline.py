@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -16,6 +16,7 @@ from ..config import load_config
 from ..db import (
     get_accounts,
     get_connection,
+    get_tweet_by_id,
     get_tweets_by_ids,
     get_unprocessed_tweets,
 )
@@ -25,6 +26,7 @@ from ..scorer import EnrichmentResult, TriageResult, enrich_tweet
 from .dependencies import _expand_links_for_rows, _expand_unprocessed_with_dependencies
 from .triage import (
     _normalized_worker_count,
+    _save_enrichment_result,
     _triage_rows,
     ensure_media_analysis,
 )
@@ -42,6 +44,7 @@ def process_unprocessed(
     status_cb: Callable[[str], None] | None = None,
     total_cb: Callable[[int], None] | None = None,
     force_refresh: bool = False,
+    triage_only: bool = False,
 ) -> list[TriageResult]:
     """Process tweets that haven't been scored yet."""
     from ..metrics import get_collector
@@ -51,7 +54,7 @@ def process_unprocessed(
     config = load_config()
     batch_size = config["scoring"]["batch_size"]
     high_threshold = config["scoring"]["high_signal_threshold"]
-    media_min_score = config["scoring"].get("min_score_for_media", 3)
+    media_min_score = config["scoring"].get("min_score_for_media", 5)
     quote_depth = config.get("fetch", {}).get("quote_depth", 0)
     quote_delay = config.get("fetch", {}).get("quote_delay", 1.0)
     url_expansion_workers = _normalized_worker_count(
@@ -65,7 +68,7 @@ def process_unprocessed(
         if not unprocessed:
             return []
 
-        if quote_depth > 0:
+        if not triage_only and quote_depth > 0:
             if status_cb:
                 status_cb("Expanding dependency tweets")
             unprocessed = _expand_unprocessed_with_dependencies(
@@ -78,7 +81,7 @@ def process_unprocessed(
                 total_cb=total_cb,
             )
 
-        if not dry_run:
+        if not dry_run and not triage_only:
             unprocessed = _expand_links_for_rows(
                 conn,
                 unprocessed,
@@ -133,12 +136,13 @@ def process_unprocessed(
             enrich_model=enrich_model,
             high_threshold=high_threshold,
             tier1_handles=tier1_handles,
-            update_stats=True,
-            allow_summarize=True,
-            media_min_score=media_min_score,
+            update_stats=not triage_only,
+            allow_summarize=not triage_only,
+            media_min_score=None if triage_only else media_min_score,
             progress_cb=progress_cb,
             status_cb=status_cb,
             force_refresh=force_refresh,
+            enrich_results=not triage_only,
         )
 
         conn.commit()
@@ -168,7 +172,7 @@ def reprocess_today_quoted(
         15,
     )
 
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     with get_connection() as conn:
         if rows is None:
@@ -230,13 +234,13 @@ def reprocess_today_quoted(
             tier1_handles=tier1_handles,
             update_stats=False,
             allow_summarize=False,
-            media_min_score=config["scoring"].get("min_score_for_media", 3),
+            media_min_score=config["scoring"].get("min_score_for_media", 5),
             progress_cb=progress_cb,
             status_cb=status_cb,
         )
 
         # Mark all reprocessed tweets so they aren't reprocessed again
-        now = datetime.now().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         tweet_ids = [row["id"] for row in rows]
         conn.executemany(
             "UPDATE tweets SET quote_reprocessed_at = ? WHERE id = ?",
@@ -265,8 +269,8 @@ def enrich_high_signal(
             WHERE relevance_score >= ?
             AND signal_tier IS NOT NULL
             AND (
+                analysis_json IS NULL OR
                 (has_quote = 1 AND quote_tweet_id IS NOT NULL AND media_analysis IS NULL)
-                OR (has_link = 1 AND link_summary IS NULL)
                 OR (has_media = 1 AND media_analysis IS NULL)
             )
             ORDER BY relevance_score DESC
@@ -316,6 +320,8 @@ def enrich_high_signal(
 
                 media_items = ensure_media_analysis(conn, tweet)
                 media_context = build_media_context(media_items) if media_items else (tweet["media_analysis"] or "")
+                if tweet["analysis_json"]:
+                    continue
 
                 author_category = account_categories.get(tweet["author_handle"]) or "unknown"
 
@@ -330,7 +336,7 @@ def enrich_high_signal(
                         image_description=media_context,
                         model=enrich_model,
                     )
-                    futures[future] = (tweet["id"], tweet["signal_tier"])
+                    futures[future] = tweet["id"]
                 else:
                     result = enrich_tweet(
                         tweet_text=tweet["content"],
@@ -342,24 +348,18 @@ def enrich_high_signal(
                         model=enrich_model,
                     )
                     results.append(result)
-
-                    if result.signal_tier != tweet["signal_tier"]:
-                        conn.execute(
-                            "UPDATE tweets SET signal_tier = ? WHERE id = ?",
-                            (result.signal_tier, tweet["id"]),
-                        )
+                    _save_enrichment_result(conn, tweet["id"], tweet, result)
 
             for future in as_completed(list(futures.keys())):
-                tweet_id, current_tier = futures.pop(future)
+                tweet_id = futures.pop(future)
                 try:
                     result = future.result()
                     results.append(result)
-                    if result.signal_tier != current_tier:
-                        conn.execute(
-                            "UPDATE tweets SET signal_tier = ? WHERE id = ?",
-                            (result.signal_tier, tweet_id),
-                        )
+                    row = get_tweet_by_id(conn, tweet_id)
+                    if row:
+                        _save_enrichment_result(conn, tweet_id, row, result)
                 except Exception:
+                    log.exception("Enrichment failed for tweet %s", tweet_id)
                     continue
         finally:
             if text_pool:
