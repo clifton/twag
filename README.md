@@ -244,7 +244,11 @@ twag analyze 1234567890123456789              # Analyze by ID
 twag analyze https://x.com/user/status/123    # Analyze by URL
 twag analyze 1234567890123456789 --reprocess  # Force re-analyze
 twag analyze 1234567890123456789 -m gemini-2.0-flash  # Override model
+twag analyze 1234567890123456789 --reply-depth 2      # Pull thread + reply context
+twag analyze 1234567890123456789 --no-replies          # Skip reply expansion
 ```
+
+`twag analyze` stores the target tweet, the conversation thread returned by `bird thread`, and reply context returned by `bird replies` before processing. Defaults are `--thread`, `--replies`, `--reply-depth 2`, and `--max-reply-nodes 25`; use `--max-pages N` for paged thread/reply fetches.
 
 ### Digest Commands
 

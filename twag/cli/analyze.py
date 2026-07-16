@@ -1,16 +1,23 @@
 """Analyze command."""
 
+from __future__ import annotations
+
 import shutil
 import textwrap
+from collections import deque
+from typing import TYPE_CHECKING
 
 import rich_click as click
 
 from ..article_sections import parse_action_items, parse_primary_points
 from ..article_visuals import build_article_visuals
-from ..db import get_connection, get_tweet_by_id, init_db
+from ..db import get_connection, get_tweet_by_id, get_tweets_by_ids, init_db
 from ._console import console
 from ._helpers import _json_list, _json_object, _normalize_status_id_or_url
 from ._progress import RichProgressReporter, create_progress, make_callbacks
+
+if TYPE_CHECKING:
+    from ..fetcher import Tweet
 
 
 def _analysis_wrap_width() -> int:
@@ -120,11 +127,101 @@ def _print_status_analysis(row) -> None:
         _echo_wrapped(str(row["link_summary"]), initial_indent="- ", subsequent_indent="  ")
 
 
+def _dedupe_tweets(tweets: list[Tweet]) -> list[Tweet]:
+    """Preserve first-seen order while dropping duplicate tweet payloads."""
+    seen: set[str] = set()
+    deduped: list[Tweet] = []
+    for tweet in tweets:
+        if not tweet.id or tweet.id in seen:
+            continue
+        seen.add(tweet.id)
+        deduped.append(tweet)
+    return deduped
+
+
+def _fetch_context_tweets(
+    status_id_or_url: str,
+    target: Tweet,
+    *,
+    include_thread: bool,
+    include_replies: bool,
+    reply_depth: int,
+    max_reply_nodes: int,
+    max_pages: int | None,
+) -> list[Tweet]:
+    """Fetch thread/reply context for one-shot analyze without failing the main read."""
+    from ..fetcher import fetch_replies, fetch_thread
+
+    collected: list[Tweet] = [target]
+    thread_roots: list[Tweet] = [target]
+
+    if include_thread:
+        try:
+            thread_tweets = fetch_thread(status_id_or_url, max_pages=max_pages)
+        except RuntimeError as exc:
+            console.print(f"[yellow]Thread fetch skipped: {exc}[/yellow]")
+        else:
+            if thread_tweets:
+                collected.extend(thread_tweets)
+                thread_roots = _dedupe_tweets(thread_tweets)
+                console.print(f"Thread context: {len(thread_tweets)} tweet(s)")
+
+    if include_replies and reply_depth > 0 and max_reply_nodes > 0:
+        reply_sources_seen: set[str] = set()
+        queue: deque[tuple[Tweet, int]] = deque((tweet, 0) for tweet in thread_roots if tweet.id)
+        reply_sources = 0
+        reply_count = 0
+
+        while queue and reply_sources < max_reply_nodes:
+            tweet, depth = queue.popleft()
+            if not tweet.id or tweet.id in reply_sources_seen or depth >= reply_depth:
+                continue
+            reply_sources_seen.add(tweet.id)
+            reply_sources += 1
+
+            try:
+                replies = fetch_replies(tweet.id, max_pages=max_pages)
+            except RuntimeError as exc:
+                console.print(f"[yellow]Replies skipped for {tweet.id}: {exc}[/yellow]")
+                continue
+            if not replies:
+                continue
+
+            reply_count += len(replies)
+            collected.extend(replies)
+            if depth + 1 < reply_depth:
+                queue.extend((reply, depth + 1) for reply in replies if reply.id)
+
+        if reply_sources:
+            console.print(f"Reply context: {reply_count} tweet(s) from {reply_sources} node(s)")
+
+    return _dedupe_tweets(collected)
+
+
 @click.command()
 @click.argument("status_id_or_url")
 @click.option("--model", "-m", help="Override triage model")
 @click.option("--reprocess/--no-reprocess", default=False, help="Reprocess even if already processed")
-def analyze(status_id_or_url: str, model: str | None, reprocess: bool):
+@click.option("--thread/--no-thread", "include_thread", default=True, help="Fetch conversation thread context")
+@click.option("--replies/--no-replies", "include_replies", default=True, help="Fetch direct replies for context tweets")
+@click.option("--reply-depth", default=2, show_default=True, help="Reply tree depth to fetch for context")
+@click.option(
+    "--max-reply-nodes",
+    default=25,
+    show_default=True,
+    help="Maximum context tweets whose replies are fetched",
+)
+@click.option("--max-pages", type=int, default=None, help="Max paged bird pages for thread/replies")
+def analyze(
+    status_id_or_url: str,
+    model: str | None,
+    reprocess: bool,
+    include_thread: bool,
+    include_replies: bool,
+    reply_depth: int,
+    max_reply_nodes: int,
+    max_pages: int | None,
+):
     """Fetch, process, and print structured analysis for one status."""
     from ..fetcher import read_tweet
     from ..processor import process_unprocessed, store_fetched_tweets
@@ -137,13 +234,23 @@ def analyze(status_id_or_url: str, model: str | None, reprocess: bool):
     if not tweet:
         raise click.ClickException(f"Status not found or unreadable: {status_id_or_url}")
 
+    tweets_to_store = _fetch_context_tweets(
+        status_id_or_url,
+        tweet,
+        include_thread=include_thread,
+        include_replies=include_replies,
+        reply_depth=max(0, reply_depth),
+        max_reply_nodes=max(0, max_reply_nodes),
+        max_pages=max_pages,
+    )
+
     with create_progress() as progress:
-        task_id = progress.add_task("Storing status (0/1)", total=1)
-        reporter = RichProgressReporter(progress, task_id, "Storing status")
-        reporter.set_total(1)
+        task_id = progress.add_task(f"Storing context (0/{len(tweets_to_store)})", total=len(tweets_to_store))
+        reporter = RichProgressReporter(progress, task_id, "Storing context")
+        reporter.set_total(len(tweets_to_store))
         status_cb, progress_cb, _ = make_callbacks(reporter)
         fetched, new = store_fetched_tweets(
-            [tweet],
+            tweets_to_store,
             source="status",
             query_params={"status_id_or_url": status_id_or_url},
             status_cb=status_cb,
@@ -157,19 +264,33 @@ def analyze(status_id_or_url: str, model: str | None, reprocess: bool):
     if not row:
         raise click.ClickException(f"Status not found in database after fetch: {normalized_id}")
 
-    if row["processed_at"] and not reprocess:
-        console.print("Status already processed; using existing analysis (pass --reprocess to refresh).")
+    context_ids = {t.id for t in tweets_to_store if t.id}
+    context_rows = []
+    with get_connection() as conn:
+        context_rows_by_id = get_tweets_by_ids(conn, context_ids)
+        target_id = tweet.id or normalized_id
+        if target_id in context_rows_by_id:
+            context_rows.append(context_rows_by_id[target_id])
+        context_rows.extend(row for tid, row in context_rows_by_id.items() if tid != target_id)
+    rows_to_process = context_rows or [row]
+    if not reprocess:
+        rows_to_process = [context_row for context_row in rows_to_process if not context_row["processed_at"]]
+
+    if not rows_to_process:
+        console.print(
+            "Status and fetched context already processed; using existing analysis (pass --reprocess to refresh).",
+        )
     else:
         with create_progress() as progress:
-            task_id = progress.add_task("Processing status (0/1)", total=1)
-            reporter = RichProgressReporter(progress, task_id, "Processing status")
-            reporter.set_total(1)
+            task_id = progress.add_task(f"Processing context (0/{len(rows_to_process)})", total=len(rows_to_process))
+            reporter = RichProgressReporter(progress, task_id, "Processing context")
+            reporter.set_total(len(rows_to_process))
             status_cb, progress_cb, total_cb = make_callbacks(reporter)
             process_unprocessed(
-                limit=1,
+                limit=len(rows_to_process),
                 dry_run=False,
                 triage_model=model,
-                rows=[row],
+                rows=rows_to_process,
                 progress_cb=progress_cb,
                 status_cb=status_cb,
                 total_cb=total_cb,

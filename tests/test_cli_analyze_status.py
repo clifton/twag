@@ -38,6 +38,35 @@ def _sample_tweet() -> Tweet:
     )
 
 
+def _sample_reply(tweet_id: str = "reply-1", parent_id: str = "2019488673935552978") -> Tweet:
+    return Tweet(
+        id=tweet_id,
+        author_handle="reply_user",
+        author_name="Reply User",
+        content="Context reply",
+        created_at=None,
+        has_quote=False,
+        quote_tweet_id=None,
+        in_reply_to_tweet_id=parent_id,
+        conversation_id=parent_id,
+        has_media=False,
+        media_items=[],
+        has_link=False,
+        is_x_article=False,
+        article_title=None,
+        article_preview=None,
+        article_text=None,
+        is_retweet=False,
+        retweeted_by_handle=None,
+        retweeted_by_name=None,
+        original_tweet_id=None,
+        original_author_handle=None,
+        original_author_name=None,
+        original_content=None,
+        raw={},
+    )
+
+
 @contextmanager
 def _fake_connection(readonly=False):
     yield object()
@@ -113,6 +142,8 @@ def test_analyze_status_success(monkeypatch):
     monkeypatch.setattr(analyze_mod, "init_db", lambda: None)
     monkeypatch.setattr(analyze_mod, "get_connection", _fake_connection)
     monkeypatch.setattr(fetcher_mod, "read_tweet", lambda _status: _sample_tweet())
+    monkeypatch.setattr(fetcher_mod, "fetch_thread", lambda _status, **kwargs: [_sample_tweet()])
+    monkeypatch.setattr(fetcher_mod, "fetch_replies", lambda _status, **kwargs: [])
     monkeypatch.setattr(
         processor_mod,
         "store_fetched_tweets",
@@ -128,6 +159,7 @@ def test_analyze_status_success(monkeypatch):
         )[-1],
     )
     monkeypatch.setattr(analyze_mod, "get_tweet_by_id", lambda _conn, _tweet_id: row)
+    monkeypatch.setattr(analyze_mod, "get_tweets_by_ids", lambda _conn, _ids: {row["id"]: row})
 
     runner = CliRunner()
     result = runner.invoke(cli, ["analyze", "https://x.com/test_user/status/2019488673935552978"])
@@ -161,7 +193,10 @@ def test_analyze_status_skips_processing_when_already_processed(monkeypatch):
     monkeypatch.setattr(analyze_mod, "init_db", lambda: None)
     monkeypatch.setattr(analyze_mod, "get_connection", _fake_connection)
     monkeypatch.setattr(analyze_mod, "get_tweet_by_id", lambda _conn, _tweet_id: row)
+    monkeypatch.setattr(analyze_mod, "get_tweets_by_ids", lambda _conn, _ids: {row["id"]: row})
     monkeypatch.setattr(fetcher_mod, "read_tweet", lambda _status: _sample_tweet())
+    monkeypatch.setattr(fetcher_mod, "fetch_thread", lambda _status, **kwargs: [_sample_tweet()])
+    monkeypatch.setattr(fetcher_mod, "fetch_replies", lambda _status, **kwargs: [])
     monkeypatch.setattr(processor_mod, "store_fetched_tweets", lambda tweets, **kwargs: (len(tweets), 0))
     monkeypatch.setattr(processor_mod, "process_unprocessed", _should_not_run)
 
@@ -169,7 +204,7 @@ def test_analyze_status_skips_processing_when_already_processed(monkeypatch):
     result = runner.invoke(cli, ["analyze", "2019488673935552978"])
 
     assert result.exit_code == 0
-    assert "Status already processed; using existing analysis" in result.output
+    assert "Status and fetched context already processed; using existing analysis" in result.output
 
 
 def test_analyze_status_reprocess_forces_refresh(monkeypatch):
@@ -185,7 +220,10 @@ def test_analyze_status_reprocess_forces_refresh(monkeypatch):
     monkeypatch.setattr(analyze_mod, "get_connection", _fake_connection)
     monkeypatch.setattr(analyze_mod, "get_tweet_by_id", lambda _conn, _tweet_id: row)
     monkeypatch.setattr(fetcher_mod, "read_tweet", lambda _status: _sample_tweet())
+    monkeypatch.setattr(fetcher_mod, "fetch_thread", lambda _status, **kwargs: [_sample_tweet()])
+    monkeypatch.setattr(fetcher_mod, "fetch_replies", lambda _status, **kwargs: [])
     monkeypatch.setattr(processor_mod, "store_fetched_tweets", lambda tweets, **kwargs: (len(tweets), 0))
+    monkeypatch.setattr(analyze_mod, "get_tweets_by_ids", lambda _conn, _ids: {row["id"]: row})
     monkeypatch.setattr(
         processor_mod,
         "process_unprocessed",
@@ -212,6 +250,54 @@ def test_analyze_status_not_found(monkeypatch):
 
     assert result.exit_code == 1
     assert "Status not found or unreadable: 999" in result.output
+
+
+def test_analyze_status_stores_thread_and_reply_context(monkeypatch):
+    """Analyze should pull thread/reply context into storage before processing."""
+    import twag.cli.analyze as analyze_mod
+    import twag.fetcher as fetcher_mod
+    import twag.processor as processor_mod
+
+    row = _sample_row(processed_at=None)
+    target = _sample_tweet()
+    reply = _sample_reply()
+    stored_ids: list[str] = []
+    processed_rows: list[dict] = []
+
+    monkeypatch.setattr(analyze_mod, "init_db", lambda: None)
+    monkeypatch.setattr(analyze_mod, "get_connection", _fake_connection)
+    monkeypatch.setattr(analyze_mod, "get_tweet_by_id", lambda _conn, _tweet_id: row)
+    monkeypatch.setattr(fetcher_mod, "read_tweet", lambda _status: target)
+    monkeypatch.setattr(fetcher_mod, "fetch_thread", lambda _status, **kwargs: [target])
+    monkeypatch.setattr(fetcher_mod, "fetch_replies", lambda _status, **kwargs: [reply])
+
+    def _fake_store(tweets, **kwargs):
+        stored_ids.extend(tweet.id for tweet in tweets)
+        return len(tweets), len(tweets)
+
+    def _fake_get_tweets(_conn, ids):
+        rows = {row["id"]: row}
+        if "reply-1" in ids:
+            reply_row = dict(row)
+            reply_row["id"] = "reply-1"
+            reply_row["author_handle"] = "reply_user"
+            rows["reply-1"] = reply_row
+        return rows
+
+    def _fake_process(**kwargs):
+        processed_rows.extend(kwargs["rows"])
+        return []
+
+    monkeypatch.setattr(processor_mod, "store_fetched_tweets", _fake_store)
+    monkeypatch.setattr(analyze_mod, "get_tweets_by_ids", _fake_get_tweets)
+    monkeypatch.setattr(processor_mod, "process_unprocessed", _fake_process)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["analyze", "2019488673935552978"])
+
+    assert result.exit_code == 0
+    assert stored_ids == ["2019488673935552978", "reply-1"]
+    assert {r["id"] for r in processed_rows} == {"2019488673935552978", "reply-1"}
 
 
 def test_print_status_analysis_wraps_and_labels_long_fields(monkeypatch, capsys):
