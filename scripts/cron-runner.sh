@@ -28,7 +28,7 @@ export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 
 # Validate twag is available
 if ! command -v twag >/dev/null 2>&1; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') [twag] ERROR: twag not found in PATH" >&2
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [twag] ERROR: twag not found in PATH; install with 'uv tool install twag'" >&2
     exit 1
 fi
 
