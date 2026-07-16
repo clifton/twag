@@ -204,6 +204,10 @@ twag process --reprocess-min-score 5     # Min score for reprocessing (default: 
 
 # Process specific tweet
 twag process 1234567890123456789
+
+# Shared signal ledger and scoring calibration
+twag spine emit
+twag eval run
 ```
 
 ### Search Commands
@@ -385,6 +389,8 @@ twag follows XDG defaults:
 | `~/.local/share/twag/twag.db` | SQLite database |
 | `~/.local/share/twag/digests/` | Generated digests |
 | `~/.local/share/twag/following.txt` | Followed accounts |
+| `~/clawd/state/registry/twag-context.md` | Spine-owned scoring context (must be fresh within 48h) |
+| `~/clawd/state/signals/YYYY-MM.jsonl` | Shared append-only signal ledger |
 
 Override with `TWAG_DATA_DIR` environment variable.
 
@@ -394,7 +400,7 @@ Tweets are scored 0-10:
 
 | Score | Signal Level | Behavior |
 |-------|--------------|----------|
-| 8-10 | Alert | Telegram alert (if configured) |
+| 8-10 | Alert | Real-time alert (if configured) |
 | 7 | High signal | Enriched, included in digests |
 | 5-6 | Market relevant | Included in digests |
 | 3-4 | News/context | Searchable, not in digests |
@@ -402,7 +408,7 @@ Tweets are scored 0-10:
 
 ### Categories
 
-`fed_policy`, `inflation`, `job_market`, `macro_data`, `earnings`, `equities`, `rates_fx`, `credit`, `banks`, `consumer_spending`, `capex`, `commodities`, `energy`, `metals_mining`, `geopolitical`, `sanctions`, `tech_business`, `ai_advancement`, `crypto`, `noise`
+The coarse filter taxonomy is single-sourced in `twag/taxonomy.py`.
 
 ## Automation
 
@@ -459,7 +465,10 @@ export TELEGRAM_BOT_TOKEN="your_bot_token"
 export TELEGRAM_CHAT_ID="your_chat_id"
 ```
 
-Tweets scoring 8+ will trigger alerts when you run `twag process --notify`.
+`twag process --notify` alerts on score >= 8, score >= 7 surprises, score >= 6 playbook triggers, and score >= 6 catalyst resolutions. Delivery goes through a bounded ron announce turn, with direct Telegram fallback if ron is unavailable. Configure `notifications.telegram_chat_id` (or `TELEGRAM_CHAT_ID`) and `TELEGRAM_BOT_TOKEN`.
+
+The repository cron wrapper enables notifications, emits signal-event v1 records with `twag spine emit`, checks fund-context and signal-directory health daily, and runs decay/prune at most once per day.
+`twag spine emit` requires the fund's `spine` CLI in `PATH`; `twag doctor` verifies it before scheduled use.
 
 ## OpenClaw Integration
 

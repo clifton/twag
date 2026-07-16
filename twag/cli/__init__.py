@@ -14,6 +14,7 @@ from . import analyze as _analyze_mod
 from . import config_cmd as _config_mod
 from . import db_cmd as _db_mod
 from . import digest as _digest_mod
+from . import eval_cmd as _eval_mod
 from . import fetch as _fetch_mod
 from . import inference as _inference_mod
 from . import init_cmd as _init_mod
@@ -21,6 +22,7 @@ from . import metrics_cmd as _metrics_mod
 from . import narratives as _narratives_mod
 from . import process as _process_mod
 from . import search as _search_mod
+from . import spine as _spine_mod
 from . import stats as _stats_mod
 from . import web as _web_mod
 from .analyze import _analysis_wrap_width as _analysis_wrap_width
@@ -42,6 +44,7 @@ cli.add_command(_fetch_mod.fetch)
 cli.add_command(_process_mod.process)
 cli.add_command(_analyze_mod.analyze)
 cli.add_command(_digest_mod.digest)
+cli.add_command(_eval_mod.eval_group)
 cli.add_command(_accounts_mod.accounts)
 cli.add_command(_narratives_mod.narratives)
 cli.add_command(_stats_mod.stats)
@@ -50,6 +53,7 @@ cli.add_command(_stats_mod.export)
 cli.add_command(_config_mod.config)
 cli.add_command(_db_mod.db)
 cli.add_command(_search_mod.search)
+cli.add_command(_spine_mod.spine)
 cli.add_command(_web_mod.web)
 cli.add_command(_metrics_mod.metrics)
 cli.add_command(_inference_mod.inference)

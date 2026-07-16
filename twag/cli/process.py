@@ -33,7 +33,7 @@ def process(
     reprocess_min_score: float | None,
 ):
     """Process unscored tweets through LLM."""
-    from ..notifier import notify_high_signal_tweet
+    from ..notifier import notify_high_signal_tweet, should_alert
     from ..processor import process_unprocessed, reprocess_today_quoted
 
     init_db()
@@ -98,25 +98,36 @@ def process(
             for r in high_signal[:5]:
                 console.print(f"  [{r.score:.1f}] {', '.join(r.categories)}: {r.summary[:60]}")
 
-                # Send notification if enabled
-                if notify and not dry_run:
-                    # Get tweet content from DB
-                    with get_connection() as conn:
-                        cursor = conn.execute(
-                            "SELECT content, author_handle FROM tweets WHERE id = ?",
-                            (r.tweet_id,),
-                        )
-                        row = cursor.fetchone()
-                        if row:
-                            notify_high_signal_tweet(
-                                tweet_id=r.tweet_id,
-                                author_handle=row["author_handle"],
-                                content=row["content"],
-                                score=r.score,
-                                category=r.categories,
-                                summary=r.summary,
-                                tickers=r.tickers,
-                            )
+        if notify and not dry_run:
+            for result in results:
+                if not should_alert(
+                    result.score,
+                    getattr(result, "surprise", 0),
+                    getattr(result, "playbook_trigger", None),
+                    getattr(result, "catalyst_status", None),
+                    alert_threshold=cfg["scoring"]["alert_threshold"],
+                ):
+                    continue
+                with get_connection() as conn:
+                    cursor = conn.execute(
+                        "SELECT content, author_handle FROM tweets WHERE id = ?",
+                        (result.tweet_id,),
+                    )
+                    row = cursor.fetchone()
+                if row:
+                    notify_high_signal_tweet(
+                        tweet_id=result.tweet_id,
+                        author_handle=row["author_handle"],
+                        content=row["content"],
+                        score=result.score,
+                        category=result.categories,
+                        summary=result.summary,
+                        tickers=result.tickers,
+                        surprise=getattr(result, "surprise", 0),
+                        playbook_trigger=getattr(result, "playbook_trigger", None),
+                        catalyst_status=getattr(result, "catalyst_status", None),
+                        themes=getattr(result, "themes", []),
+                    )
 
     if target_tweet_id and reprocess_quotes:
         console.print("Skipping dependency reprocessing for single-status mode.")

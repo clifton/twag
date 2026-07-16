@@ -189,6 +189,7 @@ def _call_gemini(
     max_tokens: int = 2048,
     reasoning: str | None = None,
     component: str = "unknown",
+    json_schema: dict[str, Any] | None = None,
 ) -> str:
     """Call Gemini API and return text response."""
     from google.genai import types
@@ -202,6 +203,9 @@ def _call_gemini(
         client = get_gemini_client()
 
         config_kwargs: dict = {"max_output_tokens": max_tokens}
+        if json_schema is not None:
+            config_kwargs["response_mime_type"] = "application/json"
+            config_kwargs["response_json_schema"] = json_schema
 
         # Add thinking config if reasoning is specified
         if reasoning:
@@ -283,6 +287,7 @@ def _call_deepseek(
     max_tokens: int = 2048,
     reasoning: str | None = None,
     component: str = "unknown",
+    json_schema: dict[str, Any] | None = None,
 ) -> str:
     """Call DeepSeek's OpenAI-compatible Chat Completions API and return text."""
     import httpx
@@ -304,8 +309,31 @@ def _call_deepseek(
         if effort:
             payload["reasoning_effort"] = effort
 
+        endpoint = "https://api.deepseek.com/chat/completions"
+        if json_schema is not None:
+            endpoint = "https://api.deepseek.com/beta/chat/completions"
+            payload["thinking"] = {"type": "disabled"}
+            payload.pop("reasoning_effort", None)
+            payload["tools"] = [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "emit_result",
+                        "description": "Return the structured result for this request.",
+                        "strict": True,
+                        "parameters": {
+                            "type": "object",
+                            "properties": {"result": json_schema},
+                            "required": ["result"],
+                            "additionalProperties": False,
+                        },
+                    },
+                },
+            ]
+            payload["tool_choice"] = {"type": "function", "function": {"name": "emit_result"}}
+
         response = httpx.post(
-            "https://api.deepseek.com/chat/completions",
+            endpoint,
             headers={
                 "Authorization": f"Bearer {get_deepseek_api_key()}",
                 "Content-Type": "application/json",
@@ -343,6 +371,32 @@ def _call_deepseek(
                 if isinstance(first_choice, dict):
                     message = first_choice.get("message")
                     if isinstance(message, dict):
+                        if json_schema is not None:
+                            tool_calls = message.get("tool_calls")
+                            if isinstance(tool_calls, list) and tool_calls:
+                                function = tool_calls[0].get("function") if isinstance(tool_calls[0], dict) else None
+                                if isinstance(function, dict) and function.get("name") == "emit_result":
+                                    arguments = function.get("arguments")
+                                    if isinstance(arguments, str):
+                                        parsed_arguments = json.loads(arguments)
+                                        content = json.dumps(parsed_arguments["result"])
+                                        _record_llm_usage(
+                                            component=component,
+                                            provider="deepseek",
+                                            model=model,
+                                            prompt=prompt,
+                                            max_tokens=max_tokens,
+                                            latency_seconds=latency,
+                                            success=True,
+                                            response_text=content,
+                                            input_tokens=input_tokens,
+                                            output_tokens=output_tokens,
+                                            reasoning_tokens=reasoning_tokens,
+                                            cached_input_tokens=cached_tokens,
+                                            total_tokens=total_tokens,
+                                            metadata={"usage": usage} if usage else None,
+                                        )
+                                        return content
                         content = message.get("content")
                         if isinstance(content, str):
                             _record_llm_usage(
@@ -525,14 +579,29 @@ def _call_llm(
     max_tokens: int = 2048,
     reasoning: str | None = None,
     component: str = "unknown",
+    json_schema: dict[str, Any] | None = None,
 ) -> str:
     """Call LLM based on provider."""
 
     def _invoke() -> str:
         if provider == "gemini":
-            return _call_gemini(model, prompt, max_tokens, reasoning=reasoning, component=component)
+            return _call_gemini(
+                model,
+                prompt,
+                max_tokens,
+                reasoning=reasoning,
+                component=component,
+                json_schema=json_schema,
+            )
         if provider == "deepseek":
-            return _call_deepseek(model, prompt, max_tokens, reasoning=reasoning, component=component)
+            return _call_deepseek(
+                model,
+                prompt,
+                max_tokens,
+                reasoning=reasoning,
+                component=component,
+                json_schema=json_schema,
+            )
         if provider == "anthropic":
             return _call_anthropic(model, prompt, max_tokens, component=component)
         raise ValueError(f"Unsupported LLM provider: {provider}")

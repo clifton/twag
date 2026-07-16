@@ -161,6 +161,20 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
     if "quote_reprocessed_at" not in tweet_columns:
         conn.execute("ALTER TABLE tweets ADD COLUMN quote_reprocessed_at TIMESTAMP")
 
+    additive_tweet_columns = {
+        "surprise": "INTEGER",
+        "is_stale_repeat": "INTEGER",
+        "themes": "TEXT",
+        "playbook_trigger": "TEXT",
+        "catalyst_status": "TEXT",
+        "direction": "TEXT",
+        "story_key": "TEXT",
+        "signal_emitted_at": "TEXT",
+    }
+    for column, column_type in additive_tweet_columns.items():
+        if column not in tweet_columns:
+            conn.execute(f"ALTER TABLE tweets ADD COLUMN {column} {column_type}")
+
     # Check accounts table columns
     cursor = conn.execute("PRAGMA table_info(accounts)")
     account_columns = {row[1] for row in cursor.fetchall()}
@@ -200,6 +214,7 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_tweets_author ON tweets(author_handle)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_tweets_signal_tier ON tweets(signal_tier)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_tweets_bookmarked ON tweets(bookmarked) WHERE bookmarked = 1")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_tweets_story_key ON tweets(story_key)")
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_tweets_quote ON tweets(quote_tweet_id) WHERE quote_tweet_id IS NOT NULL",
     )

@@ -58,6 +58,9 @@ version-file = "twag/_version.py"
 [tool.hatch.build.targets.wheel]
 packages = ["twag"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"tests/eval/golden.jsonl" = "twag/data/golden.jsonl"
+
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",

@@ -1,7 +1,10 @@
 """Time utility functions for database queries."""
 
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
+
+EASTERN = ZoneInfo("America/New_York")
 
 
 def _get_et_offset() -> timedelta:
@@ -64,6 +67,22 @@ def get_market_day_cutoff() -> datetime:
     # Convert back to UTC
     cutoff_utc = cutoff_et - et_offset
     return cutoff_utc.replace(tzinfo=timezone.utc)
+
+
+def get_et_date(now: datetime | None = None) -> date:
+    """Return the current market-calendar date in US Eastern Time."""
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    return current.astimezone(EASTERN).date()
+
+
+def get_et_day_bounds(day: str) -> tuple[datetime, datetime]:
+    """Return UTC bounds for one YYYY-MM-DD Eastern calendar day."""
+    parsed = datetime.strptime(day, "%Y-%m-%d").date()
+    start_et = datetime.combine(parsed, datetime.min.time(), tzinfo=EASTERN)
+    end_et = start_et + timedelta(days=1)
+    return start_et.astimezone(timezone.utc), end_et.astimezone(timezone.utc)
 
 
 def parse_time_range(spec: str) -> tuple[datetime | None, datetime | None]:

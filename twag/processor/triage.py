@@ -29,6 +29,8 @@ from ..scorer import (
     TriageResult,
     analyze_media,
     enrich_tweet,
+    load_fund_context,
+    resolve_triage_template,
     summarize_document_text,
     summarize_tweet,
     summarize_x_article,
@@ -414,30 +416,48 @@ def _triage_rows(
     vision_provider = config["llm"].get("vision_provider")
     analysis_min_score = config.get("scoring", {}).get("min_score_for_analysis", 6)
     article_min_score = config.get("scoring", {}).get("min_score_for_article_processing", 5)
+    # Pre-fetch author priors for both triage context and enrichment.
+    author_handles = {row["author_handle"] for row in tweet_rows}
+    account_categories: dict[str, str | None] = {}
+    account_context: dict[str, str] = {}
+    if author_handles:
+        placeholders = ",".join("?" for _ in author_handles)
+        acct_cursor = conn.execute(
+            f"SELECT handle, category, tier, avg_relevance_score FROM accounts WHERE handle IN ({placeholders})",
+            tuple(author_handles),
+        )
+        for account in acct_cursor.fetchall():
+            handle = account["handle"]
+            category = account["category"]
+            account_categories[handle] = category
+            parts = []
+            if account["tier"] is not None:
+                parts.append(f"tier-{account['tier']}")
+            if category:
+                parts.append(str(category))
+            if account["avg_relevance_score"] is not None:
+                parts.append(f"prior {float(account['avg_relevance_score']):.1f}")
+            account_context[handle] = ", ".join(parts) or "unranked"
+
     tweets_for_triage = []
     tweet_map: dict[str, sqlite3.Row] = {}
-
     for row in tweet_rows:
         tweet_id = row["id"]
+        handle = row["author_handle"]
         tweets_for_triage.append(
             {
                 "id": tweet_id,
                 "text": _build_triage_text(row),
-                "handle": row["author_handle"],
+                "handle": handle,
+                "author_context": account_context.get(handle, "unranked"),
             },
         )
         tweet_map[tweet_id] = row
 
-    # Pre-fetch account categories to avoid per-row SELECT in _submit_enrichment.
-    author_handles = {row["author_handle"] for row in tweet_rows}
-    account_categories: dict[str, str | None] = {}
-    if author_handles:
-        placeholders = ",".join("?" for _ in author_handles)
-        acct_cursor = conn.execute(
-            f"SELECT handle, category FROM accounts WHERE handle IN ({placeholders})",
-            tuple(author_handles),
-        )
-        account_categories = {r["handle"]: r["category"] for r in acct_cursor.fetchall()}
+    prompt_template = resolve_triage_template(conn)
+    fund_context, context_stale = load_fund_context()
+    if context_stale:
+        m.inc("pipeline.triage.context_stale")
 
     all_results: list[TriageResult] = []
 
@@ -627,6 +647,12 @@ def _triage_rows(
                 summary=result.summary,
                 signal_tier=tier,
                 tickers=result.tickers,
+                surprise=result.surprise,
+                is_stale_repeat=result.is_stale_repeat,
+                themes=result.themes,
+                playbook_trigger=result.playbook_trigger,
+                catalyst_status=result.catalyst_status,
+                direction=result.direction,
             )
 
             if not tweet_row:
@@ -757,7 +783,14 @@ def _triage_rows(
                 if status_cb:
                     status_cb(f"Queue batch {batch_index}/{total_batches}")
                 batch = tweets_for_triage[i : i + batch_size]
-                future = triage_pool.submit(triage_tweets_batch, batch, triage_model, None)
+                future = triage_pool.submit(
+                    triage_tweets_batch,
+                    batch,
+                    triage_model,
+                    None,
+                    prompt_template=prompt_template,
+                    fund_context=fund_context,
+                )
                 batch_futures[future] = (batch_index, len(batch))
 
             for future in as_completed(batch_futures):
@@ -783,7 +816,12 @@ def _triage_rows(
                 if status_cb:
                     status_cb(f"Scoring batch {batch_index}/{total_batches}")
                 batch = tweets_for_triage[i : i + batch_size]
-                results = triage_tweets_batch(batch, model=triage_model)
+                results = triage_tweets_batch(
+                    batch,
+                    model=triage_model,
+                    prompt_template=prompt_template,
+                    fund_context=fund_context,
+                )
                 all_results.extend(results)
                 _handle_results(results)
 

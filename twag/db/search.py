@@ -26,6 +26,12 @@ class SearchResult:
     tickers: list[str]
     bookmarked: bool
     rank: float  # BM25 rank score (lower is more relevant)
+    surprise: int | None = None
+    themes: list[str] | None = None
+    playbook_trigger: str | None = None
+    catalyst_status: str | None = None
+    direction: str | None = None
+    story_key: str | None = None
 
 
 @dataclass
@@ -69,6 +75,12 @@ class FeedTweet:
     original_author_name: str | None
     original_content: str | None
     reactions: list[str]  # Reaction types for this tweet
+    surprise: int | None = None
+    themes: list[str] | None = None
+    playbook_trigger: str | None = None
+    catalyst_status: str | None = None
+    direction: str | None = None
+    story_key: str | None = None
 
 
 # Keywords that suggest equity-relevant context (for auto-today default)
@@ -235,6 +247,12 @@ def search_tweets(
             t.signal_tier,
             t.tickers,
             t.bookmarked,
+            t.surprise,
+            t.themes,
+            t.playbook_trigger,
+            t.catalyst_status,
+            t.direction,
+            t.story_key,
             bm25(tweets_fts) as rank
         FROM tweets_fts
         JOIN tweets t ON tweets_fts.rowid = t.rowid
@@ -277,6 +295,16 @@ def search_tweets(
         else:
             categories = []
 
+        themes_raw = row["themes"]
+        themes = []
+        if themes_raw:
+            try:
+                decoded_themes = json.loads(themes_raw)
+                if isinstance(decoded_themes, list):
+                    themes = [str(theme) for theme in decoded_themes]
+            except json.JSONDecodeError:
+                themes = []
+
         results.append(
             SearchResult(
                 id=row["id"],
@@ -291,6 +319,12 @@ def search_tweets(
                 tickers=tickers,
                 bookmarked=bool(row["bookmarked"]),
                 rank=row["rank"],
+                surprise=row["surprise"],
+                themes=themes,
+                playbook_trigger=row["playbook_trigger"],
+                catalyst_status=row["catalyst_status"],
+                direction=row["direction"],
+                story_key=row["story_key"],
             ),
         )
 
@@ -404,6 +438,15 @@ def get_feed_tweets(
         else:
             tickers = []
 
+        themes = []
+        if row["themes"]:
+            try:
+                decoded_themes = json.loads(row["themes"])
+                if isinstance(decoded_themes, list):
+                    themes = [str(theme) for theme in decoded_themes]
+            except json.JSONDecodeError:
+                themes = []
+
         # Parse created_at
         created_at = None
         if row["created_at"]:
@@ -507,6 +550,12 @@ def get_feed_tweets(
                 original_author_name=row["original_author_name"],
                 original_content=row["original_content"],
                 reactions=reactions,
+                surprise=row["surprise"],
+                themes=themes,
+                playbook_trigger=row["playbook_trigger"],
+                catalyst_status=row["catalyst_status"],
+                direction=row["direction"],
+                story_key=row["story_key"],
             ),
         )
 

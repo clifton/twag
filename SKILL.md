@@ -12,7 +12,7 @@ metadata:
   openclaw:
     emoji: "📊"
     requires:
-      bins: ["twag", "bird"]
+      bins: ["twag", "bird", "spine"]
       env: ["GEMINI_API_KEY", "AUTH_TOKEN", "CT0"]
     install:
       - id: uv
@@ -218,6 +218,9 @@ twag process --dry-run        # Preview
 twag process --notify         # Send alerts
 twag process --no-reprocess-quotes     # Skip reprocessing dependency tweets
 twag process --reprocess-min-score 5   # Min score for reprocessing (default: 3)
+
+twag spine emit              # Append eligible signal-event v1 records
+twag eval run                # Run the versioned scoring golden set
 ```
 
 ### Digest
@@ -297,7 +300,7 @@ twag config set scoring.min_score_for_analysis 6
 
 | Score | Level | Behavior |
 |-------|-------|----------|
-| 8-10 | Alert | Telegram alert |
+| 8-10 | Alert | Real-time alert |
 | 7 | High signal | Enriched, in digests |
 | 5-6 | Market relevant | In digests |
 | 3-4 | News/context | Searchable |
@@ -305,7 +308,7 @@ twag config set scoring.min_score_for_analysis 6
 
 ## Categories
 
-`fed_policy`, `inflation`, `job_market`, `macro_data`, `earnings`, `equities`, `rates_fx`, `credit`, `banks`, `consumer_spending`, `capex`, `commodities`, `energy`, `metals_mining`, `geopolitical`, `sanctions`, `tech_business`, `ai_advancement`, `crypto`, `noise`
+The coarse filter taxonomy is single-sourced in `twag/taxonomy.py`.
 
 ## Environment Variables
 
@@ -319,18 +322,11 @@ twag config set scoring.min_score_for_analysis 6
 | `TELEGRAM_BOT_TOKEN` | No | Alerts |
 | `TELEGRAM_CHAT_ID` | No | Alert destination |
 
-## Telegram Digest Format
-
-When sending digests to Telegram, follow [{baseDir}/TELEGRAM_DIGEST_FORMAT.md]({baseDir}/TELEGRAM_DIGEST_FORMAT.md):
-
-- Use `twag search --time Xh -s 6 -f json -n 50` for structured input
-- Group tweets by theme (don't list chronologically)
-- Use `**BOLD CAPS**` for section headers (no markdown `###`)
-- Use `•` for bullet points
-- Citations: `[📊](url)` when `has_media: true`, `[🔗](url)` otherwise
-- Condense multiple tweets on same topic into bullets
-- Extract key facts and numbers
-- Use `delivery.mode: "direct"` in cron jobs to preserve `[🔗](url)` and `[📊](url)` links
+## Digest interpretation (JSON from twag search)
+Read /home/clifton/clawd/MARKET_SUMMARY_FORMAT.md and follow it exactly; it is the single house style.
+Two tiers: full bullets for score >= 6. Tweets scoring 5 get at most a final "ALSO NOTED" section of one-line bullets, max 6 lines; skip it entirely if thin.
+If any tweet has catalyst_status "resolved" touching an owned or watchlist instrument, lead the digest with a one-line ⚠️ RESOLVED flag for it.
+If a tweet was already alerted in real time, still include it — the digest is the record.
 
 ## Automation
 
