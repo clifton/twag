@@ -869,6 +869,17 @@ class TestFetchFunctions:
         with pytest.raises(RuntimeError, match=r"bird (thread|replies) failed"):
             fetch("123")
 
+    def test_fetch_search_can_skip_hydration_and_bound_timeout(self, mock_run_bird, single_tweet_json):
+        """Live search can avoid sequential retweet reads and cap the bird call."""
+        mock_run_bird.return_value = (json.dumps([single_tweet_json]), "", 0)
+
+        with patch("twag.fetcher.bird_cli._hydrate_truncated_retweets") as hydrate:
+            tweets = fetch_search("query", hydrate_retweets=False, timeout=30)
+
+        assert len(tweets) == 1
+        hydrate.assert_not_called()
+        assert mock_run_bird.call_args.kwargs["timeout"] == 30
+
     def test_fetch_bookmarks_success(self, mock_run_bird, single_tweet_json):
         """Successful bookmarks fetch."""
         mock_run_bird.return_value = (json.dumps([single_tweet_json]), "", 0)

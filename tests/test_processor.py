@@ -96,6 +96,62 @@ def test_process_unprocessed_expands_links_and_persists_before_triage(monkeypatc
         assert row["links_expanded_at"] is not None
 
 
+def test_process_unprocessed_triage_only_skips_context_enrichment(monkeypatch, tmp_path) -> None:
+    """Live-search triage should not expand dependencies, links, or enrichment."""
+    db_path = tmp_path / "twag_process_triage_only.db"
+    init_db(db_path)
+
+    with get_connection(db_path) as conn:
+        insert_tweet(
+            conn,
+            tweet_id="live-1",
+            author_handle="live_user",
+            content="Fresh result https://t.co/ext",
+            created_at=_FIXED_TS,
+            source="search",
+            has_link=True,
+            links=[{"url": "https://t.co/ext", "expanded_url": "https://t.co/ext"}],
+        )
+        conn.commit()
+
+    monkeypatch.setattr(pipeline_mod, "get_connection", lambda: get_connection(db_path))
+    monkeypatch.setattr(
+        pipeline_mod,
+        "load_config",
+        lambda: {
+            "scoring": {"batch_size": 10, "high_signal_threshold": 7, "min_score_for_media": 3},
+            "fetch": {"quote_depth": 3, "quote_delay": 1.0},
+            "processing": {"max_concurrency_url_expansion": 4},
+        },
+    )
+    monkeypatch.setattr(
+        pipeline_mod,
+        "_expand_unprocessed_with_dependencies",
+        lambda *args, **kwargs: pytest.fail("dependency expansion should be skipped"),
+    )
+    monkeypatch.setattr(
+        pipeline_mod,
+        "_expand_links_for_rows",
+        lambda *args, **kwargs: pytest.fail("link expansion should be skipped"),
+    )
+
+    captured = {}
+
+    def _fake_triage_rows(_conn, **kwargs):
+        captured.update(kwargs)
+        return []
+
+    monkeypatch.setattr(pipeline_mod, "_triage_rows", _fake_triage_rows)
+
+    results = pipeline_mod.process_unprocessed(limit=10, triage_only=True)
+
+    assert results == []
+    assert captured["update_stats"] is False
+    assert captured["allow_summarize"] is False
+    assert captured["media_min_score"] is None
+    assert captured["enrich_results"] is False
+
+
 def test_process_unprocessed_skips_already_expanded_links(monkeypatch, tmp_path) -> None:
     db_path = tmp_path / "twag_process_skip_expanded_links.db"
     init_db(db_path)
