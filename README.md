@@ -19,6 +19,16 @@ Example telegram notification. Chart emojis are links to tweets that have charts
 
 ## Prerequisites
 
+### uv (Required)
+
+twag uses [uv](https://docs.astral.sh/uv/) for installation and development environments. Install uv, then verify it is
+available:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv --version
+```
+
 ### bird CLI (Required)
 
 twag uses [bird](https://github.com/steipete/bird) to access Twitter/X. Install it first:
@@ -91,27 +101,28 @@ export DEEPSEEK_API_KEY="your_deepseek_key"    # optional
 
 ## Installation
 
-### From PyPI (Recommended)
+### Global CLI from PyPI (Recommended)
 
 ```bash
-pip install twag
+uv tool install twag
 ```
+
+If `twag` is not on `PATH`, run `uv tool update-shell` and restart the shell. Upgrade later with
+`uv tool upgrade twag`.
 
 ### From Source
 
 ```bash
 git clone https://github.com/clifton/twag.git
 cd twag
-pip install -e .
+uv tool install --editable .
 ```
 
-### Using uv
+`uv tool install` creates the global `twag` launcher in uv's tool environment, so normal user and automation commands
+remain `twag ...` while dependency and Python management stay with uv. Inside a source checkout, use `uv run twag ...`
+when you want the checkout's locked development environment instead of the global tool.
 
-```bash
-uv pip install twag
-# or from source
-uv pip install -e .
-```
+Reinstall an editable source tool after dependency or entry-point changes with `uv tool install --force --editable .`.
 
 ## Quick Start
 
@@ -406,7 +417,7 @@ After=network.target
 
 [Service]
 Type=oneshot
-ExecStart=%h/.local/bin/twag fetch && %h/.local/bin/twag process
+ExecStart=/bin/bash -lc '%h/.local/bin/twag fetch && %h/.local/bin/twag process'
 WorkingDirectory=%h
 EnvironmentFile=%h/.env
 ```
@@ -550,15 +561,18 @@ twag db restore backup.sql --force
 ## Development
 
 ```bash
-# Install dev dependencies
-pip install -e ".[dev]"
+# Install the locked project and dev dependencies
+uv sync --group dev
+
+# Run the checkout's CLI
+uv run twag --version
 
 # Run tests
-pytest
+uv run pytest
 
 # Lint and format
-ruff check .
-ruff format .
+uv run ruff check .
+uv run ruff format .
 
 # Frontend development
 cd twag/web/frontend

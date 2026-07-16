@@ -15,11 +15,11 @@ metadata:
       bins: ["twag", "bird"]
       env: ["GEMINI_API_KEY", "AUTH_TOKEN", "CT0"]
     install:
-      - id: pip
-        kind: pip
+      - id: uv
+        kind: uv
         package: twag
         bins: ["twag"]
-        label: "Install twag (pip)"
+        label: "Install twag (uv tool)"
       - id: bird-npm
         kind: node
         package: "@steipete/bird"
@@ -75,15 +75,18 @@ Verify auth: `bird whoami`
 ### Step 3: Install twag
 
 ```bash
-pip install twag
+uv tool install twag
 ```
 
 Or from source:
 
 ```bash
 git clone https://github.com/clifton/twag.git
-cd twag && pip install -e .
+cd twag && uv tool install --editable .
 ```
+
+The global `twag` launcher is managed by uv. Inside a development checkout, use `uv run twag ...` to run against the
+checkout and its locked environment.
 
 ### Step 4: Initialize and verify
 
