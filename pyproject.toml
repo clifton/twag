@@ -108,6 +108,9 @@ allowed-unresolved-imports = ["google.*", "google.**", "anthropic.*", "anthropic
 
 [tool.ty.rules]
 possibly-missing-attribute = "ignore"
+# The pinned ty needs the inline `ty: ignore` comments that newer ty versions
+# (uvx in the pre-commit hook) report as unused; don't fail on the skew.
+unused-ignore-comment = "ignore"
 
 # Scripts use monkey-patching and aren't part of the library
 [[tool.ty.overrides]]
