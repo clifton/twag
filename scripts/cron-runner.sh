@@ -111,11 +111,21 @@ run_cmd() {
     return 0
 }
 
-CTX="$HOME/clawd/state/registry/twag-context.md"
+# Mirror load_fund_context (twag/scorer/scoring.py): scoring reads the freshest of
+# the spine-generated CONTEXT.md and the stopgap twag-context.md, so only alert when
+# BOTH are missing or stale >48h.
+CTX_GENERATED="$HOME/clawd/state/registry/CONTEXT.md"
+CTX_STOPGAP="$HOME/clawd/state/registry/twag-context.md"
 CTX_STAMP="$LOG_DIR/.ctx-check-$(date +%Y-%m-%d)"
 if [ ! -f "$CTX_STAMP" ]; then
-    if [ ! -f "$CTX" ] || [ -n "$(find "$CTX" -mmin +2880 2>/dev/null)" ]; then
-        notify_error "twag: fund-context file missing or stale >48h ($CTX) — scoring degraded"
+    ctx_fresh=""
+    for ctx in "$CTX_GENERATED" "$CTX_STOPGAP"; do
+        if [ -f "$ctx" ] && [ -z "$(find "$ctx" -mmin +2880 2>/dev/null)" ]; then
+            ctx_fresh="yes"
+        fi
+    done
+    if [ -z "$ctx_fresh" ]; then
+        notify_error "twag: fund-context missing or stale >48h ($CTX_GENERATED and $CTX_STOPGAP) — scoring degraded"
     fi
     run_cmd "doctor" twag doctor --quiet || true
     touch "$CTX_STAMP"

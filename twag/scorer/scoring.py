@@ -164,6 +164,17 @@ def resolve_triage_template(conn: sqlite3.Connection) -> str:
     return BATCH_TRIAGE_PROMPT
 
 
+def resolve_fund_context_path() -> Path:
+    """Pick the context file scoring will read: the freshest existing candidate.
+
+    The spine repo only regenerates GENERATED_FUND_CONTEXT_PATH (CONTEXT.md);
+    FUND_CONTEXT_PATH (twag-context.md) is a hand-seeded stopgap. Any freshness
+    monitoring must evaluate this same candidate set.
+    """
+    candidates = [candidate for candidate in (GENERATED_FUND_CONTEXT_PATH, FUND_CONTEXT_PATH) if candidate.exists()]
+    return max(candidates, key=lambda candidate: candidate.stat().st_mtime) if candidates else FUND_CONTEXT_PATH
+
+
 def load_fund_context(
     path: Path | None = None,
     *,
@@ -172,13 +183,7 @@ def load_fund_context(
     """Load fresh fund context; stale or unreadable context degrades to empty."""
     import time
 
-    if path is not None:
-        context_path = path
-    else:
-        candidates = [candidate for candidate in (GENERATED_FUND_CONTEXT_PATH, FUND_CONTEXT_PATH) if candidate.exists()]
-        context_path = (
-            max(candidates, key=lambda candidate: candidate.stat().st_mtime) if candidates else FUND_CONTEXT_PATH
-        )
+    context_path = path if path is not None else resolve_fund_context_path()
     try:
         stat = context_path.stat()
         if time.time() - stat.st_mtime > max_age_seconds:

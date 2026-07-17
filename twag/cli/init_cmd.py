@@ -215,18 +215,22 @@ def doctor(quiet: bool):
         console.print("  [dim]INFO[/dim] Telegram not configured (optional)")
 
     # 8. Check fund context freshness. Scoring degrades safely, but cron health must fail loudly.
-    context_path = os.path.expanduser("~/clawd/state/registry/twag-context.md")
+    # Evaluate the same candidate set as load_fund_context (freshest of the spine-generated
+    # CONTEXT.md and the stopgap twag-context.md) so we only flag what scoring actually reads.
+    from ..scorer import resolve_fund_context_path
+
+    context_path = resolve_fund_context_path()
     console.print(f"\nFund context: {context_path}")
     try:
-        context_age = time.time() - os.stat(context_path).st_mtime
+        context_age = time.time() - context_path.stat().st_mtime
         if context_age > 48 * 60 * 60:
             console.print(f"  {status_icon(False)} Context is stale (>48h)")
-            issues.append("Regenerate the spine-owned twag context file")
+            issues.append("Regenerate the spine-owned CONTEXT.md fund context file")
         else:
             console.print(f"  {status_icon(True)} Context is fresh")
     except OSError:
         console.print(f"  {status_icon(False)} Context file missing")
-        issues.append("Generate ~/clawd/state/registry/twag-context.md")
+        issues.append("Generate ~/clawd/state/registry/CONTEXT.md")
 
     # 9. Check the signal ledger destination without creating spine-owned state.
     signals_dir = os.path.expanduser("~/clawd/state/signals")

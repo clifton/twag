@@ -36,7 +36,7 @@ SURPRISE (integer):
 - 1 = new datapoint, roughly in line with expectations but additive.
 - 0 = narrative, opinion, or repetition; no new information about the world.
 
-PLAYBOOK TRIGGERS — set playbook_trigger to the FIRST that clearly matches, else null. Match conservatively; a trigger requires the tweet's own facts, not your extrapolation:
+PLAYBOOK TRIGGERS — set playbook_trigger to the FIRST that clearly matches, else "none". Match conservatively; a trigger requires the tweet's own facts, not your extrapolation:
 - "supply_shock": confirmed physical supply loss >1-2% of global supply of a traded commodity (outage, force majeure, export ban, blockade) within roughly the last 48h.
 - "supercycle": commodity or physical-good spot price up ~20%+ over ~3 months WITH producer margin expansion or capacity-discipline evidence.
 - "vol_substitution": the tweet itself states that the direct expression of a shock has rich vol (IV spiking or >80th percentile) while a correlated FX/rates expression is still cheap (<50th percentile). Expect this to be rare — match only when the tweet carries the configuration.
@@ -53,9 +53,9 @@ Tweets (each line is "[id] @handle (author context): text"):
 {tweets}
 
 Return a JSON array with one object per tweet, in order:
-[{"id": "tweet_id", "score": 7, "surprise": 1, "is_stale_repeat": false, "categories": ["commodities"], "themes": ["ai-memory"], "playbook_trigger": null, "catalyst": null, "direction": "long", "tickers": ["MU"], "summary": "The compressed fact: numbers, dates, tickers."}]
+[{"id": "tweet_id", "score": 7, "surprise": 1, "is_stale_repeat": false, "categories": ["commodities"], "themes": ["ai-memory"], "playbook_trigger": "none", "catalyst": "none", "direction": "long", "tickers": ["MU"], "summary": "The compressed fact: numbers, dates, tickers."}]
 
-- "catalyst": "scheduled" if the tweet adds or moves a dated future event relevant to fund context; "resolved" if it resolves or kills a known catalyst or crisis premium; else null.
+- "catalyst": "scheduled" if the tweet adds or moves a dated future event relevant to fund context; "resolved" if it resolves or kills a known catalyst or crisis premium; else "none".
 - "direction": "long" or "short" when the tweet's own facts clearly imply a directional read for the named tickers or theme; "na" when unclear or two-sided.
 - "summary" is the fact itself, telegraphic, never commentary about the tweet.
 """

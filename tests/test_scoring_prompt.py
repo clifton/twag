@@ -108,6 +108,26 @@ def test_generated_spine_context_wins_over_stopgap(monkeypatch, tmp_path):
     assert load_fund_context(max_age_seconds=60) == ("generated", False)
 
 
+def test_freshness_breaches_only_when_both_candidates_stale(monkeypatch, tmp_path):
+    import twag.scorer.scoring as scoring
+
+    stopgap = tmp_path / "twag-context.md"
+    generated = tmp_path / "CONTEXT.md"
+    stopgap.write_text("stopgap")
+    generated.write_text("generated")
+    os.utime(stopgap, (1, 1))
+    monkeypatch.setattr(scoring, "FUND_CONTEXT_PATH", stopgap)
+    monkeypatch.setattr(scoring, "GENERATED_FUND_CONTEXT_PATH", generated)
+
+    # Stopgap permanently aging is healthy as long as the generated file is fresh.
+    assert scoring.resolve_fund_context_path() == generated
+    assert load_fund_context(max_age_seconds=60) == ("generated", False)
+
+    # Both candidates stale -> degraded.
+    os.utime(generated, (1, 1))
+    assert load_fund_context(max_age_seconds=60) == ("", True)
+
+
 def test_builtin_prompt_has_exact_three_placeholders():
     assert {
         placeholder
