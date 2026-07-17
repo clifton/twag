@@ -1,9 +1,13 @@
 """Scoring, triage, enrichment, and analysis functions."""
 
+import logging
+import sqlite3
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from twag.config import load_config
+from twag.taxonomy import categories_line
 
 from .llm_client import _call_llm, _call_llm_vision, _parse_json_response
 from .prompts import (
@@ -15,6 +19,55 @@ from .prompts import (
     SUMMARIZE_PROMPT,
 )
 
+log = logging.getLogger(__name__)
+
+FUND_CONTEXT_PATH = Path.home() / "clawd" / "state" / "registry" / "twag-context.md"
+GENERATED_FUND_CONTEXT_PATH = Path.home() / "clawd" / "state" / "registry" / "CONTEXT.md"
+TRIAGE_PROMPT_PLACEHOLDERS = ("{tweets}", "{fund_context}", "{categories}")
+PLAYBOOK_TRIGGERS = [
+    "supply_shock",
+    "supercycle",
+    "vol_substitution",
+    "ai_victim",
+    "event_reset",
+    "dat_mnav",
+    "defensive_break",
+]
+
+TRIAGE_BATCH_SCHEMA: dict[str, Any] = {
+    "type": "array",
+    "items": {
+        "type": "object",
+        "properties": {
+            "id": {"type": "string"},
+            "score": {"type": "number"},
+            "surprise": {"type": "integer"},
+            "is_stale_repeat": {"type": "boolean"},
+            "categories": {"type": "array", "items": {"type": "string"}},
+            "themes": {"type": "array", "items": {"type": "string"}},
+            "playbook_trigger": {"type": "string", "enum": [*PLAYBOOK_TRIGGERS, "none"]},
+            "catalyst": {"type": "string", "enum": ["scheduled", "resolved", "none"]},
+            "direction": {"type": "string", "enum": ["long", "short", "na"]},
+            "tickers": {"type": "array", "items": {"type": "string"}},
+            "summary": {"type": "string"},
+        },
+        "required": [
+            "id",
+            "score",
+            "surprise",
+            "is_stale_repeat",
+            "categories",
+            "themes",
+            "playbook_trigger",
+            "catalyst",
+            "direction",
+            "tickers",
+            "summary",
+        ],
+        "additionalProperties": False,
+    },
+}
+
 
 @dataclass
 class TriageResult:
@@ -25,6 +78,12 @@ class TriageResult:
     categories: list[str]
     summary: str
     tickers: list[str] = field(default_factory=list)
+    surprise: int = 0
+    is_stale_repeat: bool = False
+    themes: list[str] = field(default_factory=list)
+    playbook_trigger: str | None = None
+    catalyst_status: str | None = None
+    direction: str = "na"
 
 
 @dataclass
@@ -76,15 +135,76 @@ def _bounded_article_text(article_text: str, max_chars: int) -> str:
     )
 
 
+def render_triage_prompt(
+    template: str,
+    *,
+    tweets: str,
+    fund_context: str,
+    categories: str,
+) -> str:
+    """Render only the three supported placeholders without interpreting braces."""
+    rendered = template
+    rendered = rendered.replace("{tweets}", tweets)
+    rendered = rendered.replace("{fund_context}", fund_context)
+    return rendered.replace("{categories}", categories)
+
+
+def resolve_triage_template(conn: sqlite3.Connection) -> str:
+    """Return the editable batch prompt or a safe built-in fallback."""
+    from twag.db.prompts import get_prompt
+    from twag.metrics import get_collector
+
+    prompt = get_prompt(conn, "batch_triage")
+    if prompt and all(placeholder in prompt.template for placeholder in TRIAGE_PROMPT_PLACEHOLDERS):
+        return prompt.template
+
+    reason = "missing" if prompt is None else "missing required placeholders"
+    log.error("batch_triage prompt %s; using built-in prompt", reason)
+    get_collector().inc("pipeline.triage.prompt_fallback")
+    return BATCH_TRIAGE_PROMPT
+
+
+def resolve_fund_context_path() -> Path:
+    """Pick the context file scoring will read: the freshest existing candidate.
+
+    The spine repo only regenerates GENERATED_FUND_CONTEXT_PATH (CONTEXT.md);
+    FUND_CONTEXT_PATH (twag-context.md) is a hand-seeded stopgap. Any freshness
+    monitoring must evaluate this same candidate set.
+    """
+    candidates = [candidate for candidate in (GENERATED_FUND_CONTEXT_PATH, FUND_CONTEXT_PATH) if candidate.exists()]
+    return max(candidates, key=lambda candidate: candidate.stat().st_mtime) if candidates else FUND_CONTEXT_PATH
+
+
+def load_fund_context(
+    path: Path | None = None,
+    *,
+    max_age_seconds: float = 48 * 60 * 60,
+) -> tuple[str, bool]:
+    """Load fresh fund context; stale or unreadable context degrades to empty."""
+    import time
+
+    context_path = path if path is not None else resolve_fund_context_path()
+    try:
+        stat = context_path.stat()
+        if time.time() - stat.st_mtime > max_age_seconds:
+            return "", True
+        return context_path.read_text().strip(), False
+    except OSError:
+        return "", True
+
+
 def triage_tweets_batch(
     tweets: list[dict[str, str]],
     model: str | None = None,
     provider: str | None = None,
+    *,
+    prompt_template: str | None = None,
+    fund_context: str = "",
 ) -> list[TriageResult]:
     """Score multiple tweets in a single API call.
 
     Args:
-        tweets: List of dicts with 'id', 'text', 'handle' keys
+        tweets: List of dicts with id, text, handle, and optional author_context keys
         model: Model to use (defaults to config triage_model)
         provider: Provider to use (defaults to config triage_provider)
     """
@@ -96,10 +216,24 @@ def triage_tweets_batch(
     provider = provider or config["llm"].get("triage_provider", "anthropic")
 
     # Format tweets for prompt
-    tweets_text = "\n\n".join(f"[{t['id']}] @{t['handle']}: {t['text']}" for t in tweets)
+    tweets_text = "\n\n".join(
+        f"[{t['id']}] @{t['handle']} ({t.get('author_context') or 'unranked'}): {t['text']}" for t in tweets
+    )
 
-    prompt = BATCH_TRIAGE_PROMPT.format(tweets=tweets_text)
-    text = _call_llm(provider, model, prompt, max_tokens=16384, component="triage")
+    prompt = render_triage_prompt(
+        prompt_template or BATCH_TRIAGE_PROMPT,
+        tweets=tweets_text,
+        fund_context=fund_context or "[unavailable]",
+        categories=categories_line(),
+    )
+    text = _call_llm(
+        provider,
+        model,
+        prompt,
+        max_tokens=16384,
+        component="triage",
+        json_schema=TRIAGE_BATCH_SCHEMA,
+    )
     data = _parse_json_response(text)
 
     if not isinstance(data, list):
@@ -112,6 +246,21 @@ def triage_tweets_batch(
         if isinstance(categories, str):
             categories = [categories]
 
+        surprise = item.get("surprise", 0)
+        try:
+            surprise = max(0, min(2, int(surprise)))
+        except (TypeError, ValueError):
+            surprise = 0
+        playbook_trigger = item.get("playbook_trigger")
+        if playbook_trigger not in PLAYBOOK_TRIGGERS:
+            playbook_trigger = None
+        catalyst_status = item.get("catalyst")
+        if catalyst_status not in {"scheduled", "resolved"}:
+            catalyst_status = None
+        direction = item.get("direction", "na")
+        if direction not in {"long", "short", "na"}:
+            direction = "na"
+
         results.append(
             TriageResult(
                 tweet_id=str(item.get("id", "")),
@@ -119,6 +268,12 @@ def triage_tweets_batch(
                 categories=categories,
                 summary=item.get("summary", ""),
                 tickers=item.get("tickers", []),
+                surprise=surprise,
+                is_stale_repeat=bool(item.get("is_stale_repeat", False)),
+                themes=item.get("themes", []) if isinstance(item.get("themes", []), list) else [],
+                playbook_trigger=playbook_trigger,
+                catalyst_status=catalyst_status,
+                direction=direction,
             ),
         )
 

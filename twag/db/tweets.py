@@ -393,6 +393,12 @@ def update_tweet_processing(
     summary: str,
     signal_tier: str,
     tickers: list[str] | None = None,
+    surprise: int = 0,
+    is_stale_repeat: bool = False,
+    themes: list[str] | None = None,
+    playbook_trigger: str | None = None,
+    catalyst_status: str | None = None,
+    direction: str = "na",
 ) -> None:
     """Update a tweet with processing results."""
     tweet_id = sanitize_text(tweet_id) or ""
@@ -409,7 +415,13 @@ def update_tweet_processing(
             category = ?,
             summary = ?,
             signal_tier = ?,
-            tickers = ?
+            tickers = ?,
+            surprise = ?,
+            is_stale_repeat = ?,
+            themes = ?,
+            playbook_trigger = ?,
+            catalyst_status = ?,
+            direction = ?
         WHERE id = ?
         """,
         (
@@ -419,6 +431,12 @@ def update_tweet_processing(
             sanitize_text(summary),
             sanitize_text(signal_tier),
             _json_dumps_safe(tickers) if tickers else None,
+            surprise,
+            int(is_stale_repeat),
+            _json_dumps_safe(themes or []),
+            sanitize_text(playbook_trigger),
+            sanitize_text(catalyst_status),
+            sanitize_text(direction),
             tweet_id,
         ),
     )
@@ -604,8 +622,11 @@ def is_tweet_seen(conn: sqlite3.Connection, tweet_id: str) -> bool:
 def get_tweet_stats(conn: sqlite3.Connection, date: str | None = None) -> dict[str, Any]:
     """Get tweet processing statistics."""
     if date:
-        where_clause = "WHERE date(created_at) = ?"
-        params: tuple = (date,)
+        from .time_utils import get_et_day_bounds
+
+        since, until = get_et_day_bounds(date)
+        where_clause = "WHERE created_at >= ? AND created_at < ?"
+        params: tuple = (since.isoformat(), until.isoformat())
     else:
         where_clause = ""
         params = ()

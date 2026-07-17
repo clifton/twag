@@ -386,6 +386,35 @@ def test_browse_json_includes_media_analysis(monkeypatch):
     assert data[0]["media_analysis"] == "Chart shows uptrend"
 
 
+def test_json_includes_new_signal_fields_only_when_present(monkeypatch):
+    """Digest JSON should expose surprise/playbook/catalyst metadata compactly."""
+    import twag.cli.search as cli_mod
+
+    monkeypatch.setattr(cli_mod, "get_connection", _fake_connection)
+    monkeypatch.setattr(
+        cli_mod,
+        "get_feed_tweets",
+        lambda conn, **kwargs: [
+            _make_feed_tweet(
+                surprise=2,
+                themes=["ai-memory"],
+                playbook_trigger="supercycle",
+                catalyst_status="resolved",
+                direction="long",
+            ),
+        ],
+    )
+    result = CliRunner().invoke(cli, ["search", "-f", "json"])
+    assert result.exit_code == 0
+    entry = json.loads(result.output)[0]
+    assert entry["surprise"] == 2
+    assert entry["themes"] == ["ai-memory"]
+    assert entry["playbook_trigger"] == "supercycle"
+    assert entry["catalyst_status"] == "resolved"
+    assert entry["direction"] == "long"
+    assert "story_key" not in entry
+
+
 def test_browse_json_omits_absent_optional_fields(monkeypatch):
     """Browse mode JSON should omit optional fields when not present."""
     import twag.cli.search as cli_mod

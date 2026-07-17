@@ -58,6 +58,9 @@ version-file = "twag/_version.py"
 [tool.hatch.build.targets.wheel]
 packages = ["twag"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"tests/eval/golden.jsonl" = "twag/data/golden.jsonl"
+
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
@@ -105,6 +108,9 @@ allowed-unresolved-imports = ["google.*", "google.**", "anthropic.*", "anthropic
 
 [tool.ty.rules]
 possibly-missing-attribute = "ignore"
+# The pinned ty needs the inline `ty: ignore` comments that newer ty versions
+# (uvx in the pre-commit hook) report as unused; don't fail on the skew.
+unused-ignore-comment = "ignore"
 
 # Scripts use monkey-patching and aren't part of the library
 [[tool.ty.overrides]]

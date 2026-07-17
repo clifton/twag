@@ -50,6 +50,64 @@ def test_call_deepseek_uses_thinking_high_by_default(monkeypatch) -> None:
     assert logged["success"] is True
 
 
+def test_call_deepseek_uses_strict_beta_tool_for_json_schema(monkeypatch) -> None:
+    seen: dict = {}
+
+    class StrictResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "tool_calls": [
+                                {"function": {"name": "emit_result", "arguments": '{"result":[{"id":"1"}]}'}},
+                            ],
+                        },
+                    },
+                ],
+                "usage": {},
+            }
+
+    def fake_post(url, *, headers, json, timeout):
+        seen.update(url=url, payload=json)
+        return StrictResponse()
+
+    monkeypatch.setattr(llm_client, "get_deepseek_api_key", lambda: "test-key")
+    monkeypatch.setattr(httpx, "post", fake_post)
+    monkeypatch.setattr(llm_client, "record_llm_usage", lambda **kwargs: None)
+    schema = {"type": "array", "items": {"type": "object"}}
+
+    result = llm_client._call_deepseek("deepseek-v4-flash", "prompt", json_schema=schema)
+
+    assert result == '[{"id": "1"}]'
+    assert seen["url"] == "https://api.deepseek.com/beta/chat/completions"
+    assert seen["payload"]["thinking"] == {"type": "disabled"}
+    assert "reasoning_effort" not in seen["payload"]
+    assert seen["payload"]["tools"][0]["function"]["strict"] is True
+    assert seen["payload"]["tools"][0]["function"]["parameters"]["properties"]["result"] == schema
+
+
+def test_call_gemini_uses_standard_response_json_schema(monkeypatch) -> None:
+    captured = {}
+
+    class FakeModels:
+        def generate_content(self, *, model, contents, config):
+            captured.update(model=model, contents=contents, config=config)
+            return type("Response", (), {"text": "[]", "usage_metadata": None})()
+
+    fake_client = type("Client", (), {"models": FakeModels()})()
+    monkeypatch.setattr(llm_client, "get_gemini_client", lambda: fake_client)
+    monkeypatch.setattr(llm_client, "record_llm_usage", lambda **kwargs: None)
+    schema = {"type": "array", "items": {"type": "string"}}
+
+    assert llm_client._call_gemini("gemini-test", "prompt", json_schema=schema) == "[]"
+    assert captured["config"].response_mime_type == "application/json"
+    assert captured["config"].response_json_schema == schema
+
+
 @pytest.mark.parametrize(
     ("reasoning", "expected"),
     [

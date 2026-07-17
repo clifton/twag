@@ -18,7 +18,7 @@ After=network.target
 
 [Service]
 Type=oneshot
-ExecStart=/bin/bash -c 'source ~/.env && twag fetch && twag process'
+ExecStart=/bin/bash -c 'source ~/.env && twag fetch && twag process --notify && twag spine emit'
 WorkingDirectory=%h
 
 [Install]
@@ -67,7 +67,7 @@ journalctl --user -u twag-aggregator.service -f  # Watch logs
     <array>
         <string>/bin/bash</string>
         <string>-c</string>
-        <string>source ~/.env && twag fetch && twag process</string>
+        <string>source ~/.env && twag fetch && twag process --notify && twag spine emit</string>
     </array>
     <key>StartInterval</key>
     <integer>900</integer>
@@ -103,7 +103,7 @@ tail -f /tmp/twag-aggregator.log
 The repo includes a helper script at `scripts/cron-runner.sh`:
 
 ```bash
-# Full cycle: fetch, process, digest, decay, prune
+# Full cycle: fetch, notified process, spine emit, digest, daily decay/prune
 ./scripts/cron-runner.sh full
 
 # Quick fetch only (no tier-1 to reduce API calls)
@@ -121,6 +121,8 @@ The script:
 - Ensures PATH includes common install locations
 - Logs with timestamps
 - Prevents concurrent runs via `flock` (Linux; degrades gracefully on macOS)
+- Checks fund-context freshness and signal-ledger writability once per day
+- Runs decay/prune once per day even when the full cycle runs more frequently
 - Sends error notifications via OpenClaw CLI (when available) or direct Telegram API (`TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID`)
 
 ## Telegram Digest Delivery
@@ -152,7 +154,7 @@ Add to your OpenClaw cron configuration:
       "sessionTarget": "isolated",
       "payload": {
         "kind": "agentTurn",
-        "message": "Generate an overnight tweet digest. Run: twag search --time 10h -s 6 -f json -n 50\n\nIf no results or nothing notable, reply NO_REPLY.\nOtherwise, format as a Telegram digest per TELEGRAM_DIGEST_FORMAT.md."
+        "message": "Generate an overnight tweet digest. Run: twag search --time 10h -s 5 -f json -n 50\n\nIf no results or nothing notable, reply NO_REPLY.\nOtherwise, follow the Digest interpretation section of the twag skill."
       },
       "delivery": {
         "mode": "direct",
@@ -171,7 +173,7 @@ Add to your OpenClaw cron configuration:
       "sessionTarget": "isolated",
       "payload": {
         "kind": "agentTurn",
-        "message": "Generate a 2-hour tweet digest. Run: twag search --time 2h -s 6 -f json -n 50\n\nIf no results or nothing notable, reply NO_REPLY.\nOtherwise, format as a Telegram digest per TELEGRAM_DIGEST_FORMAT.md."
+        "message": "Generate a 2-hour tweet digest. Run: twag search --time 2h -s 5 -f json -n 50\n\nIf no results or nothing notable, reply NO_REPLY.\nOtherwise, follow the Digest interpretation section of the twag skill."
       },
       "delivery": {
         "mode": "direct",
@@ -190,7 +192,7 @@ Add to your OpenClaw cron configuration:
       "sessionTarget": "isolated",
       "payload": {
         "kind": "agentTurn",
-        "message": "Generate a weekend tweet digest (Friday night through Sunday afternoon). Run: twag search --time 42h -s 6 -f json -n 50\n\nIf no results or nothing notable, reply NO_REPLY.\nOtherwise, format as a Telegram digest per TELEGRAM_DIGEST_FORMAT.md."
+        "message": "Generate a weekend tweet digest (Friday night through Sunday afternoon). Run: twag search --time 42h -s 5 -f json -n 50\n\nIf no results or nothing notable, reply NO_REPLY.\nOtherwise, follow the Digest interpretation section of the twag skill."
       },
       "delivery": {
         "mode": "direct",
@@ -209,7 +211,7 @@ Add to your OpenClaw cron configuration:
       "sessionTarget": "isolated",
       "payload": {
         "kind": "agentTurn",
-        "message": "Generate a Sunday evening pre-market digest. Run: twag search --time 6h -s 6 -f json -n 50\n\nIf no results or nothing notable, reply NO_REPLY.\nOtherwise, format as a Telegram digest per TELEGRAM_DIGEST_FORMAT.md."
+        "message": "Generate a Sunday evening pre-market digest. Run: twag search --time 6h -s 5 -f json -n 50\n\nIf no results or nothing notable, reply NO_REPLY.\nOtherwise, follow the Digest interpretation section of the twag skill."
       },
       "delivery": {
         "mode": "direct",

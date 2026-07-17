@@ -111,15 +111,40 @@ run_cmd() {
     return 0
 }
 
+# Mirror load_fund_context (twag/scorer/scoring.py): scoring reads the freshest of
+# the spine-generated CONTEXT.md and the stopgap twag-context.md, so only alert when
+# BOTH are missing or stale >48h.
+CTX_GENERATED="$HOME/clawd/state/registry/CONTEXT.md"
+CTX_STOPGAP="$HOME/clawd/state/registry/twag-context.md"
+CTX_STAMP="$LOG_DIR/.ctx-check-$(date +%Y-%m-%d)"
+if [ ! -f "$CTX_STAMP" ]; then
+    ctx_fresh=""
+    for ctx in "$CTX_GENERATED" "$CTX_STOPGAP"; do
+        if [ -f "$ctx" ] && [ -z "$(find "$ctx" -mmin +2880 2>/dev/null)" ]; then
+            ctx_fresh="yes"
+        fi
+    done
+    if [ -z "$ctx_fresh" ]; then
+        notify_error "twag: fund-context missing or stale >48h ($CTX_GENERATED and $CTX_STOPGAP) — scoring degraded"
+    fi
+    run_cmd "doctor" twag doctor --quiet || true
+    touch "$CTX_STAMP"
+fi
+
 case "$MODE" in
     full)
         # Full cycle: fetch, process, digest, maintenance
         log "Running full cycle..."
         run_cmd "fetch" twag fetch || true
-        run_cmd "process" twag process || true
+        run_cmd "process" twag process --notify || true
+        run_cmd "spine" twag spine emit || true
         run_cmd "digest" twag digest || true
-        run_cmd "decay" twag accounts decay || true
-        run_cmd "prune" twag prune --days 14 || true
+        MAINT_STAMP="$LOG_DIR/.maintenance-$(date +%Y-%m-%d)"
+        if [ ! -f "$MAINT_STAMP" ]; then
+            run_cmd "decay" twag accounts decay || true
+            run_cmd "prune" twag prune --days 14 || true
+            touch "$MAINT_STAMP"
+        fi
         ;;
     fetch-only)
         # Quick fetch during the day (no tier-1 to reduce API calls)
@@ -128,7 +153,7 @@ case "$MODE" in
         ;;
     process-only)
         log "Running process only..."
-        run_cmd "process" twag process || true
+        run_cmd "process" twag process --notify || true
         ;;
     digest-only)
         log "Running digest only..."

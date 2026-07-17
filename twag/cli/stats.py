@@ -1,7 +1,6 @@
 """Stats, prune, and export commands."""
 
 import json
-from datetime import datetime
 
 import rich_click as click
 from rich.table import Table
@@ -13,6 +12,7 @@ from ..db import (
     get_tweet_stats,
     prune_old_tweets,
 )
+from ..db.time_utils import get_et_date
 from ._console import console
 
 
@@ -22,7 +22,7 @@ from ._console import console
 def stats(date: str | None, today: bool):
     """Show processing statistics."""
     if today:
-        date = datetime.now().strftime("%Y-%m-%d")
+        date = get_et_date().isoformat()
 
     with get_connection(readonly=True) as conn:
         s = get_tweet_stats(conn, date=date)

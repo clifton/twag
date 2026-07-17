@@ -89,17 +89,35 @@ Rules:
 
 
 def seed_prompts(conn: sqlite3.Connection) -> int:
-    """Seed default prompts if they don't exist. Returns count of seeded prompts."""
+    """Seed defaults and refresh the P0 batch prompt when it is still seed-owned."""
+    from ..scorer.prompts import BATCH_TRIAGE_PROMPT
+
+    defaults = {**DEFAULT_PROMPTS, "batch_triage": BATCH_TRIAGE_PROMPT}
     count = 0
-    for name, template in DEFAULT_PROMPTS.items():
-        cursor = conn.execute("SELECT 1 FROM prompts WHERE name = ?", (name,))
-        if not cursor.fetchone():
+    for name, template in defaults.items():
+        cursor = conn.execute("SELECT template, version, updated_by FROM prompts WHERE name = ?", (name,))
+        existing = cursor.fetchone()
+        if not existing:
             conn.execute(
                 """
                 INSERT INTO prompts (name, template, version, updated_at, updated_by)
                 VALUES (?, ?, 1, ?, 'seed')
                 """,
                 (name, template, datetime.now(timezone.utc).isoformat()),
+            )
+            count += 1
+        elif name == "batch_triage" and existing["updated_by"] == "seed" and existing["template"] != template:
+            conn.execute(
+                "INSERT INTO prompt_history (prompt_name, template, version) VALUES (?, ?, ?)",
+                (name, existing["template"], existing["version"]),
+            )
+            conn.execute(
+                """
+                UPDATE prompts
+                SET template = ?, version = ?, updated_at = ?, updated_by = 'seed'
+                WHERE name = ?
+                """,
+                (template, existing["version"] + 1, datetime.now(timezone.utc).isoformat(), name),
             )
             count += 1
     return count

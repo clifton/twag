@@ -259,6 +259,12 @@ def _feed_tweet_to_search_result(ft: FeedTweet) -> SearchResult:
         tickers=ft.tickers,
         bookmarked=ft.bookmarked,
         rank=0.0,
+        surprise=ft.surprise,
+        themes=ft.themes,
+        playbook_trigger=ft.playbook_trigger,
+        catalyst_status=ft.catalyst_status,
+        direction=ft.direction,
+        story_key=ft.story_key,
     )
 
 
@@ -295,6 +301,10 @@ def _output_feed_json(feed_tweets: list[FeedTweet]):
         if ft.is_retweet and ft.retweeted_by_handle:
             entry["retweeted_by"] = ft.retweeted_by_handle
             entry["original_author"] = ft.original_author_handle
+        for key in ("surprise", "themes", "playbook_trigger", "catalyst_status", "direction", "story_key"):
+            value = getattr(ft, key)
+            if value is not None and value != []:
+                entry[key] = value
         output.append(entry)
     click.echo(json.dumps(output, indent=2))
 
@@ -347,22 +357,26 @@ def _output_full(results):
 
 def _output_json(results):
     """Output search results as JSON."""
-    output = [
-        {
-            "id": r.id,
-            "author_handle": r.author_handle,
-            "author_name": r.author_name,
-            "content": r.content,
-            "summary": r.summary,
-            "created_at": r.created_at.isoformat() if r.created_at else None,
-            "relevance_score": r.relevance_score,
-            "categories": r.categories,
-            "signal_tier": r.signal_tier,
-            "tickers": r.tickers,
-            "bookmarked": r.bookmarked,
-            "rank": r.rank,
-            "url": f"https://x.com/{r.author_handle}/status/{r.id}",
+    output = []
+    for result in results:
+        entry = {
+            "id": result.id,
+            "author_handle": result.author_handle,
+            "author_name": result.author_name,
+            "content": result.content,
+            "summary": result.summary,
+            "created_at": result.created_at.isoformat() if result.created_at else None,
+            "relevance_score": result.relevance_score,
+            "categories": result.categories,
+            "signal_tier": result.signal_tier,
+            "tickers": result.tickers,
+            "bookmarked": result.bookmarked,
+            "rank": result.rank,
+            "url": f"https://x.com/{result.author_handle}/status/{result.id}",
         }
-        for r in results
-    ]
+        for key in ("surprise", "themes", "playbook_trigger", "catalyst_status", "direction", "story_key"):
+            value = getattr(result, key)
+            if value is not None and value != []:
+                entry[key] = value
+        output.append(entry)
     click.echo(json.dumps(output, indent=2))
