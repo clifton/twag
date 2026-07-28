@@ -166,15 +166,30 @@ def doctor(quiet: bool):
         "gemini": "GEMINI_API_KEY",
     }
     llm_config = cfg.get("llm", {})
+    vision_provider = llm_config.get("vision_provider", "gemini")
+    if vision_provider == "charts":
+        charts_executable = str(llm_config.get("charts_executable") or "charts")
+        charts_path = shutil.which(charts_executable)
+        console.print("\ncharts CLI:")
+        if charts_path:
+            console.print(f"  {status_icon(True)} Found at {charts_path}")
+        else:
+            console.print(f"  {status_icon(False)} {charts_executable} not found in PATH")
+            issues.append("Install charts or set llm.charts_executable to its executable path")
+
     required_keys = {
         provider_keys[provider]
         for provider in (
             llm_config.get("triage_provider", "gemini"),
             llm_config.get("enrichment_provider", "anthropic"),
-            llm_config.get("vision_provider", "gemini"),
+            vision_provider,
         )
         if provider in provider_keys
     }
+    if vision_provider == "charts":
+        # charts owns normal vision spend, but direct Gemini remains the
+        # contractually bounded fallback when the local runtime is unavailable.
+        required_keys.add("GEMINI_API_KEY")
 
     for key_name in sorted(required_keys):
         try:

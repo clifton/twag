@@ -854,6 +854,39 @@ def _call_llm(
     return _with_retry(_invoke)
 
 
+def _call_llm_vision_once(
+    provider: str,
+    model: str,
+    image_url: str,
+    prompt: str,
+    max_tokens: int = 1024,
+    component: str = "vision",
+    usage_recorder: UsageRecorder | None = None,
+) -> str:
+    """Call one vision provider attempt without the generic retry wrapper."""
+    if provider == "gemini":
+        return _call_gemini_vision(
+            model,
+            image_url,
+            prompt,
+            max_tokens,
+            component=component,
+            usage_recorder=usage_recorder,
+        )
+    if provider == "anthropic":
+        return _call_anthropic_vision(
+            model,
+            image_url,
+            prompt,
+            max_tokens,
+            component=component,
+            usage_recorder=usage_recorder,
+        )
+    if provider == "deepseek":
+        raise ValueError("DeepSeek provider does not support twag vision analysis; use gemini or anthropic")
+    raise ValueError(f"Unsupported LLM provider: {provider}")
+
+
 def _call_llm_vision(
     provider: str,
     model: str,
@@ -865,30 +898,17 @@ def _call_llm_vision(
 ) -> str:
     """Call LLM with vision based on provider."""
 
-    def _invoke() -> str:
-        if provider == "gemini":
-            return _call_gemini_vision(
-                model,
-                image_url,
-                prompt,
-                max_tokens,
-                component=component,
-                usage_recorder=usage_recorder,
-            )
-        if provider == "anthropic":
-            return _call_anthropic_vision(
-                model,
-                image_url,
-                prompt,
-                max_tokens,
-                component=component,
-                usage_recorder=usage_recorder,
-            )
-        if provider == "deepseek":
-            raise ValueError("DeepSeek provider does not support twag vision analysis; use gemini or anthropic")
-        raise ValueError(f"Unsupported LLM provider: {provider}")
-
-    return _with_retry(_invoke)
+    return _with_retry(
+        lambda: _call_llm_vision_once(
+            provider,
+            model,
+            image_url,
+            prompt,
+            max_tokens,
+            component=component,
+            usage_recorder=usage_recorder,
+        ),
+    )
 
 
 def _with_retry(fn: Callable[[], _T]) -> _T:

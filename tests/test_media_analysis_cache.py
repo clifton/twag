@@ -126,7 +126,7 @@ def test_analyze_media_items_reuses_cache(monkeypatch) -> None:
     monkeypatch.setattr(triage_mod, "record_media_analysis", _record_media_analysis)
     monkeypatch.setattr(triage_mod, "increment_media_analysis_cache_hit", lambda *args, **kwargs: None)
 
-    def _fake_analyze_media(url, model=None, provider=None):
+    def _fake_analyze_media(url, model=None, provider=None, **_kwargs):
         analyzed_urls.append(url)
         return MediaAnalysisResult(
             kind="table",

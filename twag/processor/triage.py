@@ -10,6 +10,7 @@ from collections import deque
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -244,6 +245,7 @@ def ensure_media_analysis(
         vision_model=vision_model,
         vision_provider=vision_provider,
         conn=conn,
+        caption=str(tweet_row["content"] or ""),
     )
 
     if updated or (media_items and not tweet_row["media_analysis"]):
@@ -265,6 +267,7 @@ def _analyze_media_items(
     vision_provider: str | None = None,
     conn: sqlite3.Connection | None = None,
     defer_db_writes: bool = False,
+    caption: str = "",
 ) -> _MediaAnalysisOutcome:
     """Analyze media and keep pipeline DB writes on the owning transaction."""
     updated = False
@@ -274,6 +277,8 @@ def _analyze_media_items(
     config = load_config()
     effective_model = vision_model or config["llm"].get("vision_model")
     effective_provider = vision_provider or config["llm"].get("vision_provider")
+    if effective_provider == "charts":
+        effective_model = "charts"
     usage_recorder = usage_records.append if defer_db_writes else None
     if conn is not None and not defer_db_writes:
 
@@ -317,7 +322,11 @@ def _analyze_media_items(
             analyze_kwargs: dict[str, Any] = {
                 "model": vision_model,
                 "provider": vision_provider,
+                "caption": caption,
             }
+            local_path = item.get("local_path")
+            if isinstance(local_path, str) and Path(local_path).is_file():
+                analyze_kwargs["local_path"] = local_path
             if usage_recorder is not None:
                 analyze_kwargs["usage_recorder"] = usage_recorder
             result = analyze_media(url, **analyze_kwargs)
@@ -331,14 +340,19 @@ def _analyze_media_items(
             "prose_summary": result.prose_summary,
             "chart": result.chart,
             "table": result.table,
+            "charts_id": result.charts_id,
+            "cdn_url": result.cdn_url,
+            "charts_cached": result.charts_cached,
         }
         _apply_media_analysis_to_item(item, result_payload)
+        result_provider = result.analysis_provider or effective_provider
+        result_model = result.analysis_model or effective_model
         if defer_db_writes:
-            cache_records.append((url, effective_provider, effective_model, result_payload))
+            cache_records.append((url, result_provider, result_model, result_payload))
         else:
             record_kwargs: dict[str, Any] = {
-                "provider": effective_provider,
-                "model": effective_model,
+                "provider": result_provider,
+                "model": result_model,
                 "result": result_payload,
             }
             if conn is not None:
@@ -366,6 +380,9 @@ def _apply_media_analysis_to_item(item: dict[str, Any], result: dict[str, Any]) 
     item["prose_summary"] = result.get("prose_summary", "")
     item["chart"] = result.get("chart") or {}
     item["table"] = result.get("table") or {}
+    for field_name in ("charts_id", "cdn_url", "charts_cached"):
+        if field_name in result:
+            item[field_name] = result[field_name]
 
 
 def _page_number_hint(text: str) -> int | None:
@@ -534,6 +551,7 @@ def _process_article(
     article_text: str,
     article_title: str,
     article_preview: str,
+    caption: str,
     enrich_model: str | None,
 ) -> tuple[Any, _MediaAnalysisOutcome]:
     """Analyze media then summarize article — runs in text_pool thread."""
@@ -542,6 +560,7 @@ def _process_article(
         vision_model=vision_model,
         vision_provider=vision_provider,
         defer_db_writes=True,
+        caption=caption,
     )
     article_result = summarize_x_article(
         article_text,
@@ -783,6 +802,7 @@ def _triage_rows(
                     article_text=article_text,
                     article_title=row["article_title"] or "",
                     article_preview=row["article_preview"] or "",
+                    caption=str(row["content"] or ""),
                     enrich_model=enrich_model,
                 )
             else:
@@ -807,6 +827,7 @@ def _triage_rows(
                         vision_model=vision_model,
                         vision_provider=vision_provider,
                         conn=conn,
+                        caption=str(row["content"] or ""),
                     )
                 article_result = summarize_x_article(
                     article_text,
@@ -1012,6 +1033,7 @@ def _triage_rows(
                             vision_model=vision_model,
                             vision_provider=vision_provider,
                             defer_db_writes=True,
+                            caption=str(tweet_row["content"] or ""),
                         )
                         _track_worker_future(future, "media", result.tweet_id)
                     else:
@@ -1022,6 +1044,7 @@ def _triage_rows(
                             vision_model=vision_model,
                             vision_provider=vision_provider,
                             conn=conn,
+                            caption=str(tweet_row["content"] or ""),
                         )
                         media_summary = build_media_summary(updated_items)
                         update_tweet_enrichment(
