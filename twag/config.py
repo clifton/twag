@@ -25,6 +25,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "retry_base_seconds": 1.0,
         "retry_max_seconds": 20.0,
         "retry_jitter": 0.3,
+        "request_timeout_seconds": 120.0,
     },
     "scoring": {
         "min_score_for_digest": 5,
@@ -57,6 +58,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "processing": {
         "max_concurrency_url_expansion": 15,
+        "worker_poll_seconds": 30.0,
+        "max_pending_worker_futures": None,
     },
     "paths": {
         # These can be overridden in config.json

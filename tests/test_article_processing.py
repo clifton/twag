@@ -274,7 +274,7 @@ def test_summarize_x_article_falls_back_to_triage_provider(monkeypatch) -> None:
 
     calls: list[tuple[str, str]] = []
 
-    def _fake_call_llm(provider, model, prompt, max_tokens=2048, reasoning=None, component="unknown"):
+    def _fake_call_llm(provider, model, prompt, max_tokens=2048, reasoning=None, component="unknown", **kwargs):
         calls.append((provider, model))
         if provider == "anthropic":
             raise RuntimeError("ANTHROPIC_API_KEY not set")
@@ -311,7 +311,7 @@ def test_summarize_x_article_bounds_long_prompt(monkeypatch) -> None:
 
     seen_prompt = ""
 
-    def _fake_call_llm(provider, model, prompt, max_tokens=2048, reasoning=None, component="unknown"):
+    def _fake_call_llm(provider, model, prompt, max_tokens=2048, reasoning=None, component="unknown", **kwargs):
         nonlocal seen_prompt
         seen_prompt = prompt
         return '{"short_summary":"Bounded summary","primary_points":[],"actionable_items":[]}'

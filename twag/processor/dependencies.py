@@ -163,6 +163,7 @@ def _expand_links_for_rows(
     if not rows:
         return rows
 
+    started_at = time.monotonic()
     source_ids: list[str] = []
     for row in rows:
         tweet_id = str(_row_get(row, "id", "") or "").strip()
@@ -199,39 +200,88 @@ def _expand_links_for_rows(
     rows_for_link_expansion = [
         row for row in row_cache.values() if row["has_link"] and row["links_json"] and not row["links_expanded_at"]
     ]
+    log.info(
+        "link_expansion_start source_rows=%d cached_rows=%d candidates=%d max_workers=%d quote_depth=%d",
+        len(rows),
+        len(row_cache),
+        len(rows_for_link_expansion),
+        max_workers,
+        quote_depth,
+    )
+    expanded_count = 0
+    failed_count = 0
+    skipped_count = 0
     if rows_for_link_expansion:
         if status_cb:
             status_cb(f"Expanding links for {len(rows_for_link_expansion)} tweets")
 
-        row_by_id = {str(row["id"]): row for row in rows_for_link_expansion}
         expanded_at = datetime.now(timezone.utc).isoformat()
 
         if max_workers > 1:
             # Link workers expand URLs only; persistence stays on the caller thread below.
             with ThreadPoolExecutor(max_workers=max_workers) as pool:
                 futures = {
-                    pool.submit(_expand_single_tweet_links, row): str(row["id"]) for row in rows_for_link_expansion
+                    pool.submit(_expand_single_tweet_links, row): (str(row["id"]), time.monotonic())
+                    for row in rows_for_link_expansion
                 }
                 for future in as_completed(futures):
-                    tweet_id = futures[future]
-                    original_row = row_by_id[tweet_id]
+                    tweet_id, submitted_at = futures[future]
                     try:
                         _, expanded_links = future.result()
                     except Exception:
-                        expanded_links = None
-                    links_payload: list[dict[str, Any]] | str | None = (
-                        expanded_links if expanded_links is not None else original_row["links_json"]
+                        failed_count += 1
+                        log.exception(
+                            "link_expand_row_failed tweet_id=%s elapsed=%.3fs",
+                            tweet_id,
+                            time.monotonic() - submitted_at,
+                        )
+                        continue
+                    if expanded_links is None:
+                        skipped_count += 1
+                        log.warning(
+                            "link_expand_row_skipped tweet_id=%s elapsed=%.3fs reason=no_parseable_links",
+                            tweet_id,
+                            time.monotonic() - submitted_at,
+                        )
+                        continue
+                    update_tweet_links_expanded(conn, tweet_id, expanded_links, expanded_at)
+                    expanded_count += 1
+                    log.info(
+                        "link_expand_row_done tweet_id=%s elapsed=%.3fs links=%d",
+                        tweet_id,
+                        time.monotonic() - submitted_at,
+                        len(expanded_links),
                     )
-                    update_tweet_links_expanded(conn, tweet_id, links_payload, expanded_at)
         else:
             for row in rows_for_link_expansion:
                 tweet_id = str(row["id"])
+                submitted_at = time.monotonic()
                 try:
                     _, expanded_links = _expand_single_tweet_links(row)
                 except Exception:
-                    expanded_links = None
-                links_payload = expanded_links if expanded_links is not None else row["links_json"]
-                update_tweet_links_expanded(conn, tweet_id, links_payload, expanded_at)
+                    failed_count += 1
+                    log.exception(
+                        "link_expand_row_failed tweet_id=%s elapsed=%.3fs",
+                        tweet_id,
+                        time.monotonic() - submitted_at,
+                    )
+                    continue
+                if expanded_links is None:
+                    skipped_count += 1
+                    log.warning(
+                        "link_expand_row_skipped tweet_id=%s elapsed=%.3fs reason=no_parseable_links",
+                        tweet_id,
+                        time.monotonic() - submitted_at,
+                    )
+                    continue
+                update_tweet_links_expanded(conn, tweet_id, expanded_links, expanded_at)
+                expanded_count += 1
+                log.info(
+                    "link_expand_row_done tweet_id=%s elapsed=%.3fs links=%d",
+                    tweet_id,
+                    time.monotonic() - submitted_at,
+                    len(expanded_links),
+                )
 
     refreshed_source = get_tweets_by_ids(conn, source_id_set)
     refreshed_rows: list[sqlite3.Row | dict[str, Any]] = []
@@ -241,6 +291,16 @@ def _expand_links_for_rows(
             refreshed_rows.append(refreshed_source[tweet_id])
         else:
             refreshed_rows.append(row)
+    log.info(
+        "link_expansion_done source_rows=%d cached_rows=%d candidates=%d expanded=%d failed=%d skipped=%d elapsed=%.3fs",
+        len(rows),
+        len(row_cache),
+        len(rows_for_link_expansion),
+        expanded_count,
+        failed_count,
+        skipped_count,
+        time.monotonic() - started_at,
+    )
     return refreshed_rows
 
 

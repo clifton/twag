@@ -197,13 +197,17 @@ twag process                    # Process unscored tweets (no alerts by default)
 twag process --limit 100        # Limit batch size
 twag process --dry-run          # Preview only
 twag process --notify           # Send Telegram alerts
+twag process --vision-max-age-days 3  # Skip vision for older tweets (default: 3)
 
 # Quote/reply reprocessing
-twag process --no-reprocess-quotes       # Skip reprocessing dependency tweets
+twag process --reprocess-quotes          # Reprocess dependency tweets
 twag process --reprocess-min-score 5     # Min score for reprocessing (default: 3)
 
 # Process specific tweet
 twag process 1234567890123456789
+
+# Clear an old backlog without LLM calls
+twag db skip-stale --older-than-days 3
 
 # Shared signal ledger and scoring calibration
 twag spine emit
@@ -423,7 +427,9 @@ After=network.target
 
 [Service]
 Type=oneshot
-ExecStart=/bin/bash -lc '%h/.local/bin/twag fetch && %h/.local/bin/twag process'
+TimeoutStartSec=2700
+Environment="TWAG_PROCESS_LIMIT=100"
+ExecStart=/bin/bash -lc '%h/.local/bin/twag fetch && %h/.local/bin/twag process --limit "${TWAG_PROCESS_LIMIT}"'
 WorkingDirectory=%h
 EnvironmentFile=%h/.env
 ```

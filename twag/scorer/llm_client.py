@@ -10,9 +10,40 @@ from anthropic import Anthropic
 
 from twag.auth import get_api_key
 from twag.config import load_config
-from twag.db.inference import record_llm_usage
+from twag.db.inference import begin_llm_usage_attempt, complete_llm_usage_attempt
+from twag.db.inference import record_llm_usage as record_llm_usage
 
 _T = TypeVar("_T")
+UsageRecorder = Callable[[dict[str, Any]], None]
+
+_NON_RETRYABLE_ERROR_PATTERNS = (
+    "api key",
+    "authentication",
+    "unauthorized",
+    "401",
+    "403",
+    "400",
+    "bad request",
+    "context length",
+    "maximum context",
+    "max tokens",
+)
+
+_RETRYABLE_ERROR_PATTERNS = (
+    "429",
+    "rate limit",
+    "too many requests",
+    "overloaded",
+    "temporarily",
+    "try again",
+    "502",
+    "503",
+    "504",
+    "connection reset",
+    "connection aborted",
+    "server disconnected",
+    "remote protocol",
+)
 
 
 def get_anthropic_client() -> Anthropic:
@@ -86,8 +117,45 @@ def _usage_to_dict(usage: Any) -> dict[str, Any]:
     return result
 
 
+def _exception_chain(exc: BaseException) -> list[BaseException]:
+    chain: list[BaseException] = []
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        chain.append(current)
+        seen.add(id(current))
+        current = current.__cause__ or current.__context__
+    return chain
+
+
+def _is_timeout_error(exc: BaseException) -> bool:
+    for item in _exception_chain(exc):
+        if isinstance(item, TimeoutError):
+            return True
+        class_name = item.__class__.__name__.lower()
+        if "timeout" in class_name:
+            return True
+        msg = str(item).lower()
+        if "timed out" in msg or "timeout" in msg:
+            return True
+    return False
+
+
+def _should_retry_llm_error(exc: BaseException) -> bool:
+    if _is_timeout_error(exc):
+        return False
+
+    msg = " ".join(str(item).lower() for item in _exception_chain(exc))
+    if "not set" in msg and "api" in msg:
+        return False
+    if any(pattern in msg for pattern in _NON_RETRYABLE_ERROR_PATTERNS):
+        return False
+    return any(pattern in msg for pattern in _RETRYABLE_ERROR_PATTERNS)
+
+
 def _record_llm_usage(
     *,
+    attempt_id: int | None = None,
     component: str,
     provider: str,
     model: str,
@@ -104,9 +172,40 @@ def _record_llm_usage(
     total_tokens: int = 0,
     error: Exception | None = None,
     metadata: dict[str, Any] | None = None,
+    usage_recorder: UsageRecorder | None = None,
 ) -> None:
     """Record provider usage without allowing logging failures to affect scoring."""
-    record_llm_usage(
+    if usage_recorder is not None:
+        try:
+            usage_recorder(
+                {
+                    "component": component,
+                    "provider": provider,
+                    "model": model,
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "reasoning_tokens": reasoning_tokens,
+                    "cached_input_tokens": cached_input_tokens,
+                    "total_tokens": total_tokens,
+                    "max_tokens": max_tokens,
+                    "latency_seconds": latency_seconds,
+                    "success": success,
+                    "error_type": type(error).__name__ if error else None,
+                    "error_message": str(error) if error else None,
+                    "prompt_chars": len(prompt),
+                    "response_chars": len(response_text or ""),
+                    "is_vision": is_vision,
+                    "metadata": metadata,
+                },
+            )
+        except Exception:
+            import logging
+
+            logging.getLogger(__name__).warning("Failed to queue LLM usage record", exc_info=True)
+        return
+
+    complete_llm_usage_attempt(
+        attempt_id,
         component=component,
         provider=provider,
         model=model,
@@ -127,6 +226,31 @@ def _record_llm_usage(
     )
 
 
+def _begin_llm_usage(
+    *,
+    component: str,
+    provider: str,
+    model: str,
+    prompt: str,
+    max_tokens: int,
+    is_vision: bool = False,
+    metadata: dict[str, Any] | None = None,
+    usage_recorder: UsageRecorder | None = None,
+) -> int | None:
+    """Record that a provider request is about to be sent."""
+    if usage_recorder is not None:
+        return None
+    return begin_llm_usage_attempt(
+        component=component,
+        provider=provider,
+        model=model,
+        max_tokens=max_tokens,
+        prompt_chars=len(prompt),
+        is_vision=is_vision,
+        metadata=metadata,
+    )
+
+
 def _call_anthropic(model: str, prompt: str, max_tokens: int = 2048, component: str = "unknown") -> str:
     """Call Anthropic API and return text response."""
     from twag.metrics import get_collector
@@ -134,8 +258,16 @@ def _call_anthropic(model: str, prompt: str, max_tokens: int = 2048, component: 
     m = get_collector()
     m.inc("scorer.anthropic.calls")
     t0 = time.monotonic()
+    attempt_id: int | None = None
     try:
         client = get_anthropic_client()
+        attempt_id = _begin_llm_usage(
+            component=component,
+            provider="anthropic",
+            model=model,
+            prompt=prompt,
+            max_tokens=max_tokens,
+        )
         response = client.messages.create(
             model=model,
             max_tokens=max_tokens,
@@ -154,6 +286,7 @@ def _call_anthropic(model: str, prompt: str, max_tokens: int = 2048, component: 
             m.inc("scorer.anthropic.input_tokens", input_tokens)
             m.inc("scorer.anthropic.output_tokens", output_tokens)
         _record_llm_usage(
+            attempt_id=attempt_id,
             component=component,
             provider="anthropic",
             model=model,
@@ -171,6 +304,7 @@ def _call_anthropic(model: str, prompt: str, max_tokens: int = 2048, component: 
     except Exception as exc:
         m.inc("scorer.anthropic.errors")
         _record_llm_usage(
+            attempt_id=attempt_id,
             component=component,
             provider="anthropic",
             model=model,
@@ -199,6 +333,7 @@ def _call_gemini(
     m = get_collector()
     m.inc("scorer.gemini.calls")
     t0 = time.monotonic()
+    attempt_id: int | None = None
     try:
         client = get_gemini_client()
 
@@ -212,6 +347,13 @@ def _call_gemini(
             # Gemini 3+ uses thinking_level (string: "low", "medium", "high")
             config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_level=reasoning)  # ty: ignore[invalid-argument-type]
 
+        attempt_id = _begin_llm_usage(
+            component=component,
+            provider="gemini",
+            model=model,
+            prompt=prompt,
+            max_tokens=max_tokens,
+        )
         response = client.models.generate_content(
             model=model,
             contents=prompt,
@@ -236,6 +378,7 @@ def _call_gemini(
         result = response.text or ""
         usage_metadata = _usage_to_dict(usage)
         _record_llm_usage(
+            attempt_id=attempt_id,
             component=component,
             provider="gemini",
             model=model,
@@ -255,6 +398,7 @@ def _call_gemini(
     except Exception as exc:
         m.inc("scorer.gemini.errors")
         _record_llm_usage(
+            attempt_id=attempt_id,
             component=component,
             provider="gemini",
             model=model,
@@ -268,17 +412,33 @@ def _call_gemini(
 
 
 def _normalize_deepseek_reasoning(reasoning: str | None) -> str | None:
-    """Map twag reasoning labels onto DeepSeek's documented effort values."""
+    """Map twag reasoning labels onto DeepSeek's documented effort values.
+
+    DeepSeek V4 exposes only high/max thinking efforts. The API accepts low and
+    medium for compatibility, but maps them to high. Treat twag's low as
+    non-thinking so low-cost triage does not silently run high thinking.
+    """
     if not reasoning:
-        return "high"
-    normalized = reasoning.strip().lower()
-    if normalized in {"disabled", "off", "none"}:
         return None
-    if normalized in {"low", "medium", "high"}:
+    normalized = reasoning.strip().lower()
+    if normalized in {"disabled", "off", "none", "low"}:
+        return None
+    if normalized == "medium":
         return "high"
+    if normalized == "high":
+        return normalized
     if normalized in {"xhigh", "max"}:
         return "max"
     return normalized
+
+
+def _configured_llm_timeout_seconds(default: float = 120.0) -> float:
+    """Return the configured per-request LLM timeout in seconds."""
+    try:
+        value = float(load_config().get("llm", {}).get("request_timeout_seconds", default))
+    except (TypeError, ValueError):
+        return default
+    return value if value > 0 else default
 
 
 def _call_deepseek(
@@ -288,6 +448,7 @@ def _call_deepseek(
     reasoning: str | None = None,
     component: str = "unknown",
     json_schema: dict[str, Any] | None = None,
+    json_tool_name: str = "emit_json",
 ) -> str:
     """Call DeepSeek's OpenAI-compatible Chat Completions API and return text."""
     import httpx
@@ -297,8 +458,17 @@ def _call_deepseek(
     m = get_collector()
     m.inc("scorer.deepseek.calls")
     t0 = time.monotonic()
+    attempt_id: int | None = None
+    usage: dict[str, Any] = {}
+    input_tokens = 0
+    output_tokens = 0
+    total_tokens = 0
+    reasoning_tokens = 0
+    cached_tokens = 0
     try:
         effort = _normalize_deepseek_reasoning(reasoning)
+        request_timeout = _configured_llm_timeout_seconds()
+        api_key = get_deepseek_api_key()
         payload: dict[str, Any] = {
             "model": model,
             "messages": [{"role": "user", "content": prompt}],
@@ -308,50 +478,78 @@ def _call_deepseek(
         }
         if effort:
             payload["reasoning_effort"] = effort
-
-        endpoint = "https://api.deepseek.com/chat/completions"
-        if json_schema is not None:
-            endpoint = "https://api.deepseek.com/beta/chat/completions"
-            payload["thinking"] = {"type": "disabled"}
-            payload.pop("reasoning_effort", None)
+        use_strict_tool = bool(json_schema and not effort)
+        use_json_object = bool(json_schema and effort)
+        wrap_tool_result = bool(json_schema and json_schema.get("type") != "object")
+        if use_strict_tool:
+            tool_name = "emit_result" if wrap_tool_result else json_tool_name
+            tool_schema = (
+                {
+                    "type": "object",
+                    "properties": {"result": json_schema},
+                    "required": ["result"],
+                    "additionalProperties": False,
+                }
+                if wrap_tool_result
+                else json_schema
+            )
             payload["tools"] = [
                 {
                     "type": "function",
                     "function": {
-                        "name": "emit_result",
-                        "description": "Return the structured result for this request.",
+                        "name": tool_name,
+                        "description": "Return the requested structured analysis.",
                         "strict": True,
-                        "parameters": {
-                            "type": "object",
-                            "properties": {"result": json_schema},
-                            "required": ["result"],
-                            "additionalProperties": False,
-                        },
+                        "parameters": tool_schema,
                     },
                 },
             ]
-            payload["tool_choice"] = {"type": "function", "function": {"name": "emit_result"}}
+            payload["tool_choice"] = {"type": "function", "function": {"name": tool_name}}
+        elif use_json_object:
+            # DeepSeek's strict tool mode currently rejects thinking/reasoning
+            # mode. JSON mode is the supported structured-output path when
+            # preserving configured reasoning effort.
+            payload["response_format"] = {"type": "json_object"}
 
+        attempt_id = _begin_llm_usage(
+            component=component,
+            provider="deepseek",
+            model=model,
+            prompt=prompt,
+            max_tokens=max_tokens,
+            metadata={
+                "thinking": payload["thinking"],
+                "reasoning_effort": effort,
+                "structured_output": bool(json_schema),
+                "structured_output_mode": "strict_tool"
+                if use_strict_tool
+                else "json_object"
+                if use_json_object
+                else None,
+                "json_tool_name": json_tool_name if json_schema else None,
+                "request_timeout_seconds": request_timeout,
+            },
+        )
         response = httpx.post(
-            endpoint,
+            "https://api.deepseek.com/beta/chat/completions"
+            if use_strict_tool
+            else "https://api.deepseek.com/chat/completions",
             headers={
-                "Authorization": f"Bearer {get_deepseek_api_key()}",
+                "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             },
             json=payload,
-            timeout=120,
+            timeout=request_timeout,
         )
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except Exception as exc:
+            body = response.text[:1000]
+            raise RuntimeError(f"DeepSeek HTTP {response.status_code}: {body}") from exc
         data = response.json()
         latency = time.monotonic() - t0
         m.observe("scorer.deepseek.latency_seconds", latency)
 
-        usage: dict[str, Any] = {}
-        input_tokens = 0
-        output_tokens = 0
-        total_tokens = 0
-        reasoning_tokens = 0
-        cached_tokens = 0
         if isinstance(data, dict):
             usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
             if isinstance(usage, dict):
@@ -371,16 +569,20 @@ def _call_deepseek(
                 if isinstance(first_choice, dict):
                     message = first_choice.get("message")
                     if isinstance(message, dict):
-                        if json_schema is not None:
-                            tool_calls = message.get("tool_calls")
-                            if isinstance(tool_calls, list) and tool_calls:
-                                function = tool_calls[0].get("function") if isinstance(tool_calls[0], dict) else None
-                                if isinstance(function, dict) and function.get("name") == "emit_result":
-                                    arguments = function.get("arguments")
+                        tool_calls = message.get("tool_calls")
+                        if use_strict_tool and isinstance(tool_calls, list) and tool_calls:
+                            tool_call = tool_calls[0]
+                            if isinstance(tool_call, dict):
+                                function_call = tool_call.get("function")
+                                if isinstance(function_call, dict):
+                                    arguments = function_call.get("arguments")
                                     if isinstance(arguments, str):
-                                        parsed_arguments = json.loads(arguments)
-                                        content = json.dumps(parsed_arguments["result"])
+                                        response_text = arguments
+                                        if wrap_tool_result:
+                                            parsed_arguments = json.loads(arguments)
+                                            response_text = json.dumps(parsed_arguments["result"])
                                         _record_llm_usage(
+                                            attempt_id=attempt_id,
                                             component=component,
                                             provider="deepseek",
                                             model=model,
@@ -388,18 +590,20 @@ def _call_deepseek(
                                             max_tokens=max_tokens,
                                             latency_seconds=latency,
                                             success=True,
-                                            response_text=content,
+                                            response_text=response_text,
                                             input_tokens=input_tokens,
                                             output_tokens=output_tokens,
                                             reasoning_tokens=reasoning_tokens,
                                             cached_input_tokens=cached_tokens,
                                             total_tokens=total_tokens,
-                                            metadata={"usage": usage} if usage else None,
+                                            metadata={"usage": usage, "tool_call": function_call} if usage else None,
                                         )
-                                        return content
+                                        return response_text
+
                         content = message.get("content")
-                        if isinstance(content, str):
+                        if isinstance(content, str) and content.strip():
                             _record_llm_usage(
+                                attempt_id=attempt_id,
                                 component=component,
                                 provider="deepseek",
                                 model=model,
@@ -421,6 +625,7 @@ def _call_deepseek(
     except Exception as exc:
         m.inc("scorer.deepseek.errors")
         _record_llm_usage(
+            attempt_id=attempt_id,
             component=component,
             provider="deepseek",
             model=model,
@@ -428,7 +633,13 @@ def _call_deepseek(
             max_tokens=max_tokens,
             latency_seconds=time.monotonic() - t0,
             success=False,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            reasoning_tokens=reasoning_tokens,
+            cached_input_tokens=cached_tokens,
+            total_tokens=total_tokens,
             error=exc,
+            metadata={"usage": usage} if usage else None,
         )
         raise
 
@@ -439,11 +650,23 @@ def _call_anthropic_vision(
     prompt: str,
     max_tokens: int = 1024,
     component: str = "vision",
+    usage_recorder: UsageRecorder | None = None,
 ) -> str:
     """Call Anthropic API with image and return text response."""
     t0 = time.monotonic()
+    attempt_id: int | None = None
     try:
         client = get_anthropic_client()
+        attempt_id = _begin_llm_usage(
+            component=component,
+            provider="anthropic",
+            model=model,
+            prompt=prompt,
+            max_tokens=max_tokens,
+            is_vision=True,
+            metadata={"image_url": image_url},
+            usage_recorder=usage_recorder,
+        )
         response = client.messages.create(
             model=model,
             max_tokens=max_tokens,
@@ -471,6 +694,7 @@ def _call_anthropic_vision(
         input_tokens = _usage_get(usage, "input_tokens")
         output_tokens = _usage_get(usage, "output_tokens")
         _record_llm_usage(
+            attempt_id=attempt_id,
             component=component,
             provider="anthropic",
             model=model,
@@ -484,10 +708,12 @@ def _call_anthropic_vision(
             output_tokens=output_tokens,
             total_tokens=input_tokens + output_tokens,
             metadata={"usage": _usage_to_dict(usage)} if usage else None,
+            usage_recorder=usage_recorder,
         )
         return result
     except Exception as exc:
         _record_llm_usage(
+            attempt_id=attempt_id,
             component=component,
             provider="anthropic",
             model=model,
@@ -497,6 +723,7 @@ def _call_anthropic_vision(
             success=False,
             is_vision=True,
             error=exc,
+            usage_recorder=usage_recorder,
         )
         raise
 
@@ -507,12 +734,14 @@ def _call_gemini_vision(
     prompt: str,
     max_tokens: int = 1024,
     component: str = "vision",
+    usage_recorder: UsageRecorder | None = None,
 ) -> str:
     """Call Gemini API with image and return text response."""
     import httpx
     from google.genai import types
 
     t0 = time.monotonic()
+    attempt_id: int | None = None
     try:
         client = get_gemini_client()
 
@@ -525,6 +754,16 @@ def _call_gemini_vision(
         # Create image part using new SDK
         image_part = types.Part.from_bytes(data=image_data, mime_type=mime_type)
 
+        attempt_id = _begin_llm_usage(
+            component=component,
+            provider="gemini",
+            model=model,
+            prompt=prompt,
+            max_tokens=max_tokens,
+            is_vision=True,
+            metadata={"image_url": image_url, "mime_type": mime_type},
+            usage_recorder=usage_recorder,
+        )
         response = client.models.generate_content(
             model=model,
             contents=[prompt, image_part],
@@ -540,6 +779,7 @@ def _call_gemini_vision(
         reasoning_tokens = _usage_get(usage, "thoughts_token_count")
         total_tokens = _usage_get(usage, "total_token_count") or input_tokens + output_tokens + reasoning_tokens
         _record_llm_usage(
+            attempt_id=attempt_id,
             component=component,
             provider="gemini",
             model=model,
@@ -555,10 +795,12 @@ def _call_gemini_vision(
             cached_input_tokens=cached_tokens,
             total_tokens=total_tokens,
             metadata={"usage": _usage_to_dict(usage), "mime_type": mime_type} if usage else {"mime_type": mime_type},
+            usage_recorder=usage_recorder,
         )
         return result
     except Exception as exc:
         _record_llm_usage(
+            attempt_id=attempt_id,
             component=component,
             provider="gemini",
             model=model,
@@ -568,6 +810,7 @@ def _call_gemini_vision(
             success=False,
             is_vision=True,
             error=exc,
+            usage_recorder=usage_recorder,
         )
         raise
 
@@ -580,6 +823,7 @@ def _call_llm(
     reasoning: str | None = None,
     component: str = "unknown",
     json_schema: dict[str, Any] | None = None,
+    json_tool_name: str = "emit_json",
 ) -> str:
     """Call LLM based on provider."""
 
@@ -601,6 +845,7 @@ def _call_llm(
                 reasoning=reasoning,
                 component=component,
                 json_schema=json_schema,
+                json_tool_name=json_tool_name,
             )
         if provider == "anthropic":
             return _call_anthropic(model, prompt, max_tokens, component=component)
@@ -616,14 +861,29 @@ def _call_llm_vision(
     prompt: str,
     max_tokens: int = 1024,
     component: str = "vision",
+    usage_recorder: UsageRecorder | None = None,
 ) -> str:
     """Call LLM with vision based on provider."""
 
     def _invoke() -> str:
         if provider == "gemini":
-            return _call_gemini_vision(model, image_url, prompt, max_tokens, component=component)
+            return _call_gemini_vision(
+                model,
+                image_url,
+                prompt,
+                max_tokens,
+                component=component,
+                usage_recorder=usage_recorder,
+            )
         if provider == "anthropic":
-            return _call_anthropic_vision(model, image_url, prompt, max_tokens, component=component)
+            return _call_anthropic_vision(
+                model,
+                image_url,
+                prompt,
+                max_tokens,
+                component=component,
+                usage_recorder=usage_recorder,
+            )
         if provider == "deepseek":
             raise ValueError("DeepSeek provider does not support twag vision analysis; use gemini or anthropic")
         raise ValueError(f"Unsupported LLM provider: {provider}")
@@ -647,13 +907,13 @@ def _with_retry(fn: Callable[[], _T]) -> _T:
             return fn()
         except Exception as exc:
             attempt += 1
-            m.inc("scorer.retries")
-            msg = str(exc).lower()
-            if "not set" in msg and "api" in msg:
+            if not _should_retry_llm_error(exc):
+                m.inc("scorer.retry_suppressed")
                 raise
             if retries and attempt >= retries:
                 raise
 
+            m.inc("scorer.retries")
             delay = min(max_delay, base_delay * (2 ** (attempt - 1)))
             if jitter:
                 delay = max(0.0, delay * (1 + random.uniform(-jitter, jitter)))

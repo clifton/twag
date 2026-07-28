@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
@@ -20,6 +21,7 @@ from ..db import (
     get_tweets_by_ids,
     get_unprocessed_tweets,
 )
+from ..db.connection import commit_with_retry
 from ..fetcher import read_tweet
 from ..media import build_media_context
 from ..scorer import EnrichmentResult, TriageResult, enrich_tweet
@@ -34,6 +36,22 @@ from .triage import (
 log = logging.getLogger(__name__)
 
 
+def _stage_fields(**fields: object) -> str:
+    items = [f"{key}={value}" for key, value in fields.items() if value is not None]
+    return f" {' '.join(items)}" if items else ""
+
+
+@contextmanager
+def _process_stage(stage: str, **fields: object):
+    started = time.monotonic()
+    suffix = _stage_fields(**fields)
+    log.info("process_stage_start stage=%s%s", stage, suffix)
+    try:
+        yield
+    finally:
+        log.info("process_stage_done stage=%s elapsed=%.3fs%s", stage, time.monotonic() - started, suffix)
+
+
 def process_unprocessed(
     limit: int = 50,
     dry_run: bool = False,
@@ -44,6 +62,7 @@ def process_unprocessed(
     status_cb: Callable[[str], None] | None = None,
     total_cb: Callable[[int], None] | None = None,
     force_refresh: bool = False,
+    vision_max_age_days: int | None = 3,
     triage_only: bool = False,
 ) -> list[TriageResult]:
     """Process tweets that haven't been scored yet."""
@@ -61,9 +80,22 @@ def process_unprocessed(
         config.get("processing", {}).get("max_concurrency_url_expansion", 15),
         15,
     )
+    log.info(
+        "process_unprocessed_start limit=%s dry_run=%s provided_rows=%s batch_size=%s quote_depth=%s "
+        "url_expansion_workers=%s vision_max_age_days=%s triage_only=%s",
+        limit,
+        dry_run,
+        rows is not None,
+        batch_size,
+        quote_depth,
+        url_expansion_workers,
+        vision_max_age_days,
+        triage_only,
+    )
 
     with get_connection() as conn:
         unprocessed = rows if rows is not None else get_unprocessed_tweets(conn, limit=limit)
+        log.info("process_unprocessed_selected rows=%d provided_rows=%s", len(unprocessed), rows is not None)
 
         if not unprocessed:
             return []
@@ -71,31 +103,72 @@ def process_unprocessed(
         if not triage_only and quote_depth > 0:
             if status_cb:
                 status_cb("Expanding dependency tweets")
-            unprocessed = _expand_unprocessed_with_dependencies(
-                conn,
-                unprocessed,
+            with _process_stage(
+                "dependencies.initial",
+                rows=len(unprocessed),
                 max_depth=quote_depth,
-                delay=quote_delay,
                 fetch_missing=not dry_run,
-                status_cb=status_cb,
-                total_cb=total_cb,
-            )
+            ):
+                unprocessed = _expand_unprocessed_with_dependencies(
+                    conn,
+                    unprocessed,
+                    max_depth=quote_depth,
+                    delay=quote_delay,
+                    fetch_missing=not dry_run,
+                    status_cb=status_cb,
+                    total_cb=total_cb,
+                )
+            if not dry_run:
+                commit_with_retry(conn)
 
         if not dry_run and not triage_only:
-            unprocessed = _expand_links_for_rows(
-                conn,
-                unprocessed,
-                max_workers=url_expansion_workers,
-                quote_depth=max(1, quote_depth),
-                status_cb=status_cb,
-            )
+            with _process_stage("links.initial", rows=len(unprocessed), max_workers=url_expansion_workers):
+                unprocessed = _expand_links_for_rows(
+                    conn,
+                    unprocessed,
+                    max_workers=url_expansion_workers,
+                    quote_depth=max(1, quote_depth),
+                    status_cb=status_cb,
+                )
+            commit_with_retry(conn)
+            if quote_depth > 0:
+                with _process_stage(
+                    "dependencies.after_links",
+                    rows=len(unprocessed),
+                    max_depth=quote_depth,
+                    fetch_missing=True,
+                ):
+                    unprocessed = _expand_unprocessed_with_dependencies(
+                        conn,
+                        unprocessed,
+                        max_depth=quote_depth,
+                        delay=quote_delay,
+                        fetch_missing=True,
+                        status_cb=status_cb,
+                        total_cb=total_cb,
+                    )
+                commit_with_retry(conn)
+                with _process_stage(
+                    "links.after_dependencies",
+                    rows=len(unprocessed),
+                    max_workers=url_expansion_workers,
+                ):
+                    unprocessed = _expand_links_for_rows(
+                        conn,
+                        unprocessed,
+                        max_workers=url_expansion_workers,
+                        quote_depth=max(1, quote_depth),
+                        status_cb=status_cb,
+                    )
+                commit_with_retry(conn)
 
         if total_cb:
             total_cb(len(unprocessed))
 
         # Get tier-1 handles for summarization check
-        tier1_accounts = get_accounts(conn, tier=1)
-        tier1_handles = {a["handle"].lower() for a in tier1_accounts}
+        with _process_stage("accounts.load", rows=len(unprocessed)):
+            tier1_accounts = get_accounts(conn, tier=1)
+            tier1_handles = {a["handle"].lower() for a in tier1_accounts}
 
         # Prepare tweets for batch triage
         tweets_for_triage = []
@@ -128,24 +201,26 @@ def process_unprocessed(
                 for t in tweets_for_triage
             ]
 
-        results = _triage_rows(
-            conn,
-            tweet_rows=unprocessed,
-            batch_size=batch_size,
-            triage_model=triage_model,
-            enrich_model=enrich_model,
-            high_threshold=high_threshold,
-            tier1_handles=tier1_handles,
-            update_stats=not triage_only,
-            allow_summarize=not triage_only,
-            media_min_score=None if triage_only else media_min_score,
-            progress_cb=progress_cb,
-            status_cb=status_cb,
-            force_refresh=force_refresh,
-            enrich_results=not triage_only,
-        )
+        with _process_stage("triage_and_enrichment", rows=len(unprocessed), batch_size=batch_size):
+            results = _triage_rows(
+                conn,
+                tweet_rows=unprocessed,
+                batch_size=batch_size,
+                triage_model=triage_model,
+                enrich_model=enrich_model,
+                high_threshold=high_threshold,
+                tier1_handles=tier1_handles,
+                update_stats=not triage_only,
+                allow_summarize=not triage_only,
+                media_min_score=None if triage_only else media_min_score,
+                progress_cb=progress_cb,
+                status_cb=status_cb,
+                force_refresh=force_refresh,
+                vision_max_age_days=vision_max_age_days,
+                enrich_results=not triage_only,
+            )
 
-        conn.commit()
+        commit_with_retry(conn)
 
     m.observe("pipeline.process_unprocessed.latency_seconds", time.monotonic() - t0)
     m.inc("pipeline.process_unprocessed.tweets", len(results))
@@ -160,6 +235,7 @@ def reprocess_today_quoted(
     rows: list[sqlite3.Row] | None = None,
     progress_cb: Callable[[int], None] | None = None,
     status_cb: Callable[[str], None] | None = None,
+    vision_max_age_days: int | None = 3,
 ) -> list[TriageResult]:
     """Reprocess today's already-processed tweets with dependency context."""
     config = load_config()
@@ -213,13 +289,15 @@ def reprocess_today_quoted(
                 for row in rows
             ]
 
-        rows = _expand_links_for_rows(
-            conn,
-            rows,
-            max_workers=url_expansion_workers,
-            quote_depth=max(1, quote_depth),
-            status_cb=status_cb,
-        )
+        with _process_stage("reprocess.links", rows=len(rows), max_workers=url_expansion_workers):
+            rows = _expand_links_for_rows(
+                conn,
+                rows,
+                max_workers=url_expansion_workers,
+                quote_depth=max(1, quote_depth),
+                status_cb=status_cb,
+            )
+        commit_with_retry(conn)
 
         tier1_accounts = get_accounts(conn, tier=1)
         tier1_handles = {a["handle"].lower() for a in tier1_accounts}
@@ -237,6 +315,7 @@ def reprocess_today_quoted(
             media_min_score=config["scoring"].get("min_score_for_media", 5),
             progress_cb=progress_cb,
             status_cb=status_cb,
+            vision_max_age_days=vision_max_age_days,
         )
 
         # Mark all reprocessed tweets so they aren't reprocessed again
@@ -247,7 +326,7 @@ def reprocess_today_quoted(
             [(now, tid) for tid in tweet_ids],
         )
 
-        conn.commit()
+        commit_with_retry(conn)
 
     return results
 

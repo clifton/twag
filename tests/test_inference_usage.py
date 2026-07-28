@@ -4,7 +4,13 @@ from click.testing import CliRunner
 
 from twag.cli import cli
 from twag.db import get_connection, init_db
-from twag.db.inference import estimate_cost_usd, record_llm_usage, summarize_llm_usage
+from twag.db.inference import (
+    begin_llm_usage_attempt,
+    complete_llm_usage_attempt,
+    estimate_cost_usd,
+    record_llm_usage,
+    summarize_llm_usage,
+)
 
 
 def test_estimate_gemini_cost_includes_reasoning_tokens() -> None:
@@ -50,6 +56,46 @@ def test_record_and_summarize_llm_usage(tmp_path) -> None:
     assert row["output_tokens"] == 200
     assert row["reasoning_tokens"] == 50
     assert row["reestimated_cost_usd"] > 0
+
+
+def test_started_attempt_survives_until_completion(tmp_path) -> None:
+    db_path = tmp_path / "usage.db"
+    init_db(db_path)
+
+    attempt_id = begin_llm_usage_attempt(
+        component="triage",
+        provider="deepseek",
+        model="deepseek-v4-pro",
+        max_tokens=16384,
+        prompt_chars=1234,
+        db_path=db_path,
+    )
+
+    with get_connection(db_path, readonly=True) as conn:
+        row = conn.execute("SELECT attempt_status, success, prompt_chars FROM llm_usage").fetchone()
+    assert row["attempt_status"] == "started"
+    assert row["success"] == 0
+    assert row["prompt_chars"] == 1234
+
+    complete_llm_usage_attempt(
+        attempt_id,
+        component="triage",
+        provider="deepseek",
+        model="deepseek-v4-pro",
+        input_tokens=1000,
+        output_tokens=2000,
+        total_tokens=3000,
+        max_tokens=16384,
+        response_chars=4000,
+        db_path=db_path,
+    )
+
+    with get_connection(db_path, readonly=True) as conn:
+        row = conn.execute("SELECT attempt_status, success, input_tokens, estimated_cost_usd FROM llm_usage").fetchone()
+    assert row["attempt_status"] == "success"
+    assert row["success"] == 1
+    assert row["input_tokens"] == 1000
+    assert row["estimated_cost_usd"] > 0
 
 
 def test_usage_command_shows_only_logged_rows(monkeypatch) -> None:
@@ -117,4 +163,6 @@ def test_existing_llm_usage_table_is_migrated(tmp_path) -> None:
 
     assert "latency_seconds" in columns
     assert "cached_input_tokens" in columns
+    assert "attempt_status" in columns
+    assert "completed_at" in columns
     assert count == 1

@@ -16,6 +16,9 @@
 #   ANTHROPIC_API_KEY - For enrichment (optional)
 #   TELEGRAM_CHAT_ID - For error notifications (optional)
 #   TELEGRAM_BOT_TOKEN - For error notifications via direct API (optional fallback)
+#   TWAG_FETCH_COUNT - Home timeline fetch count (default: 150)
+#   TWAG_PROCESS_LIMIT - Process batch size (default: 100)
+#   TWAG_REPROCESS_QUOTES - Reprocess quote/reply dependencies (default: 0)
 
 # Load environment from common locations
 for envfile in ~/.env ~/.config/twag/env /etc/twag/env; do
@@ -46,6 +49,9 @@ MODE="${1:-full}"
 ERRORS=""
 LOG_DIR="${TWAG_LOG_DIR:-$HOME/.local/share/twag/logs}"
 LOG_FILE="$LOG_DIR/cron-$(date '+%Y-%m-%d').log"
+FETCH_COUNT="${TWAG_FETCH_COUNT:-150}"
+PROCESS_LIMIT="${TWAG_PROCESS_LIMIT:-100}"
+PROCESS_REPROCESS_QUOTES="${TWAG_REPROCESS_QUOTES:-0}"
 
 # Ensure log directory exists
 mkdir -p "$LOG_DIR"
@@ -111,6 +117,26 @@ run_cmd() {
     return 0
 }
 
+run_process() {
+    if is_process_running; then
+        log "Another twag process is running, skipping process"
+        return 0
+    fi
+
+    local args=(twag process --limit "$PROCESS_LIMIT" --notify)
+    case "${PROCESS_REPROCESS_QUOTES,,}" in
+        1|true|yes|on)
+            args+=(--reprocess-quotes)
+            ;;
+    esac
+
+    run_cmd "process" "${args[@]}"
+}
+
+is_process_running() {
+    pgrep -f "[t]wag process" >/dev/null 2>&1
+}
+
 # Mirror load_fund_context (twag/scorer/scoring.py): scoring reads the freshest of
 # the spine-generated CONTEXT.md and the stopgap twag-context.md, so only alert when
 # BOTH are missing or stale >48h.
@@ -134,9 +160,13 @@ fi
 case "$MODE" in
     full)
         # Full cycle: fetch, process, digest, maintenance
+        if is_process_running; then
+            log "Another twag process is running, skipping full cycle"
+            exit 0
+        fi
         log "Running full cycle..."
-        run_cmd "fetch" twag fetch || true
-        run_cmd "process" twag process --notify || true
+        run_cmd "fetch" twag fetch --count "$FETCH_COUNT" || true
+        run_process || true
         run_cmd "spine" twag spine emit || true
         run_cmd "digest" twag digest || true
         MAINT_STAMP="$LOG_DIR/.maintenance-$(date +%Y-%m-%d)"
@@ -149,11 +179,11 @@ case "$MODE" in
     fetch-only)
         # Quick fetch during the day (no tier-1 to reduce API calls)
         log "Running fetch only..."
-        run_cmd "fetch" twag fetch --no-tier1 || true
+        run_cmd "fetch" twag fetch --count "$FETCH_COUNT" --no-tier1 || true
         ;;
     process-only)
         log "Running process only..."
-        run_cmd "process" twag process --notify || true
+        run_process || true
         ;;
     digest-only)
         log "Running digest only..."

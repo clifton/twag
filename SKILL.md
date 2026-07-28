@@ -216,8 +216,11 @@ twag process                  # Score unprocessed (no alerts by default)
 twag process -n 100           # Limit batch
 twag process --dry-run        # Preview
 twag process --notify         # Send alerts
-twag process --no-reprocess-quotes     # Skip reprocessing dependency tweets
+twag process --vision-max-age-days 3  # Skip vision for older tweets (default: 3)
+twag process --reprocess-quotes        # Reprocess dependency tweets
 twag process --reprocess-min-score 5   # Min score for reprocessing (default: 3)
+
+twag db skip-stale --older-than-days 3  # Clear old backlog without LLM calls
 
 twag spine emit              # Append eligible signal-event v1 records
 twag eval run                # Run the versioned scoring golden set

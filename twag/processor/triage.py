@@ -5,8 +5,11 @@ from __future__ import annotations
 import json
 import logging
 import re
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone
+import time
+from collections import deque
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -17,6 +20,9 @@ from ..config import load_config
 from ..db import (
     get_cached_media_analysis,
     get_tweet_by_id,
+    get_tweets_by_ids,
+    increment_media_analysis_cache_hit,
+    record_llm_usage,
     record_media_analysis,
     update_account_stats,
     update_tweet_analysis,
@@ -24,6 +30,7 @@ from ..db import (
     update_tweet_enrichment,
     update_tweet_processing,
 )
+from ..db.connection import commit_with_retry
 from ..media import build_media_context, build_media_summary, parse_media_items
 from ..scorer import (
     TriageResult,
@@ -36,6 +43,7 @@ from ..scorer import (
     summarize_x_article,
     triage_tweets_batch,
 )
+from .dependencies import _extract_dependency_ids_from_row
 
 log = logging.getLogger(__name__)
 
@@ -45,6 +53,45 @@ _SIGNAL_TIER_RANK = {
     "market_relevant": 2,
     "high_signal": 3,
 }
+
+
+@dataclass
+class _MediaAnalysisOutcome:
+    """Media worker payload plus DB writes deferred to the owner thread."""
+
+    items: list[dict[str, Any]]
+    updated: bool
+    cache_records: list[tuple[str, str | None, str | None, dict[str, Any]]] = field(default_factory=list)
+    cache_hits: list[tuple[str, str | None, str | None]] = field(default_factory=list)
+    usage_records: list[dict[str, Any]] = field(default_factory=list)
+
+    def __iter__(self):
+        """Preserve the private helper's historical two-value unpacking."""
+        yield self.items
+        yield self.updated
+
+
+def _persist_media_outcome(conn: sqlite3.Connection, outcome: Any) -> None:
+    """Persist cache and usage records returned by a media worker."""
+    if not isinstance(outcome, _MediaAnalysisOutcome):
+        return
+    for url, provider, model, result in outcome.cache_records:
+        record_media_analysis(
+            url,
+            provider=provider,
+            model=model,
+            result=result,
+            conn=conn,
+        )
+    for url, provider, model in outcome.cache_hits:
+        increment_media_analysis_cache_hit(
+            url,
+            provider=provider,
+            model=model,
+            conn=conn,
+        )
+    for usage in outcome.usage_records:
+        record_llm_usage(conn=conn, **usage)
 
 
 def _score_to_signal_tier(score: float, high_threshold: float) -> str:
@@ -74,6 +121,28 @@ def _normalized_worker_count(value: Any, fallback: int) -> int:
     return workers if workers > 0 else fallback
 
 
+def _vision_allowed_for_tweet(
+    tweet_row: sqlite3.Row,
+    max_age_days: int | None,
+    *,
+    now: datetime | None = None,
+) -> bool:
+    """Return whether a tweet is recent enough to incur vision cost."""
+    if max_age_days is None:
+        return True
+    raw_created_at = tweet_row["created_at"]
+    if not raw_created_at:
+        return False
+    try:
+        created_at = datetime.fromisoformat(str(raw_created_at).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return False
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    current = now or datetime.now(timezone.utc)
+    return created_at >= current - timedelta(days=max(0, max_age_days))
+
+
 def _prefer_stronger_signal_tier(existing: str | None, candidate: str | None) -> str | None:
     """Return the stronger signal tier, defaulting to existing when equal/unknown."""
     if not existing and not candidate:
@@ -86,6 +155,13 @@ def _prefer_stronger_signal_tier(existing: str | None, candidate: str | None) ->
     existing_rank = _SIGNAL_TIER_RANK.get(str(existing), -1)
     candidate_rank = _SIGNAL_TIER_RANK.get(str(candidate), -1)
     return candidate if candidate_rank > existing_rank else existing
+
+
+def _truncate_context(text: str, max_chars: int) -> str:
+    clean = " ".join((text or "").split())
+    if len(clean) <= max_chars:
+        return clean
+    return clean[: max(0, max_chars - 3)].rstrip() + "..."
 
 
 def _build_triage_text(tweet_row: sqlite3.Row) -> str:
@@ -113,6 +189,41 @@ def _build_triage_text(tweet_row: sqlite3.Row) -> str:
     return content
 
 
+def _build_triage_text_with_context(
+    tweet_row: sqlite3.Row,
+    dependency_rows: list[sqlite3.Row],
+    *,
+    max_dependency_chars: int = 900,
+    max_context_chars: int = 2400,
+) -> str:
+    """Build bounded triage text with direct quote/reply/link context."""
+    base_text = _build_triage_text(tweet_row)
+    context_parts: list[str] = []
+    seen: set[str] = set()
+
+    for dep_row in dependency_rows:
+        dep_id = str(dep_row["id"])
+        if dep_id in seen:
+            continue
+        seen.add(dep_id)
+        label = "Context"
+        if tweet_row["quote_tweet_id"] and dep_id == str(tweet_row["quote_tweet_id"]):
+            label = "Quoted tweet"
+        elif tweet_row["in_reply_to_tweet_id"] and dep_id == str(tweet_row["in_reply_to_tweet_id"]):
+            label = "Reply parent"
+        dep_text = _truncate_context(_build_triage_text(dep_row), max_dependency_chars)
+        if not dep_text:
+            continue
+        context_parts.append(f"{label} @{dep_row['author_handle']}: {dep_text}")
+
+    if not context_parts:
+        return base_text
+
+    context_text = "\n".join(f"- {part}" for part in context_parts)
+    context_text = _truncate_context(context_text, max_context_chars)
+    return f"{base_text}\n\nDirect context:\n{context_text}"
+
+
 def ensure_media_analysis(
     conn: sqlite3.Connection,
     tweet_row: sqlite3.Row,
@@ -132,6 +243,7 @@ def ensure_media_analysis(
         media_items,
         vision_model=vision_model,
         vision_provider=vision_provider,
+        conn=conn,
     )
 
     if updated or (media_items and not tweet_row["media_analysis"]):
@@ -151,24 +263,64 @@ def _analyze_media_items(
     *,
     vision_model: str | None = None,
     vision_provider: str | None = None,
-) -> tuple[list[dict[str, Any]], bool]:
+    conn: sqlite3.Connection | None = None,
+    defer_db_writes: bool = False,
+) -> _MediaAnalysisOutcome:
+    """Analyze media and keep pipeline DB writes on the owning transaction."""
     updated = False
+    cache_records: list[tuple[str, str | None, str | None, dict[str, Any]]] = []
+    cache_hits: list[tuple[str, str | None, str | None]] = []
+    usage_records: list[dict[str, Any]] = []
     config = load_config()
     effective_model = vision_model or config["llm"].get("vision_model")
     effective_provider = vision_provider or config["llm"].get("vision_provider")
+    usage_recorder = usage_records.append if defer_db_writes else None
+    if conn is not None and not defer_db_writes:
+
+        def _record_usage(payload: dict[str, Any]) -> None:
+            record_llm_usage(conn=conn, **payload)
+
+        usage_recorder = _record_usage
+
+    from ..metrics import get_collector
+
+    m = get_collector()
     for item in media_items:
         if item.get("kind") or item.get("prose_text") or item.get("short_description"):
             continue
         url = item.get("url")
         if not url:
             continue
-        cached = get_cached_media_analysis(url, provider=effective_provider, model=effective_model)
+        cache_kwargs: dict[str, Any] = {
+            "provider": effective_provider,
+            "model": effective_model,
+        }
+        if conn is not None:
+            cache_kwargs["conn"] = conn
+        cached = get_cached_media_analysis(url, **cache_kwargs)
         if cached:
             _apply_media_analysis_to_item(item, cached)
+            m.inc("pipeline.media_cache.hits")
+            if defer_db_writes:
+                cache_hits.append((url, effective_provider, effective_model))
+            else:
+                hit_kwargs: dict[str, Any] = {
+                    "provider": effective_provider,
+                    "model": effective_model,
+                }
+                if conn is not None:
+                    hit_kwargs["conn"] = conn
+                increment_media_analysis_cache_hit(url, **hit_kwargs)
             updated = True
             continue
         try:
-            result = analyze_media(url, model=vision_model, provider=vision_provider)
+            analyze_kwargs: dict[str, Any] = {
+                "model": vision_model,
+                "provider": vision_provider,
+            }
+            if usage_recorder is not None:
+                analyze_kwargs["usage_recorder"] = usage_recorder
+            result = analyze_media(url, **analyze_kwargs)
         except Exception:
             continue
 
@@ -181,13 +333,29 @@ def _analyze_media_items(
             "table": result.table,
         }
         _apply_media_analysis_to_item(item, result_payload)
-        record_media_analysis(url, provider=effective_provider, model=effective_model, result=result_payload)
+        if defer_db_writes:
+            cache_records.append((url, effective_provider, effective_model, result_payload))
+        else:
+            record_kwargs: dict[str, Any] = {
+                "provider": effective_provider,
+                "model": effective_model,
+                "result": result_payload,
+            }
+            if conn is not None:
+                record_kwargs["conn"] = conn
+            record_media_analysis(url, **record_kwargs)
         updated = True
 
     if _merge_document_media(media_items):
         updated = True
 
-    return media_items, updated
+    return _MediaAnalysisOutcome(
+        items=media_items,
+        updated=updated,
+        cache_records=cache_records,
+        cache_hits=cache_hits,
+        usage_records=usage_records,
+    )
 
 
 def _apply_media_analysis_to_item(item: dict[str, Any], result: dict[str, Any]) -> None:
@@ -367,12 +535,13 @@ def _process_article(
     article_title: str,
     article_preview: str,
     enrich_model: str | None,
-) -> tuple[Any, list[dict[str, Any]]]:
+) -> tuple[Any, _MediaAnalysisOutcome]:
     """Analyze media then summarize article — runs in text_pool thread."""
-    analyzed_items, _ = _analyze_media_items(
+    media_outcome = _analyze_media_items(
         media_items,
         vision_model=vision_model,
         vision_provider=vision_provider,
+        defer_db_writes=True,
     )
     article_result = summarize_x_article(
         article_text,
@@ -381,7 +550,7 @@ def _process_article(
         model=enrich_model,
         provider=None,
     )
-    return article_result, analyzed_items
+    return article_result, media_outcome
 
 
 def _triage_rows(
@@ -399,6 +568,7 @@ def _triage_rows(
     progress_cb: Callable[[int], None] | None = None,
     status_cb: Callable[[str], None] | None = None,
     force_refresh: bool = False,
+    vision_max_age_days: int | None = 3,
     enrich_results: bool = True,
 ) -> list[TriageResult]:
     """Run triage on provided rows and persist results."""
@@ -416,6 +586,19 @@ def _triage_rows(
     vision_provider = config["llm"].get("vision_provider")
     analysis_min_score = config.get("scoring", {}).get("min_score_for_analysis", 6)
     article_min_score = config.get("scoring", {}).get("min_score_for_article_processing", 5)
+    processing_cfg = config.get("processing", {})
+    try:
+        worker_poll_seconds = max(1.0, float(processing_cfg.get("worker_poll_seconds", 30)))
+    except (TypeError, ValueError):
+        worker_poll_seconds = 30.0
+    try:
+        max_pending_worker_futures = int(
+            processing_cfg.get("max_pending_worker_futures") or max(1, max_text_workers + max_vision_workers),
+        )
+    except (TypeError, ValueError):
+        max_pending_worker_futures = max(1, max_text_workers + max_vision_workers)
+    max_pending_worker_futures = max(1, max_pending_worker_futures)
+
     # Pre-fetch author priors for both triage context and enrichment.
     author_handles = {row["author_handle"] for row in tweet_rows}
     account_categories: dict[str, str | None] = {}
@@ -441,13 +624,23 @@ def _triage_rows(
 
     tweets_for_triage = []
     tweet_map: dict[str, sqlite3.Row] = {}
+    row_context = {str(row["id"]): row for row in tweet_rows}
+    dependency_ids = {
+        dep_id for row in tweet_rows for dep_id in _extract_dependency_ids_from_row(row) if dep_id not in row_context
+    }
+    if dependency_ids:
+        row_context.update(get_tweets_by_ids(conn, dependency_ids))
+
     for row in tweet_rows:
         tweet_id = row["id"]
         handle = row["author_handle"]
+        dependency_rows = [
+            row_context[dep_id] for dep_id in _extract_dependency_ids_from_row(row) if dep_id in row_context
+        ]
         tweets_for_triage.append(
             {
                 "id": tweet_id,
-                "text": _build_triage_text(row),
+                "text": _build_triage_text_with_context(row, dependency_rows),
                 "handle": handle,
                 "author_context": account_context.get(handle, "unranked"),
             },
@@ -469,6 +662,9 @@ def _triage_rows(
     # Unified future map: Future -> (tag, data)
     # Tags: "summary", "media", "article", "enrich"
     all_futures: dict[Any, tuple[str, Any]] = {}
+    future_started_at: dict[Any, float] = {}
+    pending_context_tasks: dict[str, int] = {}
+    pending_enrichment_rows: dict[str, sqlite3.Row] = {}
 
     # Worker pools return analysis payloads only; SQLite access stays on the owner thread.
     triage_pool = ThreadPoolExecutor(max_workers=max_triage_workers) if max_triage_workers > 1 else None
@@ -486,13 +682,30 @@ def _triage_rows(
             if progress_cb:
                 progress_cb(1)
 
+    def _worker_tweet_id(tag: str, data: Any) -> str | None:
+        if tag in {"summary", "media"}:
+            return str(data)
+        if isinstance(data, tuple) and data:
+            return str(data[0])
+        return None
+
+    def _track_worker_future(future: Any, tag: str, data: Any) -> None:
+        all_futures[future] = (tag, data)
+        future_started_at[future] = time.monotonic()
+        log.info(
+            "worker_future_queued tag=%s tweet_id=%s pending=%d",
+            tag,
+            _worker_tweet_id(tag, data),
+            len(all_futures),
+        )
+
     def _submit_enrichment(tweet_id: str, tweet_row: sqlite3.Row) -> None:
         """Prepare enrichment parameters and submit to text_pool.
 
-        Uses the already-available tweet_row and pre-fetched account_categories
-        instead of re-querying the database per row.
+        Refreshes the row before building context so same-run article/media
+        results are visible to enrichment.
         """
-        row = tweet_row
+        row = get_tweet_by_id(conn, tweet_id) or tweet_row
         if row["analysis_json"] and not force_refresh:
             _complete_task(tweet_id)
             return
@@ -522,7 +735,7 @@ def _triage_rows(
                 image_description=media_context,
                 model=enrich_model,
             )
-            all_futures[future] = ("enrich", (tweet_id, row))
+            _track_worker_future(future, "enrich", (tweet_id, row))
         else:
             try:
                 result = enrich_tweet(
@@ -539,7 +752,7 @@ def _triage_rows(
                 log.exception("Enrichment failed for tweet %s", tweet_id)
             _complete_task(tweet_id)
 
-    def _submit_article(tweet_id: str, tweet_row: sqlite3.Row) -> None:
+    def _submit_article(tweet_id: str, tweet_row: sqlite3.Row, *, analyze_article_media: bool) -> None:
         """Prepare article processing and submit to text_pool.
 
         Uses the already-available tweet_row instead of re-querying the database.
@@ -560,7 +773,7 @@ def _triage_rows(
             status_cb(f"Summarizing article @{row['author_handle']}")
 
         if text_pool:
-            if media_items and _needs_media_analysis(media_items):
+            if analyze_article_media and media_items and _needs_media_analysis(media_items):
                 # Use wrapper that analyzes media then summarizes article
                 future = text_pool.submit(
                     _process_article,
@@ -585,14 +798,15 @@ def _triage_rows(
                     enrich_model,
                     media_items,
                 )
-            all_futures[future] = ("article", (tweet_id, row))
+            _track_worker_future(future, "article", (tweet_id, row))
         else:
             try:
-                if media_items and _needs_media_analysis(media_items):
+                if analyze_article_media and media_items and _needs_media_analysis(media_items):
                     media_items, _ = _analyze_media_items(
                         media_items,
                         vision_model=vision_model,
                         vision_provider=vision_provider,
+                        conn=conn,
                     )
                 article_result = summarize_x_article(
                     article_text,
@@ -628,6 +842,19 @@ def _triage_rows(
             except Exception:
                 log.exception("Article processing failed for tweet %s", tweet_id)
             _complete_task(tweet_id)
+
+    def _context_task_done(tweet_id: str) -> None:
+        remaining = pending_context_tasks.get(tweet_id)
+        if remaining is None:
+            return
+        remaining -= 1
+        if remaining > 0:
+            pending_context_tasks[tweet_id] = remaining
+            return
+        pending_context_tasks.pop(tweet_id, None)
+        row = pending_enrichment_rows.pop(tweet_id, None)
+        if row is not None:
+            _submit_enrichment(tweet_id, row)
 
     def _handle_results(results: list[TriageResult]) -> None:
         for result in results:
@@ -677,7 +904,7 @@ def _triage_rows(
                     if status_cb:
                         status_cb(f"Queue summary @{handle}")
                     future = text_pool.submit(summarize_tweet, content, handle, enrich_model, None)
-                    all_futures[future] = ("summary", result.tweet_id)
+                    _track_worker_future(future, "summary", result.tweet_id)
                     task_count += 1
                 else:
                     try:
@@ -704,45 +931,6 @@ def _triage_rows(
                     is_high_signal=result.score >= high_threshold,
                 )
 
-            if enrich_results and media_min_score is not None and result.score >= media_min_score:
-                media_items = parse_media_items(tweet_row["media_items"])
-                if media_items:
-                    if not _needs_media_analysis(media_items):
-                        media_summary = build_media_summary(media_items)
-                        if media_summary and tweet_row["media_analysis"] != media_summary:
-                            update_tweet_enrichment(
-                                conn,
-                                tweet_id=result.tweet_id,
-                                media_analysis=media_summary,
-                                media_items=media_items,
-                            )
-                    elif vision_pool:
-                        if status_cb:
-                            status_cb(f"Queue media @{handle}")
-                        future = vision_pool.submit(
-                            _analyze_media_items,
-                            media_items,
-                            vision_model=vision_model,
-                            vision_provider=vision_provider,
-                        )
-                        all_futures[future] = ("media", result.tweet_id)
-                        task_count += 1
-                    else:
-                        if status_cb:
-                            status_cb(f"Analyzing media @{handle}")
-                        updated_items, _ = _analyze_media_items(
-                            media_items,
-                            vision_model=vision_model,
-                            vision_provider=vision_provider,
-                        )
-                        media_summary = build_media_summary(updated_items)
-                        update_tweet_enrichment(
-                            conn,
-                            tweet_id=result.tweet_id,
-                            media_analysis=media_summary,
-                            media_items=updated_items,
-                        )
-
             needs_analysis = (
                 enrich_results
                 and analysis_min_score is not None
@@ -764,70 +952,96 @@ def _triage_rows(
             if needs_article:
                 task_count += 1
 
+            media_items = parse_media_items(tweet_row["media_items"])
+            vision_allowed = _vision_allowed_for_tweet(tweet_row, vision_max_age_days)
+            media_needs_analysis = bool(media_items) and _needs_media_analysis(media_items)
+            if enrich_results and media_needs_analysis and not vision_allowed:
+                m.inc("pipeline.vision.skipped_stale")
+            article_will_process_media = needs_article and vision_allowed and media_needs_analysis
+            media_needs_async_analysis = (
+                enrich_results
+                and vision_allowed
+                and media_min_score is not None
+                and result.score >= media_min_score
+                and media_needs_analysis
+                and not article_will_process_media
+                and vision_pool is not None
+            )
+            if media_needs_async_analysis:
+                task_count += 1
+
+            context_task_count = int(bool(needs_article and text_pool)) + int(media_needs_async_analysis)
+
             if task_count:
                 pending_tasks[result.tweet_id] = task_count
-            elif progress_cb:
-                progress_cb(1)
 
-            # Submit enrichment and article immediately (after pending_tasks is set)
-            if needs_analysis:
-                _submit_enrichment(result.tweet_id, tweet_row)
+            if needs_analysis and context_task_count:
+                pending_context_tasks[result.tweet_id] = context_task_count
+                pending_enrichment_rows[result.tweet_id] = tweet_row
+
             if needs_article:
-                _submit_article(result.tweet_id, tweet_row)
-
-    try:
-        if triage_pool:
-            batch_futures: dict[Any, tuple[int, int]] = {}
-            for i in range(0, total, batch_size):
-                batch_index = (i // batch_size) + 1
-                if status_cb:
-                    status_cb(f"Queue batch {batch_index}/{total_batches}")
-                batch = tweets_for_triage[i : i + batch_size]
-                future = triage_pool.submit(
-                    triage_tweets_batch,
-                    batch,
-                    triage_model,
-                    None,
-                    prompt_template=prompt_template,
-                    fund_context=fund_context,
+                _submit_article(
+                    result.tweet_id,
+                    tweet_row,
+                    analyze_article_media=vision_allowed,
                 )
-                batch_futures[future] = (batch_index, len(batch))
 
-            for future in as_completed(batch_futures):
-                batch_index, batch_size_count = batch_futures[future]
-                if status_cb:
-                    status_cb(f"Scored batch {batch_index}/{total_batches}")
-                try:
-                    results = future.result()
-                except Exception:
-                    log.exception("Triage batch %d failed", batch_index)
-                    m.inc("pipeline.triage.batch_errors")
-                    if status_cb:
-                        status_cb(f"Batch {batch_index} failed")
-                    if progress_cb:
-                        progress_cb(batch_size_count)
-                    results = []
-                all_results.extend(results)
-                if results:
-                    _handle_results(results)
-        else:
-            for i in range(0, total, batch_size):
-                batch_index = (i // batch_size) + 1
-                if status_cb:
-                    status_cb(f"Scoring batch {batch_index}/{total_batches}")
-                batch = tweets_for_triage[i : i + batch_size]
-                results = triage_tweets_batch(
-                    batch,
-                    model=triage_model,
-                    prompt_template=prompt_template,
-                    fund_context=fund_context,
-                )
-                all_results.extend(results)
-                _handle_results(results)
+            if (
+                enrich_results
+                and vision_allowed
+                and media_min_score is not None
+                and result.score >= media_min_score
+                and media_items
+            ):
+                if not _needs_media_analysis(media_items):
+                    media_summary = build_media_summary(media_items)
+                    if media_summary and tweet_row["media_analysis"] != media_summary:
+                        update_tweet_enrichment(
+                            conn,
+                            tweet_id=result.tweet_id,
+                            media_analysis=media_summary,
+                            media_items=media_items,
+                        )
+                elif not article_will_process_media:
+                    if vision_pool:
+                        if status_cb:
+                            status_cb(f"Queue media @{handle}")
+                        future = vision_pool.submit(
+                            _analyze_media_items,
+                            media_items,
+                            vision_model=vision_model,
+                            vision_provider=vision_provider,
+                            defer_db_writes=True,
+                        )
+                        _track_worker_future(future, "media", result.tweet_id)
+                    else:
+                        if status_cb:
+                            status_cb(f"Analyzing media @{handle}")
+                        updated_items, _ = _analyze_media_items(
+                            media_items,
+                            vision_model=vision_model,
+                            vision_provider=vision_provider,
+                            conn=conn,
+                        )
+                        media_summary = build_media_summary(updated_items)
+                        update_tweet_enrichment(
+                            conn,
+                            tweet_id=result.tweet_id,
+                            media_analysis=media_summary,
+                            media_items=updated_items,
+                        )
+            if needs_analysis and not context_task_count:
+                _submit_enrichment(result.tweet_id, tweet_row)
+            elif not task_count and progress_cb:
+                progress_cb(1)
+        commit_with_retry(conn)
 
-        # Apply worker results here so DB writes remain serialized on this thread.
-        for future in as_completed(list(all_futures.keys())):
-            tag, data = all_futures.pop(future)
+    def _handle_worker_future(future: Any) -> None:
+        tag, data = all_futures.pop(future)
+        submitted_at = future_started_at.pop(future, None)
+        log_tweet_id = _worker_tweet_id(tag, data)
+        status = "success"
+        try:
             if tag == "summary":
                 tweet_id = data
                 try:
@@ -839,12 +1053,15 @@ def _triage_rows(
                             content_summary=content_summary,
                         )
                 except Exception:
+                    status = "error"
                     log.exception("Summary worker failed for tweet %s", tweet_id)
                 _complete_task(tweet_id)
             elif tag == "media":
                 tweet_id = data
                 try:
-                    updated_items, _ = future.result()
+                    media_outcome = future.result()
+                    _persist_media_outcome(conn, media_outcome)
+                    updated_items, _ = media_outcome
                     media_summary = build_media_summary(updated_items)
                     update_tweet_enrichment(
                         conn,
@@ -853,12 +1070,19 @@ def _triage_rows(
                         media_items=updated_items,
                     )
                 except Exception:
+                    status = "error"
                     log.exception("Media worker failed for tweet %s", tweet_id)
                 _complete_task(tweet_id)
+                _context_task_done(tweet_id)
             elif tag == "article":
                 tweet_id, row = data
                 try:
-                    article_result, analyzed_items = future.result()
+                    article_result, media_outcome = future.result()
+                    _persist_media_outcome(conn, media_outcome)
+                    if isinstance(media_outcome, list):
+                        analyzed_items = media_outcome
+                    else:
+                        analyzed_items, _ = media_outcome
                     top_visual = _select_article_top_visual(
                         analyzed_items,
                         article_title=row["article_title"] or "",
@@ -884,16 +1108,197 @@ def _triage_rows(
                             media_items=analyzed_items,
                         )
                 except Exception:
+                    status = "error"
                     log.exception("Article worker failed for tweet %s", tweet_id)
                 _complete_task(tweet_id)
+                _context_task_done(tweet_id)
             elif tag == "enrich":
                 tweet_id, row = data
                 try:
                     result = future.result()
                     _save_enrichment_result(conn, tweet_id, row, result)
                 except Exception:
+                    status = "error"
                     log.exception("Enrich worker failed for tweet %s", tweet_id)
                 _complete_task(tweet_id)
+        finally:
+            commit_with_retry(conn)
+            elapsed = time.monotonic() - submitted_at if submitted_at is not None else 0.0
+            log.info(
+                "worker_future_done tag=%s tweet_id=%s status=%s elapsed=%.3fs pending=%d",
+                tag,
+                log_tweet_id,
+                status,
+                elapsed,
+                len(all_futures),
+            )
+
+    def _drain_worker_futures(*, block: bool) -> None:
+        if not all_futures:
+            return
+        timeout = worker_poll_seconds if block else 0
+        done, _pending = wait(list(all_futures.keys()), timeout=timeout, return_when=FIRST_COMPLETED)
+        if not done:
+            if block:
+                oldest_age = max((time.monotonic() - future_started_at.get(f, time.monotonic())) for f in all_futures)
+                log.warning(
+                    "Waiting on %d worker futures; no completion within %.1fs oldest_age=%.1fs",
+                    len(all_futures),
+                    worker_poll_seconds,
+                    oldest_age,
+                )
+            return
+        for future in done:
+            _handle_worker_future(future)
+
+    def _throttle_worker_backlog() -> None:
+        while len(all_futures) >= max_pending_worker_futures:
+            _drain_worker_futures(block=True)
+
+    def _oldest_worker_age() -> float:
+        if not all_futures:
+            return 0.0
+        now = time.monotonic()
+        return max(now - future_started_at.get(future, now) for future in all_futures)
+
+    try:
+        if triage_pool:
+            batch_queue = deque(
+                (
+                    (i // batch_size) + 1,
+                    tweets_for_triage[i : i + batch_size],
+                )
+                for i in range(0, total, batch_size)
+            )
+            batch_futures: dict[Any, tuple[int, int, float]] = {}
+
+            def _queue_triage_batches() -> None:
+                while (
+                    batch_queue
+                    and len(batch_futures) < max_triage_workers
+                    and len(all_futures) < max_pending_worker_futures
+                ):
+                    batch_index, batch = batch_queue.popleft()
+                    if status_cb:
+                        status_cb(f"Queue batch {batch_index}/{total_batches}")
+                    future = triage_pool.submit(
+                        triage_tweets_batch,
+                        batch,
+                        triage_model,
+                        None,
+                        prompt_template=prompt_template,
+                        fund_context=fund_context,
+                    )
+                    batch_futures[future] = (batch_index, len(batch), time.monotonic())
+                    log.info(
+                        "triage_batch_queued batch=%d total_batches=%d size=%d pending=%d",
+                        batch_index,
+                        total_batches,
+                        len(batch),
+                        len(batch_futures),
+                    )
+
+            def _oldest_triage_age() -> float:
+                if not batch_futures:
+                    return 0.0
+                now = time.monotonic()
+                return max(now - submitted_at for _, _, submitted_at in batch_futures.values())
+
+            def _handle_triage_future(future: Any) -> None:
+                batch_index, batch_size_count, submitted_at = batch_futures.pop(future)
+                if status_cb:
+                    status_cb(f"Scored batch {batch_index}/{total_batches}")
+                status = "success"
+                try:
+                    results = future.result()
+                except Exception:
+                    status = "error"
+                    log.exception("Triage batch %d failed", batch_index)
+                    m.inc("pipeline.triage.batch_errors")
+                    if status_cb:
+                        status_cb(f"Batch {batch_index} failed")
+                    if progress_cb:
+                        progress_cb(batch_size_count)
+                    results = []
+                log.info(
+                    "triage_batch_done batch=%d total_batches=%d size=%d results=%d status=%s elapsed=%.3fs",
+                    batch_index,
+                    total_batches,
+                    batch_size_count,
+                    len(results),
+                    status,
+                    time.monotonic() - submitted_at,
+                )
+                all_results.extend(results)
+                if results:
+                    _handle_results(results)
+
+            _queue_triage_batches()
+            while batch_queue or batch_futures or all_futures:
+                if len(all_futures) < max_pending_worker_futures:
+                    _queue_triage_batches()
+
+                if len(all_futures) >= max_pending_worker_futures and all_futures:
+                    wait_futures = list(all_futures.keys())
+                    wait_reason = "worker_backlog"
+                else:
+                    wait_futures = list(batch_futures.keys()) + list(all_futures.keys())
+                    wait_reason = "mixed"
+
+                if not wait_futures:
+                    continue
+
+                done, _pending = wait(wait_futures, timeout=worker_poll_seconds, return_when=FIRST_COMPLETED)
+                if not done:
+                    log.warning(
+                        "Waiting on futures; reason=%s triage_pending=%d worker_pending=%d no completion within %.1fs "
+                        "oldest_triage_age=%.1fs oldest_worker_age=%.1fs",
+                        wait_reason,
+                        len(batch_futures),
+                        len(all_futures),
+                        worker_poll_seconds,
+                        _oldest_triage_age(),
+                        _oldest_worker_age(),
+                    )
+                    continue
+
+                # Worker completions can unblock queued enrichment, so handle them before
+                # triage completions that may submit more worker work.
+                for future in done:
+                    if future in all_futures:
+                        _handle_worker_future(future)
+                for future in done:
+                    if future in batch_futures:
+                        _handle_triage_future(future)
+        else:
+            for i in range(0, total, batch_size):
+                batch_index = (i // batch_size) + 1
+                if status_cb:
+                    status_cb(f"Scoring batch {batch_index}/{total_batches}")
+                batch = tweets_for_triage[i : i + batch_size]
+                batch_started_at = time.monotonic()
+                results = triage_tweets_batch(
+                    batch,
+                    model=triage_model,
+                    prompt_template=prompt_template,
+                    fund_context=fund_context,
+                )
+                log.info(
+                    "triage_batch_done batch=%d total_batches=%d size=%d results=%d status=success elapsed=%.3fs",
+                    batch_index,
+                    total_batches,
+                    len(batch),
+                    len(results),
+                    time.monotonic() - batch_started_at,
+                )
+                all_results.extend(results)
+                _handle_results(results)
+                _drain_worker_futures(block=False)
+                _throttle_worker_backlog()
+
+        # Apply worker results here so DB writes remain serialized on this thread.
+        while all_futures:
+            _drain_worker_futures(block=True)
     finally:
         if triage_pool:
             triage_pool.shutdown(wait=True)
