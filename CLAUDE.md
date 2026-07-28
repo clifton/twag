@@ -67,7 +67,8 @@ metadata:
 ### Setup
 
 ```bash
-pip install -e ".[dev]"
+uv sync --group dev
+uv run twag --version
 ```
 
 ### Lint & Format

@@ -4,9 +4,16 @@ Step-by-step instructions for installing twag and its dependencies.
 
 ## Prerequisites
 
-- Python 3.10+ with pip
+- [uv](https://docs.astral.sh/uv/) (manages the Python 3.10+ tool environment)
 - Node.js 18+ with npm (for bird CLI)
 - A Twitter/X account
+
+Install and verify uv first:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv --version
+```
 
 ## Step 1: Install bird CLI
 
@@ -109,25 +116,28 @@ export DEEPSEEK_API_KEY="your_deepseek_key"
 
 ## Step 5: Install twag
 
-### From PyPI
+### Global CLI from PyPI (Recommended)
 
 ```bash
-pip install twag
+uv tool install twag
 ```
+
+If `twag` is not on `PATH`, run `uv tool update-shell` and restart the shell. Upgrade later with
+`uv tool upgrade twag`.
 
 ### From Source
 
 ```bash
 git clone https://github.com/clifton/twag.git
 cd twag
-pip install -e .
+uv tool install --editable .
 ```
 
-### Using uv
+The generated global `twag` command runs from uv's isolated tool environment. For development inside the checkout, use
+`uv sync --group dev` once and invoke the local environment with `uv run twag ...`.
 
-```bash
-uv pip install twag
-```
+After source dependency or entry-point changes, refresh the editable tool with
+`uv tool install --force --editable .`.
 
 ## Step 6: Initialize
 
@@ -200,7 +210,7 @@ Description=TWAG Twitter Aggregator
 Type=oneshot
 TimeoutStartSec=2700
 Environment="TWAG_PROCESS_LIMIT=100"
-ExecStart=/bin/bash -c 'source ~/.env && twag fetch && twag process --limit "${TWAG_PROCESS_LIMIT}"'
+ExecStart=/bin/bash -lc 'source %h/.env && %h/.local/bin/twag fetch && %h/.local/bin/twag process --limit "${TWAG_PROCESS_LIMIT}"'
 ```
 
 Create `~/.config/systemd/user/twag.timer`:

@@ -96,7 +96,7 @@ def test_triage_overlap_with_summaries_using_dedicated_pool(monkeypatch, tmp_pat
         triage_2_done = threading.Event()
         summary_before_triage_2 = threading.Event()
 
-        def _fake_triage_tweets_batch(batch, model=None, provider=None):
+        def _fake_triage_tweets_batch(batch, model=None, provider=None, **kwargs):
             tweet_id = batch[0]["id"]
             batch_no = 1 if tweet_id == "tweet-1" else 2
             if batch_no == 2:
@@ -187,7 +187,7 @@ def test_triage_payload_includes_direct_dependency_context(monkeypatch, tmp_path
 
         captured_batches: list[list[dict[str, str]]] = []
 
-        def _fake_triage_tweets_batch(batch, model=None, provider=None):
+        def _fake_triage_tweets_batch(batch, model=None, provider=None, **kwargs):
             captured_batches.append(batch)
             return [
                 TriageResult(
@@ -354,7 +354,7 @@ def test_triage_parallel_db_access_stays_on_owner_thread(monkeypatch, tmp_path) 
         monkeypatch.setattr(
             triage_mod,
             "triage_tweets_batch",
-            lambda batch, model=None, provider=None: [
+            lambda batch, model=None, provider=None, **kwargs: [
                 TriageResult(
                     tweet_id=item["id"],
                     score=8.0,
@@ -469,7 +469,7 @@ def test_article_media_processing_feeds_enrichment_once(monkeypatch, tmp_path) -
         monkeypatch.setattr(
             triage_mod,
             "triage_tweets_batch",
-            lambda batch, model=None, provider=None: [
+            lambda batch, model=None, provider=None, **kwargs: [
                 TriageResult(
                     tweet_id=item["id"],
                     score=8.0,

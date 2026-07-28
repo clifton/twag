@@ -79,6 +79,8 @@ from .search import (
 )
 from .time_utils import (
     _get_et_offset,
+    get_et_date,
+    get_et_day_bounds,
     get_market_day_cutoff,
     parse_time_range,
 )
@@ -142,6 +144,8 @@ __all__ = [
     "get_cached_media_analysis",
     "get_connection",
     "get_context_command",
+    "get_et_date",
+    "get_et_day_bounds",
     "get_feed_tweets",
     "get_last_fetch",
     "get_market_day_cutoff",

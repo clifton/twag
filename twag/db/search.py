@@ -1,6 +1,7 @@
 """Search and feed query operations."""
 
 import json
+import re
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
@@ -25,6 +26,12 @@ class SearchResult:
     tickers: list[str]
     bookmarked: bool
     rank: float  # BM25 rank score (lower is more relevant)
+    surprise: int | None = None
+    themes: list[str] | None = None
+    playbook_trigger: str | None = None
+    catalyst_status: str | None = None
+    direction: str | None = None
+    story_key: str | None = None
 
 
 @dataclass
@@ -68,6 +75,12 @@ class FeedTweet:
     original_author_name: str | None
     original_content: str | None
     reactions: list[str]  # Reaction types for this tweet
+    surprise: int | None = None
+    themes: list[str] | None = None
+    playbook_trigger: str | None = None
+    catalyst_status: str | None = None
+    direction: str | None = None
+    story_key: str | None = None
 
 
 # Keywords that suggest equity-relevant context (for auto-today default)
@@ -93,6 +106,13 @@ EQUITY_KEYWORDS = {
     "report",
 }
 
+_CASHTAG_PATTERN = re.compile(r"(?<![\w$])\$([A-Za-z][A-Za-z0-9_]*)")
+
+
+def normalize_fts_query(query: str) -> str:
+    """Normalize shell-safe X cashtags into tokens accepted by SQLite FTS5."""
+    return _CASHTAG_PATTERN.sub(r"\1", query)
+
 
 def query_suggests_equity_context(query: str) -> bool:
     """Check if a search query suggests equity-relevant context."""
@@ -113,6 +133,7 @@ def search_tweets(
     since: datetime | None = None,
     until: datetime | None = None,
     time_range: str | None = None,
+    tweet_ids: set[str] | None = None,
     limit: int = 50,
     offset: int = 0,
     order_by: str = "rank",
@@ -131,6 +152,7 @@ def search_tweets(
         since: Start time (UTC datetime)
         until: End time (UTC datetime)
         time_range: Time range spec ("today", "7d", "2025-01-15", etc.)
+        tweet_ids: Restrict results to a specific set of fetched tweet IDs
         limit: Maximum results to return
         offset: Offset for pagination
         order_by: Sort order - "rank" (BM25), "score" (relevance), "time" (created_at)
@@ -152,7 +174,7 @@ def search_tweets(
 
     # FTS match
     conditions.append("tweets_fts MATCH ?")
-    params.append(query)
+    params.append(normalize_fts_query(query))
 
     if category:
         # Match category in JSON array (e.g., '["fed_policy", "rates_fx"]')
@@ -181,6 +203,14 @@ def search_tweets(
 
     if bookmarked_only:
         conditions.append("t.bookmarked = 1")
+
+    if tweet_ids is not None:
+        if not tweet_ids:
+            conditions.append("1 = 0")
+        else:
+            placeholders = ",".join("?" for _ in tweet_ids)
+            conditions.append(f"t.id IN ({placeholders})")
+            params.extend(sorted(tweet_ids))
 
     if since:
         conditions.append("t.created_at >= ?")
@@ -217,6 +247,12 @@ def search_tweets(
             t.signal_tier,
             t.tickers,
             t.bookmarked,
+            t.surprise,
+            t.themes,
+            t.playbook_trigger,
+            t.catalyst_status,
+            t.direction,
+            t.story_key,
             bm25(tweets_fts) as rank
         FROM tweets_fts
         JOIN tweets t ON tweets_fts.rowid = t.rowid
@@ -259,6 +295,16 @@ def search_tweets(
         else:
             categories = []
 
+        themes_raw = row["themes"]
+        themes = []
+        if themes_raw:
+            try:
+                decoded_themes = json.loads(themes_raw)
+                if isinstance(decoded_themes, list):
+                    themes = [str(theme) for theme in decoded_themes]
+            except json.JSONDecodeError:
+                themes = []
+
         results.append(
             SearchResult(
                 id=row["id"],
@@ -273,6 +319,12 @@ def search_tweets(
                 tickers=tickers,
                 bookmarked=bool(row["bookmarked"]),
                 rank=row["rank"],
+                surprise=row["surprise"],
+                themes=themes,
+                playbook_trigger=row["playbook_trigger"],
+                catalyst_status=row["catalyst_status"],
+                direction=row["direction"],
+                story_key=row["story_key"],
             ),
         )
 
@@ -386,6 +438,15 @@ def get_feed_tweets(
         else:
             tickers = []
 
+        themes = []
+        if row["themes"]:
+            try:
+                decoded_themes = json.loads(row["themes"])
+                if isinstance(decoded_themes, list):
+                    themes = [str(theme) for theme in decoded_themes]
+            except json.JSONDecodeError:
+                themes = []
+
         # Parse created_at
         created_at = None
         if row["created_at"]:
@@ -489,6 +550,12 @@ def get_feed_tweets(
                 original_author_name=row["original_author_name"],
                 original_content=row["original_content"],
                 reactions=reactions,
+                surprise=row["surprise"],
+                themes=themes,
+                playbook_trigger=row["playbook_trigger"],
+                catalyst_status=row["catalyst_status"],
+                direction=row["direction"],
+                story_key=row["story_key"],
             ),
         )
 

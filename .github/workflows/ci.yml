@@ -30,7 +30,8 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --group dev
-      - run: uvx ty check --output-format github
+      # Match the repository lockfile instead of floating to a newer, incompatible ty release.
+      - run: uv run ty check --output-format github
 
   test:
     runs-on: ubuntu-latest

@@ -36,6 +36,8 @@ from ..scorer import (
     TriageResult,
     analyze_media,
     enrich_tweet,
+    load_fund_context,
+    resolve_triage_template,
     summarize_document_text,
     summarize_tweet,
     summarize_x_article,
@@ -567,6 +569,7 @@ def _triage_rows(
     status_cb: Callable[[str], None] | None = None,
     force_refresh: bool = False,
     vision_max_age_days: int | None = 3,
+    enrich_results: bool = True,
 ) -> list[TriageResult]:
     """Run triage on provided rows and persist results."""
     from ..metrics import get_collector
@@ -595,6 +598,30 @@ def _triage_rows(
     except (TypeError, ValueError):
         max_pending_worker_futures = max(1, max_text_workers + max_vision_workers)
     max_pending_worker_futures = max(1, max_pending_worker_futures)
+
+    # Pre-fetch author priors for both triage context and enrichment.
+    author_handles = {row["author_handle"] for row in tweet_rows}
+    account_categories: dict[str, str | None] = {}
+    account_context: dict[str, str] = {}
+    if author_handles:
+        placeholders = ",".join("?" for _ in author_handles)
+        acct_cursor = conn.execute(
+            f"SELECT handle, category, tier, avg_relevance_score FROM accounts WHERE handle IN ({placeholders})",
+            tuple(author_handles),
+        )
+        for account in acct_cursor.fetchall():
+            handle = account["handle"]
+            category = account["category"]
+            account_categories[handle] = category
+            parts = []
+            if account["tier"] is not None:
+                parts.append(f"tier-{account['tier']}")
+            if category:
+                parts.append(str(category))
+            if account["avg_relevance_score"] is not None:
+                parts.append(f"prior {float(account['avg_relevance_score']):.1f}")
+            account_context[handle] = ", ".join(parts) or "unranked"
+
     tweets_for_triage = []
     tweet_map: dict[str, sqlite3.Row] = {}
     row_context = {str(row["id"]): row for row in tweet_rows}
@@ -606,6 +633,7 @@ def _triage_rows(
 
     for row in tweet_rows:
         tweet_id = row["id"]
+        handle = row["author_handle"]
         dependency_rows = [
             row_context[dep_id] for dep_id in _extract_dependency_ids_from_row(row) if dep_id in row_context
         ]
@@ -613,21 +641,16 @@ def _triage_rows(
             {
                 "id": tweet_id,
                 "text": _build_triage_text_with_context(row, dependency_rows),
-                "handle": row["author_handle"],
+                "handle": handle,
+                "author_context": account_context.get(handle, "unranked"),
             },
         )
         tweet_map[tweet_id] = row
 
-    # Pre-fetch account categories to avoid per-row SELECT in _submit_enrichment.
-    author_handles = {row["author_handle"] for row in tweet_rows}
-    account_categories: dict[str, str | None] = {}
-    if author_handles:
-        placeholders = ",".join("?" for _ in author_handles)
-        acct_cursor = conn.execute(
-            f"SELECT handle, category FROM accounts WHERE handle IN ({placeholders})",
-            tuple(author_handles),
-        )
-        account_categories = {r["handle"]: r["category"] for r in acct_cursor.fetchall()}
+    prompt_template = resolve_triage_template(conn)
+    fund_context, context_stale = load_fund_context()
+    if context_stale:
+        m.inc("pipeline.triage.context_stale")
 
     all_results: list[TriageResult] = []
 
@@ -851,6 +874,12 @@ def _triage_rows(
                 summary=result.summary,
                 signal_tier=tier,
                 tickers=result.tickers,
+                surprise=result.surprise,
+                is_stale_repeat=result.is_stale_repeat,
+                themes=result.themes,
+                playbook_trigger=result.playbook_trigger,
+                catalyst_status=result.catalyst_status,
+                direction=result.direction,
             )
 
             if not tweet_row:
@@ -903,7 +932,8 @@ def _triage_rows(
                 )
 
             needs_analysis = (
-                analysis_min_score is not None
+                enrich_results
+                and analysis_min_score is not None
                 and result.score >= analysis_min_score
                 and tweet_row is not None
                 and (force_refresh or not tweet_row["analysis_json"])
@@ -912,7 +942,8 @@ def _triage_rows(
                 task_count += 1
 
             needs_article = (
-                tweet_row is not None
+                enrich_results
+                and tweet_row is not None
                 and bool(tweet_row["is_x_article"])
                 and (force_refresh or not tweet_row["article_processed_at"])
                 and result.score >= article_min_score
@@ -924,11 +955,12 @@ def _triage_rows(
             media_items = parse_media_items(tweet_row["media_items"])
             vision_allowed = _vision_allowed_for_tweet(tweet_row, vision_max_age_days)
             media_needs_analysis = bool(media_items) and _needs_media_analysis(media_items)
-            if media_needs_analysis and not vision_allowed:
+            if enrich_results and media_needs_analysis and not vision_allowed:
                 m.inc("pipeline.vision.skipped_stale")
             article_will_process_media = needs_article and vision_allowed and media_needs_analysis
             media_needs_async_analysis = (
-                vision_allowed
+                enrich_results
+                and vision_allowed
                 and media_min_score is not None
                 and result.score >= media_min_score
                 and media_needs_analysis
@@ -954,7 +986,13 @@ def _triage_rows(
                     analyze_article_media=vision_allowed,
                 )
 
-            if vision_allowed and media_min_score is not None and result.score >= media_min_score and media_items:
+            if (
+                enrich_results
+                and vision_allowed
+                and media_min_score is not None
+                and result.score >= media_min_score
+                and media_items
+            ):
                 if not _needs_media_analysis(media_items):
                     media_summary = build_media_summary(media_items)
                     if media_summary and tweet_row["media_analysis"] != media_summary:
@@ -992,7 +1030,6 @@ def _triage_rows(
                             media_analysis=media_summary,
                             media_items=updated_items,
                         )
-
             if needs_analysis and not context_task_count:
                 _submit_enrichment(result.tweet_id, tweet_row)
             elif not task_count and progress_cb:
@@ -1144,7 +1181,14 @@ def _triage_rows(
                     batch_index, batch = batch_queue.popleft()
                     if status_cb:
                         status_cb(f"Queue batch {batch_index}/{total_batches}")
-                    future = triage_pool.submit(triage_tweets_batch, batch, triage_model, None)
+                    future = triage_pool.submit(
+                        triage_tweets_batch,
+                        batch,
+                        triage_model,
+                        None,
+                        prompt_template=prompt_template,
+                        fund_context=fund_context,
+                    )
                     batch_futures[future] = (batch_index, len(batch), time.monotonic())
                     log.info(
                         "triage_batch_queued batch=%d total_batches=%d size=%d pending=%d",
@@ -1233,7 +1277,12 @@ def _triage_rows(
                     status_cb(f"Scoring batch {batch_index}/{total_batches}")
                 batch = tweets_for_triage[i : i + batch_size]
                 batch_started_at = time.monotonic()
-                results = triage_tweets_batch(batch, model=triage_model)
+                results = triage_tweets_batch(
+                    batch,
+                    model=triage_model,
+                    prompt_template=prompt_template,
+                    fund_context=fund_context,
+                )
                 log.info(
                     "triage_batch_done batch=%d total_batches=%d size=%d results=%d status=success elapsed=%.3fs",
                     batch_index,

@@ -63,6 +63,7 @@ def process_unprocessed(
     total_cb: Callable[[int], None] | None = None,
     force_refresh: bool = False,
     vision_max_age_days: int | None = 3,
+    triage_only: bool = False,
 ) -> list[TriageResult]:
     """Process tweets that haven't been scored yet."""
     from ..metrics import get_collector
@@ -81,7 +82,7 @@ def process_unprocessed(
     )
     log.info(
         "process_unprocessed_start limit=%s dry_run=%s provided_rows=%s batch_size=%s quote_depth=%s "
-        "url_expansion_workers=%s vision_max_age_days=%s",
+        "url_expansion_workers=%s vision_max_age_days=%s triage_only=%s",
         limit,
         dry_run,
         rows is not None,
@@ -89,6 +90,7 @@ def process_unprocessed(
         quote_depth,
         url_expansion_workers,
         vision_max_age_days,
+        triage_only,
     )
 
     with get_connection() as conn:
@@ -98,7 +100,7 @@ def process_unprocessed(
         if not unprocessed:
             return []
 
-        if quote_depth > 0:
+        if not triage_only and quote_depth > 0:
             if status_cb:
                 status_cb("Expanding dependency tweets")
             with _process_stage(
@@ -119,7 +121,7 @@ def process_unprocessed(
             if not dry_run:
                 commit_with_retry(conn)
 
-        if not dry_run:
+        if not dry_run and not triage_only:
             with _process_stage("links.initial", rows=len(unprocessed), max_workers=url_expansion_workers):
                 unprocessed = _expand_links_for_rows(
                     conn,
@@ -208,13 +210,14 @@ def process_unprocessed(
                 enrich_model=enrich_model,
                 high_threshold=high_threshold,
                 tier1_handles=tier1_handles,
-                update_stats=True,
-                allow_summarize=True,
-                media_min_score=media_min_score,
+                update_stats=not triage_only,
+                allow_summarize=not triage_only,
+                media_min_score=None if triage_only else media_min_score,
                 progress_cb=progress_cb,
                 status_cb=status_cb,
                 force_refresh=force_refresh,
                 vision_max_age_days=vision_max_age_days,
+                enrich_results=not triage_only,
             )
 
         commit_with_retry(conn)

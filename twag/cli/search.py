@@ -1,6 +1,7 @@
 """Search command."""
 
 import json
+import sqlite3
 
 import rich_click as click
 
@@ -13,6 +14,7 @@ from ..db import (
     query_suggests_equity_context,
     search_tweets,
 )
+from ..search_live import LiveSearchError, refresh_search_cache
 from ._console import console
 
 
@@ -28,6 +30,19 @@ from ._console import console
 @click.option("--until", help="End time (YYYY-MM-DD)")
 @click.option("--today", is_flag=True, help="Since previous market close (4pm ET)")
 @click.option("--time", "time_range", help="Time range shorthand (today, 7d, etc.)")
+@click.option(
+    "--live/--cached",
+    default=False,
+    show_default=True,
+    help="Query fresh public X results with bird instead of only the local cache",
+)
+@click.option(
+    "--classification-timeout",
+    type=click.IntRange(min=1, max=600),
+    default=120,
+    show_default=True,
+    help="Overall timeout in seconds for optional live-result classification",
+)
 @click.option("--limit", "-n", type=int, default=20, help="Max results (default: 20)")
 @click.option(
     "--order",
@@ -56,6 +71,8 @@ def search(
     until: str | None,
     today: bool,
     time_range: str | None,
+    live: bool,
+    classification_timeout: int,
     limit: int,
     order: str | None,
     fmt: str,
@@ -72,12 +89,14 @@ def search(
       Simple:    inflation fed
       Phrases:   "rate hike"
       Boolean:   inflation AND fed, fed NOT fomc
+      Cashtags:  $BLND OR "Blend Labs" (single-quote in the shell)
       Prefix:    infla*
       Column:    author_handle:zerohedge
 
     \b
     EXAMPLES:
       twag search "inflation" --today
+      twag search "NVIDIA" --live --time 1h
       twag search "fed rate" -c fed_policy -s 7
       twag search "NVDA" -a zerohedge --time 7d
       twag search "earnings" --ticker AAPL
@@ -101,8 +120,8 @@ def search(
     if today:
         time_range = "today"
 
-    # Parse time_range into datetimes for browse mode
-    if time_range and not query:
+    # Parse time_range into concrete bounds for both cached and live paths.
+    if time_range:
         parsed_since, parsed_until = parse_time_range(time_range)
         if parsed_since and since_dt is None:
             since_dt = parsed_since
@@ -113,27 +132,47 @@ def search(
         # FTS search mode
         effective_order = order or "rank"
 
+        if live and bookmarks:
+            raise click.UsageError("--live cannot be combined with --bookmarks")
+
         # Auto-detect equity context for smart defaults (only if no time specified)
         if not time_range and since_dt is None and query_suggests_equity_context(query):
             click.echo("(auto-detected equity context, defaulting to --today)", err=True)
             time_range = "today"
+            parsed_since, parsed_until = parse_time_range(time_range)
+            since_dt = parsed_since
+            until_dt = parsed_until
 
-        with get_connection(readonly=True) as conn:
-            results = search_tweets(
-                conn,
-                query,
-                category=category,
-                author=author,
-                min_score=min_score,
-                signal_tier=tier,
-                ticker=ticker,
-                bookmarked_only=bookmarks,
-                since=since_dt,
-                until=until_dt,
-                time_range=time_range,
-                limit=limit,
-                order_by=effective_order,
-            )
+        search_kwargs = {
+            "category": category,
+            "author": author,
+            "min_score": min_score,
+            "signal_tier": tier,
+            "ticker": ticker,
+            "bookmarked_only": bookmarks,
+            "since": since_dt,
+            "until": until_dt,
+            "limit": limit,
+            "order_by": effective_order,
+        }
+        if live:
+            click.echo("Searching fresh public X results with bird...", err=True)
+            classify = any((category, min_score is not None, tier, ticker, effective_order == "score"))
+            fetch_count = min(max(limit * 2, 20), 100)
+            try:
+                live_tweet_ids = refresh_search_cache(
+                    query,
+                    count=fetch_count,
+                    since=since_dt,
+                    until=until_dt,
+                    classify=classify,
+                    classification_timeout=classification_timeout,
+                )
+            except LiveSearchError as exc:
+                raise click.ClickException(str(exc)) from exc
+            search_kwargs["tweet_ids"] = live_tweet_ids
+
+        results = _search_cached(query, search_kwargs)
     else:
         # Browse mode — no FTS query
         if order == "rank":
@@ -171,7 +210,17 @@ def search(
         results = [_feed_tweet_to_search_result(ft) for ft in feed_results]
 
     if not results:
-        console.print("No results found.")
+        if query and live:
+            message = "No live X results matched the requested query and filters."
+        elif query:
+            message = "No cached results found. Re-run with --live to query fresh public X results."
+        else:
+            message = "No results found."
+        if fmt == "json":
+            click.echo(message, err=True)
+            click.echo("[]")
+        else:
+            console.print(message)
         return
 
     if fmt == "json":
@@ -180,6 +229,19 @@ def search(
         _output_full(results)
     else:
         _output_brief(results)
+
+
+def _search_cached(query: str, kwargs: dict) -> list[SearchResult]:
+    """Run the local FTS query and turn parser failures into concise usage errors."""
+    try:
+        with get_connection(readonly=True) as conn:
+            return search_tweets(conn, query, **kwargs)
+    except sqlite3.OperationalError as exc:
+        if "fts5" not in str(exc).lower():
+            raise
+        raise click.UsageError(
+            "Invalid search query. Use FTS5 terms, quoted phrases, AND/OR/NOT, prefixes, or shell-quoted cashtags.",
+        ) from exc
 
 
 def _feed_tweet_to_search_result(ft: FeedTweet) -> SearchResult:
@@ -197,6 +259,12 @@ def _feed_tweet_to_search_result(ft: FeedTweet) -> SearchResult:
         tickers=ft.tickers,
         bookmarked=ft.bookmarked,
         rank=0.0,
+        surprise=ft.surprise,
+        themes=ft.themes,
+        playbook_trigger=ft.playbook_trigger,
+        catalyst_status=ft.catalyst_status,
+        direction=ft.direction,
+        story_key=ft.story_key,
     )
 
 
@@ -233,6 +301,10 @@ def _output_feed_json(feed_tweets: list[FeedTweet]):
         if ft.is_retweet and ft.retweeted_by_handle:
             entry["retweeted_by"] = ft.retweeted_by_handle
             entry["original_author"] = ft.original_author_handle
+        for key in ("surprise", "themes", "playbook_trigger", "catalyst_status", "direction", "story_key"):
+            value = getattr(ft, key)
+            if value is not None and value != []:
+                entry[key] = value
         output.append(entry)
     click.echo(json.dumps(output, indent=2))
 
@@ -285,22 +357,26 @@ def _output_full(results):
 
 def _output_json(results):
     """Output search results as JSON."""
-    output = [
-        {
-            "id": r.id,
-            "author_handle": r.author_handle,
-            "author_name": r.author_name,
-            "content": r.content,
-            "summary": r.summary,
-            "created_at": r.created_at.isoformat() if r.created_at else None,
-            "relevance_score": r.relevance_score,
-            "categories": r.categories,
-            "signal_tier": r.signal_tier,
-            "tickers": r.tickers,
-            "bookmarked": r.bookmarked,
-            "rank": r.rank,
-            "url": f"https://x.com/{r.author_handle}/status/{r.id}",
+    output = []
+    for result in results:
+        entry = {
+            "id": result.id,
+            "author_handle": result.author_handle,
+            "author_name": result.author_name,
+            "content": result.content,
+            "summary": result.summary,
+            "created_at": result.created_at.isoformat() if result.created_at else None,
+            "relevance_score": result.relevance_score,
+            "categories": result.categories,
+            "signal_tier": result.signal_tier,
+            "tickers": result.tickers,
+            "bookmarked": result.bookmarked,
+            "rank": result.rank,
+            "url": f"https://x.com/{result.author_handle}/status/{result.id}",
         }
-        for r in results
-    ]
+        for key in ("surprise", "themes", "playbook_trigger", "catalyst_status", "direction", "story_key"):
+            value = getattr(result, key)
+            if value is not None and value != []:
+                entry[key] = value
+        output.append(entry)
     click.echo(json.dumps(output, indent=2))

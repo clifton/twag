@@ -20,6 +20,14 @@ CREATE TABLE IF NOT EXISTS tweets (
     signal_tier TEXT,
     tickers TEXT,
     analysis_json TEXT,
+    surprise INTEGER,
+    is_stale_repeat INTEGER,
+    themes TEXT,
+    playbook_trigger TEXT,
+    catalyst_status TEXT,
+    direction TEXT,
+    story_key TEXT,
+    signal_emitted_at TEXT,
 
     -- Expansion tracking
     has_quote INTEGER DEFAULT 0,

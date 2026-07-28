@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
-from twag.db.time_utils import _get_et_offset, parse_time_range
+from twag.db.time_utils import _get_et_offset, get_et_day_bounds, parse_time_range
 
 
 class TestGetEtOffset:
@@ -80,3 +80,12 @@ class TestParseTimeRange:
     def test_case_insensitive(self):
         since, until = parse_time_range("TODAY")
         assert since is not None
+
+
+def test_et_day_bounds_handle_dst_without_changing_other_time_parsing():
+    summer_start, summer_end = get_et_day_bounds("2026-07-16")
+    winter_start, winter_end = get_et_day_bounds("2026-01-16")
+    assert summer_start == datetime(2026, 7, 16, 4, tzinfo=timezone.utc)
+    assert summer_end == datetime(2026, 7, 17, 4, tzinfo=timezone.utc)
+    assert winter_start == datetime(2026, 1, 16, 5, tzinfo=timezone.utc)
+    assert winter_end == datetime(2026, 1, 17, 5, tzinfo=timezone.utc)

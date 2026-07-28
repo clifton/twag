@@ -12,14 +12,14 @@ metadata:
   openclaw:
     emoji: "📊"
     requires:
-      bins: ["twag", "bird"]
+      bins: ["twag", "bird", "spine"]
       env: ["GEMINI_API_KEY", "AUTH_TOKEN", "CT0"]
     install:
-      - id: pip
-        kind: pip
+      - id: uv
+        kind: uv
         package: twag
         bins: ["twag"]
-        label: "Install twag (pip)"
+        label: "Install twag (uv tool)"
       - id: bird-npm
         kind: node
         package: "@steipete/bird"
@@ -75,15 +75,18 @@ Verify auth: `bird whoami`
 ### Step 3: Install twag
 
 ```bash
-pip install twag
+uv tool install twag
 ```
 
 Or from source:
 
 ```bash
 git clone https://github.com/clifton/twag.git
-cd twag && pip install -e .
+cd twag && uv tool install --editable .
 ```
+
+The global `twag` launcher is managed by uv. Inside a development checkout, use `uv run twag ...` to run against the
+checkout and its locked environment.
 
 ### Step 4: Initialize and verify
 
@@ -145,7 +148,17 @@ twag search "AAPL" -s 6 --time 7d
 ```bash
 twag analyze https://x.com/user/status/123456789
 twag analyze 123456789 --reprocess  # Force re-analyze
+twag analyze 123456789 --thread --replies \
+  --reply-depth 2 --max-reply-nodes 25 --max-pages 5
 ```
+
+Analyze is target-only by default. `--thread` persists the full Bird thread, and `--replies` persists a bounded
+breadth-first reply tree (`--reply-depth 1` is direct replies only). When both are enabled, every fetched thread status
+can seed reply traversal. `--max-reply-nodes` caps both stored reply statuses and visited reply-source nodes;
+`--max-pages` caps each Bird request, while omitting it requests all available pages. Thread/reply context keeps the
+normal link, media, X Article, reply relationship, and conversation metadata, but only the target is classified and
+printed. Explicit context-fetch failures return nonzero so extraction workflows cannot mistake partial context for a
+complete fetch.
 
 ## Commands
 
@@ -159,6 +172,8 @@ twag search -c fed_policy --time 7d  # Browse by category
 
 # Full-text search mode
 twag search "query"                  # FTS5 search
+twag search "query" --live           # Fresh public X results through bird
+twag search "query" --cached         # Explicit local-only search (default)
 twag search "query" -c fed_policy    # Filter by category
 twag search "query" -a handle        # Filter by author
 twag search "query" --ticker AAPL    # Filter by ticker
@@ -177,6 +192,15 @@ twag search "query" --order score    # Sort: rank, score, or time
 - Phrase: `"rate hike"` (exact)
 - Boolean: `inflation AND fed`, `fed NOT fomc`
 - Prefix: `infla*` (wildcard)
+- Cashtag: `twag search '$BLND OR "Blend Labs"' --live` (single quotes preserve `$BLND`)
+
+Query searches are local-only by default. `--live` queries fresh public X
+results through authenticated `bird search`, stores the in-window result set,
+and limits output to those fetched IDs. New live rows are classified when score,
+category, tier, ticker, or score-order filters need model metadata. Bird is
+bounded to 30 seconds; classification defaults to a killable 120-second overall
+timeout. Live syntax supports X terms, phrases, `OR`, and cashtags; FTS prefixes
+and column expressions are cache-only.
 
 ### Fetch & Process
 
@@ -197,6 +221,9 @@ twag process --reprocess-quotes        # Reprocess dependency tweets
 twag process --reprocess-min-score 5   # Min score for reprocessing (default: 3)
 
 twag db skip-stale --older-than-days 3  # Clear old backlog without LLM calls
+
+twag spine emit              # Append eligible signal-event v1 records
+twag eval run                # Run the versioned scoring golden set
 ```
 
 ### Digest
@@ -276,7 +303,7 @@ twag config set scoring.min_score_for_analysis 6
 
 | Score | Level | Behavior |
 |-------|-------|----------|
-| 8-10 | Alert | Telegram alert |
+| 8-10 | Alert | Real-time alert |
 | 7 | High signal | Enriched, in digests |
 | 5-6 | Market relevant | In digests |
 | 3-4 | News/context | Searchable |
@@ -284,7 +311,7 @@ twag config set scoring.min_score_for_analysis 6
 
 ## Categories
 
-`fed_policy`, `inflation`, `job_market`, `macro_data`, `earnings`, `equities`, `rates_fx`, `credit`, `banks`, `consumer_spending`, `capex`, `commodities`, `energy`, `metals_mining`, `geopolitical`, `sanctions`, `tech_business`, `ai_advancement`, `crypto`, `noise`
+The coarse filter taxonomy is single-sourced in `twag/taxonomy.py`.
 
 ## Environment Variables
 
@@ -298,18 +325,11 @@ twag config set scoring.min_score_for_analysis 6
 | `TELEGRAM_BOT_TOKEN` | No | Alerts |
 | `TELEGRAM_CHAT_ID` | No | Alert destination |
 
-## Telegram Digest Format
-
-When sending digests to Telegram, follow [{baseDir}/TELEGRAM_DIGEST_FORMAT.md]({baseDir}/TELEGRAM_DIGEST_FORMAT.md):
-
-- Use `twag search --time Xh -s 6 -f json -n 50` for structured input
-- Group tweets by theme (don't list chronologically)
-- Use `**BOLD CAPS**` for section headers (no markdown `###`)
-- Use `•` for bullet points
-- Citations: `[📊](url)` when `has_media: true`, `[🔗](url)` otherwise
-- Condense multiple tweets on same topic into bullets
-- Extract key facts and numbers
-- Use `delivery.mode: "direct"` in cron jobs to preserve `[🔗](url)` and `[📊](url)` links
+## Digest interpretation (JSON from twag search)
+Read /home/clifton/clawd/MARKET_SUMMARY_FORMAT.md and follow it exactly; it is the single house style.
+Two tiers: full bullets for score >= 6. Tweets scoring 5 get at most a final "ALSO NOTED" section of one-line bullets, max 6 lines; skip it entirely if thin.
+If any tweet has catalyst_status "resolved" touching an owned or watchlist instrument, lead the digest with a one-line ⚠️ RESOLVED flag for it.
+If a tweet was already alerted in real time, still include it — the digest is the record.
 
 ## Automation
 

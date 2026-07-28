@@ -65,6 +65,7 @@ def _run_triage_case(
         tweets: list[dict[str, str]],
         model: str | None = None,
         provider: str | None = None,
+        **kwargs: Any,
     ) -> list[TriageResult]:
         time.sleep(triage_latency_s)
         return [

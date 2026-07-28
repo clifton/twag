@@ -204,10 +204,83 @@ def test_default_order_rank_with_query(monkeypatch):
     monkeypatch.setattr(cli_mod, "search_tweets", _fake_search_tweets)
 
     runner = CliRunner()
-    result = runner.invoke(cli, ["search", "test"])
+    result = runner.invoke(cli, ["search", "test", "--cached"])
 
     assert result.exit_code == 0
     assert calls["order_by"] == "rank"
+
+
+def test_live_query_refreshes_from_x_then_searches_only_fetched_ids(monkeypatch):
+    """--live should refresh through bird before querying the fetched result set."""
+    import twag.cli.search as cli_mod
+
+    search_calls = []
+    refresh_calls = []
+
+    def _fake_search_tweets(conn, query, **kwargs):
+        search_calls.append((query, kwargs))
+        return [_make_search_result(content="Fresh NVIDIA result", summary=None)]
+
+    def _fake_refresh(query, **kwargs):
+        refresh_calls.append((query, kwargs))
+        return {"123"}
+
+    monkeypatch.setattr(cli_mod, "get_connection", _fake_connection)
+    monkeypatch.setattr(cli_mod, "search_tweets", _fake_search_tweets)
+    monkeypatch.setattr(cli_mod, "refresh_search_cache", _fake_refresh)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["search", "NVIDIA", "--live", "--time", "1h", "-s", "4", "-n", "10"])
+
+    assert result.exit_code == 0
+    assert len(search_calls) == 1
+    assert refresh_calls[0][0] == "NVIDIA"
+    assert refresh_calls[0][1]["count"] == 20
+    assert refresh_calls[0][1]["since"] is not None
+    assert refresh_calls[0][1]["classify"] is True
+    assert refresh_calls[0][1]["classification_timeout"] == 120
+    assert search_calls[0][1]["tweet_ids"] == {"123"}
+    assert "Fresh NVIDIA result" in result.output
+
+
+def test_cached_flag_does_not_run_live_fallback(monkeypatch):
+    """--cached should preserve a read-only local FTS lookup."""
+    import twag.cli.search as cli_mod
+
+    monkeypatch.setattr(cli_mod, "get_connection", _fake_connection)
+    monkeypatch.setattr(cli_mod, "search_tweets", lambda conn, query, **kwargs: [])
+
+    def _unexpected_refresh(*args, **kwargs):
+        raise AssertionError("live fallback should not run")
+
+    monkeypatch.setattr(cli_mod, "refresh_search_cache", _unexpected_refresh)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["search", "NVIDIA", "--time", "1h", "--cached"])
+
+    assert result.exit_code == 0
+    assert "No cached results found." in result.output
+    assert "--live" in result.output
+
+
+def test_live_failure_is_not_reported_as_local_empty(monkeypatch):
+    """A bird failure should be a distinct nonzero live-search error."""
+    import twag.cli.search as cli_mod
+
+    monkeypatch.setattr(cli_mod, "get_connection", _fake_connection)
+    monkeypatch.setattr(cli_mod, "search_tweets", lambda conn, query, **kwargs: [])
+
+    def _failed_refresh(*args, **kwargs):
+        raise cli_mod.LiveSearchError("live bird search failed within 30s")
+
+    monkeypatch.setattr(cli_mod, "refresh_search_cache", _failed_refresh)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["search", "NVIDIA", "--live", "--time", "1h"])
+
+    assert result.exit_code != 0
+    assert "live bird search failed within 30s" in result.output
+    assert "No cached results" not in result.output
 
 
 def test_default_order_score_without_query(monkeypatch):
@@ -311,6 +384,35 @@ def test_browse_json_includes_media_analysis(monkeypatch):
     assert result.exit_code == 0
     data = json.loads(result.output)
     assert data[0]["media_analysis"] == "Chart shows uptrend"
+
+
+def test_json_includes_new_signal_fields_only_when_present(monkeypatch):
+    """Digest JSON should expose surprise/playbook/catalyst metadata compactly."""
+    import twag.cli.search as cli_mod
+
+    monkeypatch.setattr(cli_mod, "get_connection", _fake_connection)
+    monkeypatch.setattr(
+        cli_mod,
+        "get_feed_tweets",
+        lambda conn, **kwargs: [
+            _make_feed_tweet(
+                surprise=2,
+                themes=["ai-memory"],
+                playbook_trigger="supercycle",
+                catalyst_status="resolved",
+                direction="long",
+            ),
+        ],
+    )
+    result = CliRunner().invoke(cli, ["search", "-f", "json"])
+    assert result.exit_code == 0
+    entry = json.loads(result.output)[0]
+    assert entry["surprise"] == 2
+    assert entry["themes"] == ["ai-memory"]
+    assert entry["playbook_trigger"] == "supercycle"
+    assert entry["catalyst_status"] == "resolved"
+    assert entry["direction"] == "long"
+    assert "story_key" not in entry
 
 
 def test_browse_json_omits_absent_optional_fields(monkeypatch):

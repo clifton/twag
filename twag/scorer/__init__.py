@@ -9,6 +9,7 @@ from .llm_client import (
     get_gemini_client,
 )
 from .scoring import (
+    TRIAGE_BATCH_SCHEMA,
     EnrichmentResult,
     MediaAnalysisResult,
     TriageResult,
@@ -16,6 +17,10 @@ from .scoring import (
     analyze_image,
     analyze_media,
     enrich_tweet,
+    load_fund_context,
+    render_triage_prompt,
+    resolve_fund_context_path,
+    resolve_triage_template,
     summarize_document_text,
     summarize_tweet,
     summarize_x_article,
@@ -23,6 +28,7 @@ from .scoring import (
 )
 
 __all__ = [
+    "TRIAGE_BATCH_SCHEMA",
     "EnrichmentResult",
     "MediaAnalysisResult",
     "TriageResult",
@@ -36,6 +42,10 @@ __all__ = [
     "get_anthropic_client",
     "get_deepseek_api_key",
     "get_gemini_client",
+    "load_fund_context",
+    "render_triage_prompt",
+    "resolve_fund_context_path",
+    "resolve_triage_template",
     "summarize_document_text",
     "summarize_tweet",
     "summarize_x_article",

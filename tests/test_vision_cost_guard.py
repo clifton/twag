@@ -60,7 +60,7 @@ def test_stale_tweets_are_triaged_without_vision(monkeypatch, tmp_path) -> None:
         monkeypatch.setattr(
             triage_mod,
             "triage_tweets_batch",
-            lambda batch, model=None, provider=None: [
+            lambda batch, model=None, provider=None, **kwargs: [
                 TriageResult(
                     tweet_id=item["id"],
                     score=8,

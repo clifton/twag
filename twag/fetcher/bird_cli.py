@@ -277,10 +277,11 @@ def _summarize_read_failure(stderr: str, *, code: int) -> ReadTweetFailure:
 def _parse_bird_output(stdout: str) -> list[Tweet]:
     """Parse bird JSON output into Tweet objects.
 
-    Handles three formats:
+    Handles four formats:
     1. A complete JSON array: ``[{...}, {...}]``
-    2. NDJSON (one JSON object per line)
-    3. A *truncated* JSON array (bird may clip stdout for large responses) —
+    2. A paged response: ``{"tweets": [{...}], "nextCursor": ...}``
+    3. NDJSON (one JSON object per line)
+    4. A *truncated* JSON array (bird may clip stdout for large responses) —
        we recover every complete object before the truncation point.
     """
     if not stdout.strip():
@@ -289,16 +290,18 @@ def _parse_bird_output(stdout: str) -> list[Tweet]:
     tweets: list[Tweet] = []
 
     def _append_item(item: Any) -> None:
-        if isinstance(item, dict):
+        if isinstance(item, list):
+            for nested_item in item:
+                _append_item(nested_item)
+        elif isinstance(item, dict) and isinstance(item.get("tweets"), list):
+            # bird thread/replies pagination wraps payloads in a tweets array.
+            _append_item(item["tweets"])
+        elif isinstance(item, dict) and any(item.get(key) for key in ("id", "id_str", "tweetId", "rest_id")):
             tweets.append(Tweet.from_bird_json(item))
 
     try:
         data = json.loads(stdout)
-        if isinstance(data, list):
-            for item in data:
-                _append_item(item)
-        else:
-            _append_item(data)
+        _append_item(data)
     except json.JSONDecodeError:
         text = stdout.strip()
         # Try NDJSON first (one JSON value per line)
@@ -308,11 +311,7 @@ def _parse_bird_output(stdout: str) -> list[Tweet]:
                 continue
             try:
                 item = json.loads(line)
-                if isinstance(item, list):
-                    for i in item:
-                        _append_item(i)
-                else:
-                    _append_item(item)
+                _append_item(item)
             except json.JSONDecodeError:
                 continue
         # If NDJSON found nothing and it looks like a truncated JSON array
@@ -395,15 +394,21 @@ def fetch_user_tweets(handle: str, count: int = 50) -> list[Tweet]:
     return _hydrate_truncated_retweets(tweets)
 
 
-def fetch_search(query: str, count: int = 30) -> list[Tweet]:
+def fetch_search(
+    query: str,
+    count: int = 30,
+    *,
+    hydrate_retweets: bool = True,
+    timeout: int = 60,
+) -> list[Tweet]:
     """Search for tweets matching a query."""
-    stdout, stderr, code = run_bird(["search", query, "-n", str(count), "--json"])
+    stdout, stderr, code = run_bird(["search", query, "-n", str(count), "--json"], timeout=timeout)
 
     if code != 0:
         raise RuntimeError(f"bird search failed (exit {code}): {stderr.strip()}")
 
     tweets = _parse_bird_output(stdout)
-    return _hydrate_truncated_retweets(tweets)
+    return _hydrate_truncated_retweets(tweets) if hydrate_retweets else tweets
 
 
 def fetch_thread(tweet_url_or_id: str, *, all_pages: bool = False, max_pages: int | None = None) -> list[Tweet]:

@@ -11,6 +11,7 @@ from anthropic import Anthropic
 from twag.auth import get_api_key
 from twag.config import load_config
 from twag.db.inference import begin_llm_usage_attempt, complete_llm_usage_attempt
+from twag.db.inference import record_llm_usage as record_llm_usage
 
 _T = TypeVar("_T")
 UsageRecorder = Callable[[dict[str, Any]], None]
@@ -322,6 +323,7 @@ def _call_gemini(
     max_tokens: int = 2048,
     reasoning: str | None = None,
     component: str = "unknown",
+    json_schema: dict[str, Any] | None = None,
 ) -> str:
     """Call Gemini API and return text response."""
     from google.genai import types
@@ -336,6 +338,9 @@ def _call_gemini(
         client = get_gemini_client()
 
         config_kwargs: dict = {"max_output_tokens": max_tokens}
+        if json_schema is not None:
+            config_kwargs["response_mime_type"] = "application/json"
+            config_kwargs["response_json_schema"] = json_schema
 
         # Add thinking config if reasoning is specified
         if reasoning:
@@ -475,19 +480,31 @@ def _call_deepseek(
             payload["reasoning_effort"] = effort
         use_strict_tool = bool(json_schema and not effort)
         use_json_object = bool(json_schema and effort)
+        wrap_tool_result = bool(json_schema and json_schema.get("type") != "object")
         if use_strict_tool:
+            tool_name = "emit_result" if wrap_tool_result else json_tool_name
+            tool_schema = (
+                {
+                    "type": "object",
+                    "properties": {"result": json_schema},
+                    "required": ["result"],
+                    "additionalProperties": False,
+                }
+                if wrap_tool_result
+                else json_schema
+            )
             payload["tools"] = [
                 {
                     "type": "function",
                     "function": {
-                        "name": json_tool_name,
+                        "name": tool_name,
                         "description": "Return the requested structured analysis.",
                         "strict": True,
-                        "parameters": json_schema,
+                        "parameters": tool_schema,
                     },
                 },
             ]
-            payload["tool_choice"] = {"type": "function", "function": {"name": json_tool_name}}
+            payload["tool_choice"] = {"type": "function", "function": {"name": tool_name}}
         elif use_json_object:
             # DeepSeek's strict tool mode currently rejects thinking/reasoning
             # mode. JSON mode is the supported structured-output path when
@@ -560,6 +577,10 @@ def _call_deepseek(
                                 if isinstance(function_call, dict):
                                     arguments = function_call.get("arguments")
                                     if isinstance(arguments, str):
+                                        response_text = arguments
+                                        if wrap_tool_result:
+                                            parsed_arguments = json.loads(arguments)
+                                            response_text = json.dumps(parsed_arguments["result"])
                                         _record_llm_usage(
                                             attempt_id=attempt_id,
                                             component=component,
@@ -569,7 +590,7 @@ def _call_deepseek(
                                             max_tokens=max_tokens,
                                             latency_seconds=latency,
                                             success=True,
-                                            response_text=arguments,
+                                            response_text=response_text,
                                             input_tokens=input_tokens,
                                             output_tokens=output_tokens,
                                             reasoning_tokens=reasoning_tokens,
@@ -577,7 +598,7 @@ def _call_deepseek(
                                             total_tokens=total_tokens,
                                             metadata={"usage": usage, "tool_call": function_call} if usage else None,
                                         )
-                                        return arguments
+                                        return response_text
 
                         content = message.get("content")
                         if isinstance(content, str) and content.strip():
@@ -808,7 +829,14 @@ def _call_llm(
 
     def _invoke() -> str:
         if provider == "gemini":
-            return _call_gemini(model, prompt, max_tokens, reasoning=reasoning, component=component)
+            return _call_gemini(
+                model,
+                prompt,
+                max_tokens,
+                reasoning=reasoning,
+                component=component,
+                json_schema=json_schema,
+            )
         if provider == "deepseek":
             return _call_deepseek(
                 model,

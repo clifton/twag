@@ -19,6 +19,16 @@ Example telegram notification. Chart emojis are links to tweets that have charts
 
 ## Prerequisites
 
+### uv (Required)
+
+twag uses [uv](https://docs.astral.sh/uv/) for installation and development environments. Install uv, then verify it is
+available:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv --version
+```
+
 ### bird CLI (Required)
 
 twag uses [bird](https://github.com/steipete/bird) to access Twitter/X. Install it first:
@@ -91,27 +101,28 @@ export DEEPSEEK_API_KEY="your_deepseek_key"    # optional
 
 ## Installation
 
-### From PyPI (Recommended)
+### Global CLI from PyPI (Recommended)
 
 ```bash
-pip install twag
+uv tool install twag
 ```
+
+If `twag` is not on `PATH`, run `uv tool update-shell` and restart the shell. Upgrade later with
+`uv tool upgrade twag`.
 
 ### From Source
 
 ```bash
 git clone https://github.com/clifton/twag.git
 cd twag
-pip install -e .
+uv tool install --editable .
 ```
 
-### Using uv
+`uv tool install` creates the global `twag` launcher in uv's tool environment, so normal user and automation commands
+remain `twag ...` while dependency and Python management stay with uv. Inside a source checkout, use `uv run twag ...`
+when you want the checkout's locked development environment instead of the global tool.
 
-```bash
-uv pip install twag
-# or from source
-uv pip install -e .
-```
+Reinstall an editable source tool after dependency or entry-point changes with `uv tool install --force --editable .`.
 
 ## Quick Start
 
@@ -197,6 +208,10 @@ twag process 1234567890123456789
 
 # Clear an old backlog without LLM calls
 twag db skip-stale --older-than-days 3
+
+# Shared signal ledger and scoring calibration
+twag spine emit
+twag eval run
 ```
 
 ### Search Commands
@@ -204,6 +219,12 @@ twag db skip-stale --older-than-days 3
 ```bash
 # Basic search
 twag search "inflation fed"
+
+# Query fresh public X results through authenticated bird
+twag search "NVIDIA" --live --time 1h
+
+# Explicit cache-only behavior (--cached is the default)
+twag search "inflation fed" --cached
 
 # With filters
 twag search "rate hike" --category fed_policy
@@ -223,6 +244,9 @@ twag search "fed" --format json             # JSON output
 # Score threshold
 twag search "market" --min-score 7          # High-signal only
 
+# Cashtag query: single quotes prevent the shell from expanding $BLND
+twag search '$BLND OR "Blend Labs"' --live --time 30d --min-score 4
+
 # Additional filters
 twag search --bookmarks                     # Only bookmarked tweets
 twag search "fed" --tier 1                  # Filter by signal tier
@@ -234,6 +258,19 @@ twag search "fed" --order score             # Sort by: rank, score, or time
 - Phrase: `"rate hike"` (exact match)
 - Boolean: `inflation AND fed`, `fed NOT fomc`
 - Prefix: `infla*` (wildcard)
+- Cashtags: `'$BLND OR "Blend Labs"'` (cashtags are normalized for FTS5; single-quote the whole query in the shell)
+- Column: `author_handle:zerohedge`
+
+Query searches use the local FTS5 index by default. Pass `--live` to query fresh
+public X results through authenticated `bird search`; twag stores only the
+current bird result set inside the requested time range and restricts output to
+those IDs. New live rows are classified only when score, category, tier, ticker,
+or score ordering needs model metadata. The bird call is capped at 30 seconds,
+and classification has a killable 120-second overall timeout (adjustable with
+`--classification-timeout`). Live syntax supports X terms, phrases, `OR`, and
+cashtags; FTS-only prefix and column expressions are cache-only syntax. A local
+empty result recommends `--live`, while a bird or classification failure exits
+nonzero with a separate credential-safe error.
 
 ### Narrative Commands
 
@@ -248,11 +285,22 @@ twag analyze 1234567890123456789              # Analyze by ID
 twag analyze https://x.com/user/status/123    # Analyze by URL
 twag analyze 1234567890123456789 --reprocess  # Force re-analyze
 twag analyze 1234567890123456789 -m gemini-2.0-flash  # Override model
-twag analyze 1234567890123456789 --reply-depth 2      # Pull thread + reply context
-twag analyze 1234567890123456789 --no-replies          # Skip reply expansion
+twag analyze 1234567890123456789 --thread              # Persist the full conversation thread
+twag analyze 1234567890123456789 --replies --reply-depth 2  # Persist target replies + one nested level
+twag analyze 1234567890123456789 --thread --replies \
+  --reply-depth 2 --max-reply-nodes 25 --max-pages 5
 ```
 
-`twag analyze` stores the target tweet, the conversation thread returned by `bird thread`, and reply context returned by `bird replies` before processing. Defaults are `--thread`, `--replies`, `--reply-depth 2`, and `--max-reply-nodes 25`; use `--max-pages N` for paged thread/reply fetches.
+By default, `twag analyze` retains its original target-only behavior. `--thread` adds the conversation returned by
+`bird thread`; `--replies` performs a breadth-first reply traversal seeded by the target, or by every fetched thread
+status when combined with `--thread`. `--reply-depth 1` means direct replies only, while `2` adds one nested level.
+`--max-reply-nodes` is a global cap on both reply statuses stored and reply-source requests visited. `--max-pages`
+caps every Bird thread/replies request; without it, explicitly requested context uses all available pages.
+
+The target, thread statuses, and replies use the same storage path, so reply relationships, conversation IDs, links,
+media, and X Article fields are persisted consistently. Only the requested target is classified/reprocessed and printed;
+context is stored for downstream extraction and research. An explicit context-fetch failure exits nonzero instead of
+silently continuing with target-only data.
 
 ### Digest Commands
 
@@ -345,6 +393,8 @@ twag follows XDG defaults:
 | `~/.local/share/twag/twag.db` | SQLite database |
 | `~/.local/share/twag/digests/` | Generated digests |
 | `~/.local/share/twag/following.txt` | Followed accounts |
+| `~/clawd/state/registry/twag-context.md` | Spine-owned scoring context (must be fresh within 48h) |
+| `~/clawd/state/signals/YYYY-MM.jsonl` | Shared append-only signal ledger |
 
 Override with `TWAG_DATA_DIR` environment variable.
 
@@ -354,7 +404,7 @@ Tweets are scored 0-10:
 
 | Score | Signal Level | Behavior |
 |-------|--------------|----------|
-| 8-10 | Alert | Telegram alert (if configured) |
+| 8-10 | Alert | Real-time alert (if configured) |
 | 7 | High signal | Enriched, included in digests |
 | 5-6 | Market relevant | Included in digests |
 | 3-4 | News/context | Searchable, not in digests |
@@ -362,7 +412,7 @@ Tweets are scored 0-10:
 
 ### Categories
 
-`fed_policy`, `inflation`, `job_market`, `macro_data`, `earnings`, `equities`, `rates_fx`, `credit`, `banks`, `consumer_spending`, `capex`, `commodities`, `energy`, `metals_mining`, `geopolitical`, `sanctions`, `tech_business`, `ai_advancement`, `crypto`, `noise`
+The coarse filter taxonomy is single-sourced in `twag/taxonomy.py`.
 
 ## Automation
 
@@ -379,7 +429,7 @@ After=network.target
 Type=oneshot
 TimeoutStartSec=2700
 Environment="TWAG_PROCESS_LIMIT=100"
-ExecStart=/bin/bash -c '%h/.local/bin/twag fetch && %h/.local/bin/twag process --limit "${TWAG_PROCESS_LIMIT}"'
+ExecStart=/bin/bash -lc '%h/.local/bin/twag fetch && %h/.local/bin/twag process --limit "${TWAG_PROCESS_LIMIT}"'
 WorkingDirectory=%h
 EnvironmentFile=%h/.env
 ```
@@ -421,7 +471,10 @@ export TELEGRAM_BOT_TOKEN="your_bot_token"
 export TELEGRAM_CHAT_ID="your_chat_id"
 ```
 
-Tweets scoring 8+ will trigger alerts when you run `twag process --notify`.
+`twag process --notify` alerts on score >= 8, score >= 7 surprises, score >= 6 playbook triggers, and score >= 6 catalyst resolutions. Delivery goes through a bounded ron announce turn, with direct Telegram fallback if ron is unavailable. Configure `notifications.telegram_chat_id` (or `TELEGRAM_CHAT_ID`) and `TELEGRAM_BOT_TOKEN`.
+
+The repository cron wrapper enables notifications, emits signal-event v1 records with `twag spine emit`, checks fund-context and signal-directory health daily, and runs decay/prune at most once per day.
+`twag spine emit` requires the fund's `spine` CLI in `PATH`; `twag doctor` verifies it before scheduled use.
 
 ## OpenClaw Integration
 
@@ -523,15 +576,18 @@ twag db restore backup.sql --force
 ## Development
 
 ```bash
-# Install dev dependencies
-pip install -e ".[dev]"
+# Install the locked project and dev dependencies
+uv sync --group dev
+
+# Run the checkout's CLI
+uv run twag --version
 
 # Run tests
-pytest
+uv run pytest
 
 # Lint and format
-ruff check .
-ruff format .
+uv run ruff check .
+uv run ruff format .
 
 # Frontend development
 cd twag/web/frontend
