@@ -540,6 +540,7 @@ def test_article_media_processing_feeds_enrichment_once(monkeypatch, tmp_path) -
             update_stats=False,
             allow_summarize=False,
             media_min_score=3,
+            vision_max_age_days=None,
         )
 
         assert len(results) == 1

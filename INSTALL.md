@@ -198,7 +198,9 @@ Description=TWAG Twitter Aggregator
 
 [Service]
 Type=oneshot
-ExecStart=/bin/bash -c 'source ~/.env && twag fetch && twag process'
+TimeoutStartSec=2700
+Environment="TWAG_PROCESS_LIMIT=100"
+ExecStart=/bin/bash -c 'source ~/.env && twag fetch && twag process --limit "${TWAG_PROCESS_LIMIT}"'
 ```
 
 Create `~/.config/systemd/user/twag.timer`:

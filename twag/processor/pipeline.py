@@ -62,6 +62,7 @@ def process_unprocessed(
     status_cb: Callable[[str], None] | None = None,
     total_cb: Callable[[int], None] | None = None,
     force_refresh: bool = False,
+    vision_max_age_days: int | None = 3,
 ) -> list[TriageResult]:
     """Process tweets that haven't been scored yet."""
     from ..metrics import get_collector
@@ -80,13 +81,14 @@ def process_unprocessed(
     )
     log.info(
         "process_unprocessed_start limit=%s dry_run=%s provided_rows=%s batch_size=%s quote_depth=%s "
-        "url_expansion_workers=%s",
+        "url_expansion_workers=%s vision_max_age_days=%s",
         limit,
         dry_run,
         rows is not None,
         batch_size,
         quote_depth,
         url_expansion_workers,
+        vision_max_age_days,
     )
 
     with get_connection() as conn:
@@ -212,6 +214,7 @@ def process_unprocessed(
                 progress_cb=progress_cb,
                 status_cb=status_cb,
                 force_refresh=force_refresh,
+                vision_max_age_days=vision_max_age_days,
             )
 
         commit_with_retry(conn)
@@ -229,6 +232,7 @@ def reprocess_today_quoted(
     rows: list[sqlite3.Row] | None = None,
     progress_cb: Callable[[int], None] | None = None,
     status_cb: Callable[[str], None] | None = None,
+    vision_max_age_days: int | None = 3,
 ) -> list[TriageResult]:
     """Reprocess today's already-processed tweets with dependency context."""
     config = load_config()
@@ -308,6 +312,7 @@ def reprocess_today_quoted(
             media_min_score=config["scoring"].get("min_score_for_media", 5),
             progress_cb=progress_cb,
             status_cb=status_cb,
+            vision_max_age_days=vision_max_age_days,
         )
 
         # Mark all reprocessed tweets so they aren't reprocessed again

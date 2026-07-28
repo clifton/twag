@@ -377,6 +377,7 @@ def record_llm_usage(
     status_id: str | None = None,
     metadata: dict[str, Any] | None = None,
     db_path: Path | None = None,
+    conn: sqlite3.Connection | None = None,
 ) -> None:
     """Persist a single LLM call attempt.
 
@@ -393,9 +394,9 @@ def record_llm_usage(
             cached_input_tokens=cached_input_tokens,
         )
         metadata_json = json.dumps(metadata, sort_keys=True) if metadata else None
-        with get_connection(db_path) as conn:
-            ensure_llm_usage_table(conn)
-            conn.execute(
+
+        def _write(target_conn: sqlite3.Connection) -> None:
+            target_conn.execute(
                 """
                 INSERT INTO llm_usage (
                     called_at, component, provider, model,
@@ -435,7 +436,14 @@ def record_llm_usage(
                     metadata_json,
                 ),
             )
-            commit_with_retry(conn)
+
+        if conn is not None:
+            _write(conn)
+        else:
+            with get_connection(db_path) as usage_conn:
+                ensure_llm_usage_table(usage_conn)
+                _write(usage_conn)
+                commit_with_retry(usage_conn)
     except Exception:
         log.debug("Failed to record LLM usage", exc_info=True)
 

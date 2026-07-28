@@ -46,6 +46,7 @@ def get_cached_media_analysis(
     provider: str | None,
     model: str | None,
     db_path: Path | None = None,
+    conn: sqlite3.Connection | None = None,
 ) -> dict[str, Any] | None:
     """Return cached media analysis for a URL/provider/model, if present."""
     url = (media_url or "").strip()
@@ -54,22 +55,35 @@ def get_cached_media_analysis(
     if not url or not provider_key or not model_key:
         return None
 
-    try:
-        with get_connection(db_path, readonly=True) as conn:
-            row = conn.execute(
-                """
-                SELECT result_json
-                FROM media_analysis_cache
-                WHERE media_url = ? AND provider = ? AND model = ?
-                """,
-                (url, provider_key, model_key),
-            ).fetchone()
+    def _read(target_conn: sqlite3.Connection) -> dict[str, Any] | None:
+        row = target_conn.execute(
+            """
+            SELECT result_json
+            FROM media_analysis_cache
+            WHERE media_url = ? AND provider = ? AND model = ?
+            """,
+            (url, provider_key, model_key),
+        ).fetchone()
         if row is None:
             return None
         data = json.loads(row["result_json"])
         return data if isinstance(data, dict) else None
+
+    try:
+        if conn is not None:
+            return _read(conn)
+        with get_connection(db_path, readonly=True) as cache_conn:
+            return _read(cache_conn)
     except Exception:
-        log.debug("Failed to read media analysis cache", exc_info=True)
+        from ..metrics import get_collector
+
+        log.warning(
+            "Failed to read media analysis cache for %s/%s",
+            provider_key,
+            model_key,
+            exc_info=True,
+        )
+        get_collector().inc("pipeline.media_cache.errors")
         return None
 
 
@@ -80,34 +94,54 @@ def record_media_analysis(
     model: str | None,
     result: dict[str, Any],
     db_path: Path | None = None,
+    conn: sqlite3.Connection | None = None,
 ) -> None:
-    """Persist a media analysis result; cache failures do not affect processing."""
+    """Persist a media analysis result.
+
+    When ``conn`` is supplied, the cache row participates in the caller's
+    transaction. The standalone path owns and commits a separate connection.
+    """
     url = (media_url or "").strip()
     provider_key = _normalize_key(provider)
     model_key = _normalize_key(model)
     if not url or not provider_key or not model_key:
         return
 
-    try:
-        payload = json.dumps(result, sort_keys=True)
-        now = datetime.now(timezone.utc).isoformat()
-        with get_connection(db_path) as conn:
-            ensure_media_analysis_cache_table(conn)
-            conn.execute(
-                """
-                INSERT INTO media_analysis_cache (
-                    media_url, provider, model, result_json, hit_count, created_at, updated_at
-                )
-                VALUES (?, ?, ?, ?, 0, ?, ?)
-                ON CONFLICT(media_url, provider, model) DO UPDATE SET
-                    result_json = excluded.result_json,
-                    updated_at = excluded.updated_at
-                """,
-                (url, provider_key, model_key, payload, now, now),
+    payload = json.dumps(result, sort_keys=True)
+    now = datetime.now(timezone.utc).isoformat()
+
+    def _write(target_conn: sqlite3.Connection) -> None:
+        target_conn.execute(
+            """
+            INSERT INTO media_analysis_cache (
+                media_url, provider, model, result_json, hit_count, created_at, updated_at
             )
-            commit_with_retry(conn)
+            VALUES (?, ?, ?, ?, 0, ?, ?)
+            ON CONFLICT(media_url, provider, model) DO UPDATE SET
+                result_json = excluded.result_json,
+                updated_at = excluded.updated_at
+            """,
+            (url, provider_key, model_key, payload, now, now),
+        )
+
+    try:
+        if conn is not None:
+            _write(conn)
+            return
+        with get_connection(db_path) as cache_conn:
+            ensure_media_analysis_cache_table(cache_conn)
+            _write(cache_conn)
+            commit_with_retry(cache_conn)
     except Exception:
-        log.debug("Failed to write media analysis cache", exc_info=True)
+        from ..metrics import get_collector
+
+        log.warning(
+            "Failed to write media analysis cache for %s/%s",
+            provider_key,
+            model_key,
+            exc_info=True,
+        )
+        get_collector().inc("pipeline.media_cache.errors")
 
 
 def increment_media_analysis_cache_hit(
@@ -116,6 +150,7 @@ def increment_media_analysis_cache_hit(
     provider: str | None,
     model: str | None,
     db_path: Path | None = None,
+    conn: sqlite3.Connection | None = None,
 ) -> None:
     """Best-effort increment for cache hit observability."""
     url = (media_url or "").strip()
@@ -124,17 +159,31 @@ def increment_media_analysis_cache_hit(
     if not url or not provider_key or not model_key:
         return
 
+    def _increment(target_conn: sqlite3.Connection) -> None:
+        target_conn.execute(
+            """
+            UPDATE media_analysis_cache
+            SET hit_count = hit_count + 1,
+                updated_at = ?
+            WHERE media_url = ? AND provider = ? AND model = ?
+            """,
+            (datetime.now(timezone.utc).isoformat(), url, provider_key, model_key),
+        )
+
     try:
-        with get_connection(db_path) as conn:
-            conn.execute(
-                """
-                UPDATE media_analysis_cache
-                SET hit_count = hit_count + 1,
-                    updated_at = ?
-                WHERE media_url = ? AND provider = ? AND model = ?
-                """,
-                (datetime.now(timezone.utc).isoformat(), url, provider_key, model_key),
-            )
-            commit_with_retry(conn)
+        if conn is not None:
+            _increment(conn)
+            return
+        with get_connection(db_path) as cache_conn:
+            _increment(cache_conn)
+            commit_with_retry(cache_conn)
     except Exception:
-        log.debug("Failed to update media analysis cache hit count", exc_info=True)
+        from ..metrics import get_collector
+
+        log.warning(
+            "Failed to update media analysis cache hit count for %s/%s",
+            provider_key,
+            model_key,
+            exc_info=True,
+        )
+        get_collector().inc("pipeline.media_cache.errors")

@@ -7,7 +7,14 @@ from pathlib import Path
 import rich_click as click
 
 from ..config import get_database_path
-from ..db import dump_sql, get_connection, init_db, rebuild_fts, restore_sql
+from ..db import (
+    dump_sql,
+    get_connection,
+    init_db,
+    mark_stale_tweets_processed,
+    rebuild_fts,
+    restore_sql,
+)
 from ._console import console
 
 
@@ -46,6 +53,28 @@ def db_rebuild_fts():
         count = rebuild_fts(conn)
         conn.commit()
     console.print(f"Indexed {count} tweets")
+
+
+@db.command("skip-stale")
+@click.option(
+    "--older-than-days",
+    type=click.IntRange(min=0),
+    default=3,
+    show_default=True,
+    help="Mark older unprocessed tweets complete without LLM calls",
+)
+def db_skip_stale(older_than_days: int):
+    """Clear an old backlog without paying to score or analyze it."""
+    init_db()
+    with get_connection() as conn:
+        count = mark_stale_tweets_processed(
+            conn,
+            older_than_days=older_than_days,
+        )
+        conn.commit()
+    console.print(
+        f"Marked {count} stale unprocessed tweets as processed without LLM (older than {older_than_days} days).",
+    )
 
 
 @db.command("dump")

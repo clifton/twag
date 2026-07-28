@@ -29,9 +29,11 @@ def test_process_status_id_fast_path(monkeypatch):
         progress_cb=None,
         status_cb=None,
         total_cb=None,
+        vision_max_age_days=3,
     ):
         calls["limit"] = limit
         calls["rows"] = rows
+        calls["vision_max_age_days"] = vision_max_age_days
         if status_cb:
             status_cb("Saving @test_user")
         if progress_cb:
@@ -60,6 +62,7 @@ def test_process_status_id_fast_path(monkeypatch):
     assert "No unprocessed tweets found." in result.output
     assert "Skipping dependency reprocessing for single-status mode." not in result.output
     assert calls["limit"] == 250
+    assert calls["vision_max_age_days"] == 3
     assert isinstance(calls["rows"], list)
     assert len(calls["rows"]) == 1
     assert calls["rows"][0]["id"] == "2019488673935552978"

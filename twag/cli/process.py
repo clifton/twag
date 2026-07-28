@@ -16,6 +16,13 @@ from ._progress import RichProgressReporter, create_progress, make_callbacks
 @click.option("--limit", "-n", default=250, help="Max tweets to process")
 @click.option("--dry-run", is_flag=True, help="Show what would be processed")
 @click.option("--model", "-m", help="Override triage model")
+@click.option(
+    "--vision-max-age-days",
+    type=click.IntRange(min=0),
+    default=3,
+    show_default=True,
+    help="Skip media analysis for older tweets while still triaging their text",
+)
 @click.option("--notify/--no-notify", default=False, help="Send Telegram alerts")
 @click.option(
     "--reprocess-quotes/--no-reprocess-quotes",
@@ -28,15 +35,21 @@ def process(
     limit: int,
     dry_run: bool,
     model: str | None,
+    vision_max_age_days: int,
     notify: bool,
     reprocess_quotes: bool,
     reprocess_min_score: float | None,
 ):
     """Process unscored tweets through LLM."""
+    from ..metrics import get_collector
     from ..notifier import notify_high_signal_tweet
     from ..processor import process_unprocessed, reprocess_today_quoted
 
     init_db()
+    metrics = get_collector()
+    cache_errors_before = metrics.counter_value("pipeline.media_cache.errors")
+    cache_hits_before = metrics.counter_value("pipeline.media_cache.hits")
+    vision_skips_before = metrics.counter_value("pipeline.vision.skipped_stale")
 
     target_tweet_id = _normalize_status_id_or_url(status_id_or_url) if status_id_or_url else None
     if target_tweet_id:
@@ -73,6 +86,7 @@ def process(
                 progress_cb=progress_cb,
                 status_cb=status_cb,
                 total_cb=total_cb,
+                vision_max_age_days=vision_max_age_days,
             )
     else:
         results = []
@@ -165,6 +179,7 @@ def process(
                     rows=quote_rows,
                     progress_cb=progress_cb,
                     status_cb=status_cb,
+                    vision_max_age_days=vision_max_age_days,
                 )
         else:
             reprocessed = []
@@ -173,3 +188,10 @@ def process(
             console.print(f"Reprocessed {len(reprocessed)} dependency tweets.")
         else:
             console.print("No dependency tweets to reprocess.")
+
+    cache_errors = int(metrics.counter_value("pipeline.media_cache.errors") - cache_errors_before)
+    cache_hits = int(metrics.counter_value("pipeline.media_cache.hits") - cache_hits_before)
+    vision_skips = int(metrics.counter_value("pipeline.vision.skipped_stale") - vision_skips_before)
+    console.print(
+        f"Vision guard: {vision_skips} stale skipped, {cache_hits} cache hits; media cache errors: {cache_errors}",
+    )

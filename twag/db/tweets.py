@@ -2,7 +2,7 @@
 
 import json
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -383,6 +383,38 @@ def get_unprocessed_tweets(conn: sqlite3.Connection, limit: int = 50) -> list[sq
         (limit,),
     )
     return cursor.fetchall()
+
+
+def mark_stale_tweets_processed(
+    conn: sqlite3.Connection,
+    *,
+    older_than_days: int,
+    now: datetime | None = None,
+) -> int:
+    """Clear stale backlog rows without making any LLM calls."""
+    current = now or datetime.now(timezone.utc)
+    cutoff = current - timedelta(days=max(0, older_than_days))
+    cursor = execute_with_retry(
+        conn,
+        """
+        UPDATE tweets
+        SET processed_at = ?,
+            relevance_score = 0,
+            category = ?,
+            summary = ?,
+            signal_tier = 'noise'
+        WHERE processed_at IS NULL
+          AND created_at IS NOT NULL
+          AND datetime(created_at) < datetime(?)
+        """,
+        (
+            current.isoformat(),
+            json.dumps(["skipped_stale"]),
+            f"Skipped stale backlog older than {max(0, older_than_days)} days without LLM processing.",
+            cutoff.isoformat(),
+        ),
+    )
+    return max(0, cursor.rowcount)
 
 
 def update_tweet_processing(

@@ -18,12 +18,19 @@ After=network.target
 
 [Service]
 Type=oneshot
-ExecStart=/bin/bash -c 'source ~/.env && twag fetch && twag process'
+TimeoutStartSec=2700
+Environment="TWAG_PROCESS_LIMIT=100"
+ExecStart=/bin/bash -c 'source ~/.env && twag fetch && twag process --limit "${TWAG_PROCESS_LIMIT}"'
 WorkingDirectory=%h
 
 [Install]
 WantedBy=default.target
 ```
+
+`TimeoutStartSec=2700` gives a media-heavy batch enough time to finish and commit.
+Use the normal 100-tweet process limit after installing the transactional cache
+fix. During incident mitigation, temporarily setting `TWAG_PROCESS_LIMIT=25`
+reduces cycle size, but leaving it there slows backlog recovery.
 
 **~/.config/systemd/user/twag-aggregator.timer**
 
@@ -263,6 +270,13 @@ twag accounts decay
 
 # Prune old tweets (keeps database size manageable)
 twag prune --days 14
+```
+
+After an extended outage, clear old unprocessed rows once without any LLM or
+vision calls, then let normal processing handle recent tweets:
+
+```bash
+twag db skip-stale --older-than-days 3
 ```
 
 Add to your systemd service or launchd plist if desired.

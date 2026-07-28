@@ -1,5 +1,6 @@
 """Scoring, triage, enrichment, and analysis functions."""
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -425,13 +426,22 @@ def analyze_image(
     image_url: str,
     model: str | None = None,
     provider: str | None = None,
+    usage_recorder: Callable[[dict[str, Any]], None] | None = None,
 ) -> MediaAnalysisResult:
     """Analyze a chart or image from a tweet."""
     config = load_config()
     model = model or config["llm"]["vision_model"]
     provider = provider or config["llm"].get("vision_provider", "anthropic")
 
-    text = _call_llm_vision(provider, model, image_url, MEDIA_PROMPT, max_tokens=4096, component="vision")
+    text = _call_llm_vision(
+        provider,
+        model,
+        image_url,
+        MEDIA_PROMPT,
+        max_tokens=4096,
+        component="vision",
+        usage_recorder=usage_recorder,
+    )
     data = _parse_json_response(text)
 
     if isinstance(data, list):
@@ -472,6 +482,12 @@ def analyze_media(
     image_url: str,
     model: str | None = None,
     provider: str | None = None,
+    usage_recorder: Callable[[dict[str, Any]], None] | None = None,
 ) -> MediaAnalysisResult:
     """Analyze any tweet media image with OCR and classification."""
-    return analyze_image(image_url=image_url, model=model, provider=provider)
+    return analyze_image(
+        image_url=image_url,
+        model=model,
+        provider=provider,
+        usage_recorder=usage_recorder,
+    )

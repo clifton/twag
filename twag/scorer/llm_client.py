@@ -13,6 +13,7 @@ from twag.config import load_config
 from twag.db.inference import begin_llm_usage_attempt, complete_llm_usage_attempt
 
 _T = TypeVar("_T")
+UsageRecorder = Callable[[dict[str, Any]], None]
 
 _NON_RETRYABLE_ERROR_PATTERNS = (
     "api key",
@@ -170,8 +171,38 @@ def _record_llm_usage(
     total_tokens: int = 0,
     error: Exception | None = None,
     metadata: dict[str, Any] | None = None,
+    usage_recorder: UsageRecorder | None = None,
 ) -> None:
     """Record provider usage without allowing logging failures to affect scoring."""
+    if usage_recorder is not None:
+        try:
+            usage_recorder(
+                {
+                    "component": component,
+                    "provider": provider,
+                    "model": model,
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "reasoning_tokens": reasoning_tokens,
+                    "cached_input_tokens": cached_input_tokens,
+                    "total_tokens": total_tokens,
+                    "max_tokens": max_tokens,
+                    "latency_seconds": latency_seconds,
+                    "success": success,
+                    "error_type": type(error).__name__ if error else None,
+                    "error_message": str(error) if error else None,
+                    "prompt_chars": len(prompt),
+                    "response_chars": len(response_text or ""),
+                    "is_vision": is_vision,
+                    "metadata": metadata,
+                },
+            )
+        except Exception:
+            import logging
+
+            logging.getLogger(__name__).warning("Failed to queue LLM usage record", exc_info=True)
+        return
+
     complete_llm_usage_attempt(
         attempt_id,
         component=component,
@@ -203,8 +234,11 @@ def _begin_llm_usage(
     max_tokens: int,
     is_vision: bool = False,
     metadata: dict[str, Any] | None = None,
+    usage_recorder: UsageRecorder | None = None,
 ) -> int | None:
     """Record that a provider request is about to be sent."""
+    if usage_recorder is not None:
+        return None
     return begin_llm_usage_attempt(
         component=component,
         provider=provider,
@@ -595,6 +629,7 @@ def _call_anthropic_vision(
     prompt: str,
     max_tokens: int = 1024,
     component: str = "vision",
+    usage_recorder: UsageRecorder | None = None,
 ) -> str:
     """Call Anthropic API with image and return text response."""
     t0 = time.monotonic()
@@ -609,6 +644,7 @@ def _call_anthropic_vision(
             max_tokens=max_tokens,
             is_vision=True,
             metadata={"image_url": image_url},
+            usage_recorder=usage_recorder,
         )
         response = client.messages.create(
             model=model,
@@ -651,6 +687,7 @@ def _call_anthropic_vision(
             output_tokens=output_tokens,
             total_tokens=input_tokens + output_tokens,
             metadata={"usage": _usage_to_dict(usage)} if usage else None,
+            usage_recorder=usage_recorder,
         )
         return result
     except Exception as exc:
@@ -665,6 +702,7 @@ def _call_anthropic_vision(
             success=False,
             is_vision=True,
             error=exc,
+            usage_recorder=usage_recorder,
         )
         raise
 
@@ -675,6 +713,7 @@ def _call_gemini_vision(
     prompt: str,
     max_tokens: int = 1024,
     component: str = "vision",
+    usage_recorder: UsageRecorder | None = None,
 ) -> str:
     """Call Gemini API with image and return text response."""
     import httpx
@@ -702,6 +741,7 @@ def _call_gemini_vision(
             max_tokens=max_tokens,
             is_vision=True,
             metadata={"image_url": image_url, "mime_type": mime_type},
+            usage_recorder=usage_recorder,
         )
         response = client.models.generate_content(
             model=model,
@@ -734,6 +774,7 @@ def _call_gemini_vision(
             cached_input_tokens=cached_tokens,
             total_tokens=total_tokens,
             metadata={"usage": _usage_to_dict(usage), "mime_type": mime_type} if usage else {"mime_type": mime_type},
+            usage_recorder=usage_recorder,
         )
         return result
     except Exception as exc:
@@ -748,6 +789,7 @@ def _call_gemini_vision(
             success=False,
             is_vision=True,
             error=exc,
+            usage_recorder=usage_recorder,
         )
         raise
 
@@ -791,14 +833,29 @@ def _call_llm_vision(
     prompt: str,
     max_tokens: int = 1024,
     component: str = "vision",
+    usage_recorder: UsageRecorder | None = None,
 ) -> str:
     """Call LLM with vision based on provider."""
 
     def _invoke() -> str:
         if provider == "gemini":
-            return _call_gemini_vision(model, image_url, prompt, max_tokens, component=component)
+            return _call_gemini_vision(
+                model,
+                image_url,
+                prompt,
+                max_tokens,
+                component=component,
+                usage_recorder=usage_recorder,
+            )
         if provider == "anthropic":
-            return _call_anthropic_vision(model, image_url, prompt, max_tokens, component=component)
+            return _call_anthropic_vision(
+                model,
+                image_url,
+                prompt,
+                max_tokens,
+                component=component,
+                usage_recorder=usage_recorder,
+            )
         if provider == "deepseek":
             raise ValueError("DeepSeek provider does not support twag vision analysis; use gemini or anthropic")
         raise ValueError(f"Unsupported LLM provider: {provider}")

@@ -8,7 +8,8 @@ import re
 import time
 from collections import deque
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
-from datetime import datetime, timezone
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -20,6 +21,8 @@ from ..db import (
     get_cached_media_analysis,
     get_tweet_by_id,
     get_tweets_by_ids,
+    increment_media_analysis_cache_hit,
+    record_llm_usage,
     record_media_analysis,
     update_account_stats,
     update_tweet_analysis,
@@ -50,6 +53,45 @@ _SIGNAL_TIER_RANK = {
 }
 
 
+@dataclass
+class _MediaAnalysisOutcome:
+    """Media worker payload plus DB writes deferred to the owner thread."""
+
+    items: list[dict[str, Any]]
+    updated: bool
+    cache_records: list[tuple[str, str | None, str | None, dict[str, Any]]] = field(default_factory=list)
+    cache_hits: list[tuple[str, str | None, str | None]] = field(default_factory=list)
+    usage_records: list[dict[str, Any]] = field(default_factory=list)
+
+    def __iter__(self):
+        """Preserve the private helper's historical two-value unpacking."""
+        yield self.items
+        yield self.updated
+
+
+def _persist_media_outcome(conn: sqlite3.Connection, outcome: Any) -> None:
+    """Persist cache and usage records returned by a media worker."""
+    if not isinstance(outcome, _MediaAnalysisOutcome):
+        return
+    for url, provider, model, result in outcome.cache_records:
+        record_media_analysis(
+            url,
+            provider=provider,
+            model=model,
+            result=result,
+            conn=conn,
+        )
+    for url, provider, model in outcome.cache_hits:
+        increment_media_analysis_cache_hit(
+            url,
+            provider=provider,
+            model=model,
+            conn=conn,
+        )
+    for usage in outcome.usage_records:
+        record_llm_usage(conn=conn, **usage)
+
+
 def _score_to_signal_tier(score: float, high_threshold: float) -> str:
     """Derive signal tier from score using config-driven thresholds.
 
@@ -75,6 +117,28 @@ def _normalized_worker_count(value: Any, fallback: int) -> int:
     except (TypeError, ValueError):
         workers = fallback
     return workers if workers > 0 else fallback
+
+
+def _vision_allowed_for_tweet(
+    tweet_row: sqlite3.Row,
+    max_age_days: int | None,
+    *,
+    now: datetime | None = None,
+) -> bool:
+    """Return whether a tweet is recent enough to incur vision cost."""
+    if max_age_days is None:
+        return True
+    raw_created_at = tweet_row["created_at"]
+    if not raw_created_at:
+        return False
+    try:
+        created_at = datetime.fromisoformat(str(raw_created_at).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return False
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    current = now or datetime.now(timezone.utc)
+    return created_at >= current - timedelta(days=max(0, max_age_days))
 
 
 def _prefer_stronger_signal_tier(existing: str | None, candidate: str | None) -> str | None:
@@ -177,6 +241,7 @@ def ensure_media_analysis(
         media_items,
         vision_model=vision_model,
         vision_provider=vision_provider,
+        conn=conn,
     )
 
     if updated or (media_items and not tweet_row["media_analysis"]):
@@ -196,24 +261,64 @@ def _analyze_media_items(
     *,
     vision_model: str | None = None,
     vision_provider: str | None = None,
-) -> tuple[list[dict[str, Any]], bool]:
+    conn: sqlite3.Connection | None = None,
+    defer_db_writes: bool = False,
+) -> _MediaAnalysisOutcome:
+    """Analyze media and keep pipeline DB writes on the owning transaction."""
     updated = False
+    cache_records: list[tuple[str, str | None, str | None, dict[str, Any]]] = []
+    cache_hits: list[tuple[str, str | None, str | None]] = []
+    usage_records: list[dict[str, Any]] = []
     config = load_config()
     effective_model = vision_model or config["llm"].get("vision_model")
     effective_provider = vision_provider or config["llm"].get("vision_provider")
+    usage_recorder = usage_records.append if defer_db_writes else None
+    if conn is not None and not defer_db_writes:
+
+        def _record_usage(payload: dict[str, Any]) -> None:
+            record_llm_usage(conn=conn, **payload)
+
+        usage_recorder = _record_usage
+
+    from ..metrics import get_collector
+
+    m = get_collector()
     for item in media_items:
         if item.get("kind") or item.get("prose_text") or item.get("short_description"):
             continue
         url = item.get("url")
         if not url:
             continue
-        cached = get_cached_media_analysis(url, provider=effective_provider, model=effective_model)
+        cache_kwargs: dict[str, Any] = {
+            "provider": effective_provider,
+            "model": effective_model,
+        }
+        if conn is not None:
+            cache_kwargs["conn"] = conn
+        cached = get_cached_media_analysis(url, **cache_kwargs)
         if cached:
             _apply_media_analysis_to_item(item, cached)
+            m.inc("pipeline.media_cache.hits")
+            if defer_db_writes:
+                cache_hits.append((url, effective_provider, effective_model))
+            else:
+                hit_kwargs: dict[str, Any] = {
+                    "provider": effective_provider,
+                    "model": effective_model,
+                }
+                if conn is not None:
+                    hit_kwargs["conn"] = conn
+                increment_media_analysis_cache_hit(url, **hit_kwargs)
             updated = True
             continue
         try:
-            result = analyze_media(url, model=vision_model, provider=vision_provider)
+            analyze_kwargs: dict[str, Any] = {
+                "model": vision_model,
+                "provider": vision_provider,
+            }
+            if usage_recorder is not None:
+                analyze_kwargs["usage_recorder"] = usage_recorder
+            result = analyze_media(url, **analyze_kwargs)
         except Exception:
             continue
 
@@ -226,13 +331,29 @@ def _analyze_media_items(
             "table": result.table,
         }
         _apply_media_analysis_to_item(item, result_payload)
-        record_media_analysis(url, provider=effective_provider, model=effective_model, result=result_payload)
+        if defer_db_writes:
+            cache_records.append((url, effective_provider, effective_model, result_payload))
+        else:
+            record_kwargs: dict[str, Any] = {
+                "provider": effective_provider,
+                "model": effective_model,
+                "result": result_payload,
+            }
+            if conn is not None:
+                record_kwargs["conn"] = conn
+            record_media_analysis(url, **record_kwargs)
         updated = True
 
     if _merge_document_media(media_items):
         updated = True
 
-    return media_items, updated
+    return _MediaAnalysisOutcome(
+        items=media_items,
+        updated=updated,
+        cache_records=cache_records,
+        cache_hits=cache_hits,
+        usage_records=usage_records,
+    )
 
 
 def _apply_media_analysis_to_item(item: dict[str, Any], result: dict[str, Any]) -> None:
@@ -412,12 +533,13 @@ def _process_article(
     article_title: str,
     article_preview: str,
     enrich_model: str | None,
-) -> tuple[Any, list[dict[str, Any]]]:
+) -> tuple[Any, _MediaAnalysisOutcome]:
     """Analyze media then summarize article — runs in text_pool thread."""
-    analyzed_items, _ = _analyze_media_items(
+    media_outcome = _analyze_media_items(
         media_items,
         vision_model=vision_model,
         vision_provider=vision_provider,
+        defer_db_writes=True,
     )
     article_result = summarize_x_article(
         article_text,
@@ -426,7 +548,7 @@ def _process_article(
         model=enrich_model,
         provider=None,
     )
-    return article_result, analyzed_items
+    return article_result, media_outcome
 
 
 def _triage_rows(
@@ -444,6 +566,7 @@ def _triage_rows(
     progress_cb: Callable[[int], None] | None = None,
     status_cb: Callable[[str], None] | None = None,
     force_refresh: bool = False,
+    vision_max_age_days: int | None = 3,
 ) -> list[TriageResult]:
     """Run triage on provided rows and persist results."""
     from ..metrics import get_collector
@@ -606,7 +729,7 @@ def _triage_rows(
                 log.exception("Enrichment failed for tweet %s", tweet_id)
             _complete_task(tweet_id)
 
-    def _submit_article(tweet_id: str, tweet_row: sqlite3.Row) -> None:
+    def _submit_article(tweet_id: str, tweet_row: sqlite3.Row, *, analyze_article_media: bool) -> None:
         """Prepare article processing and submit to text_pool.
 
         Uses the already-available tweet_row instead of re-querying the database.
@@ -627,7 +750,7 @@ def _triage_rows(
             status_cb(f"Summarizing article @{row['author_handle']}")
 
         if text_pool:
-            if media_items and _needs_media_analysis(media_items):
+            if analyze_article_media and media_items and _needs_media_analysis(media_items):
                 # Use wrapper that analyzes media then summarizes article
                 future = text_pool.submit(
                     _process_article,
@@ -655,11 +778,12 @@ def _triage_rows(
             _track_worker_future(future, "article", (tweet_id, row))
         else:
             try:
-                if media_items and _needs_media_analysis(media_items):
+                if analyze_article_media and media_items and _needs_media_analysis(media_items):
                     media_items, _ = _analyze_media_items(
                         media_items,
                         vision_model=vision_model,
                         vision_provider=vision_provider,
+                        conn=conn,
                     )
                 article_result = summarize_x_article(
                     article_text,
@@ -798,12 +922,16 @@ def _triage_rows(
                 task_count += 1
 
             media_items = parse_media_items(tweet_row["media_items"])
-            article_will_process_media = needs_article and bool(media_items) and _needs_media_analysis(media_items)
+            vision_allowed = _vision_allowed_for_tweet(tweet_row, vision_max_age_days)
+            media_needs_analysis = bool(media_items) and _needs_media_analysis(media_items)
+            if media_needs_analysis and not vision_allowed:
+                m.inc("pipeline.vision.skipped_stale")
+            article_will_process_media = needs_article and vision_allowed and media_needs_analysis
             media_needs_async_analysis = (
-                media_min_score is not None
+                vision_allowed
+                and media_min_score is not None
                 and result.score >= media_min_score
-                and bool(media_items)
-                and _needs_media_analysis(media_items)
+                and media_needs_analysis
                 and not article_will_process_media
                 and vision_pool is not None
             )
@@ -820,9 +948,13 @@ def _triage_rows(
                 pending_enrichment_rows[result.tweet_id] = tweet_row
 
             if needs_article:
-                _submit_article(result.tweet_id, tweet_row)
+                _submit_article(
+                    result.tweet_id,
+                    tweet_row,
+                    analyze_article_media=vision_allowed,
+                )
 
-            if media_min_score is not None and result.score >= media_min_score and media_items:
+            if vision_allowed and media_min_score is not None and result.score >= media_min_score and media_items:
                 if not _needs_media_analysis(media_items):
                     media_summary = build_media_summary(media_items)
                     if media_summary and tweet_row["media_analysis"] != media_summary:
@@ -841,6 +973,7 @@ def _triage_rows(
                             media_items,
                             vision_model=vision_model,
                             vision_provider=vision_provider,
+                            defer_db_writes=True,
                         )
                         _track_worker_future(future, "media", result.tweet_id)
                     else:
@@ -850,6 +983,7 @@ def _triage_rows(
                             media_items,
                             vision_model=vision_model,
                             vision_provider=vision_provider,
+                            conn=conn,
                         )
                         media_summary = build_media_summary(updated_items)
                         update_tweet_enrichment(
@@ -888,7 +1022,9 @@ def _triage_rows(
             elif tag == "media":
                 tweet_id = data
                 try:
-                    updated_items, _ = future.result()
+                    media_outcome = future.result()
+                    _persist_media_outcome(conn, media_outcome)
+                    updated_items, _ = media_outcome
                     media_summary = build_media_summary(updated_items)
                     update_tweet_enrichment(
                         conn,
@@ -904,7 +1040,12 @@ def _triage_rows(
             elif tag == "article":
                 tweet_id, row = data
                 try:
-                    article_result, analyzed_items = future.result()
+                    article_result, media_outcome = future.result()
+                    _persist_media_outcome(conn, media_outcome)
+                    if isinstance(media_outcome, list):
+                        analyzed_items = media_outcome
+                    else:
+                        analyzed_items, _ = media_outcome
                     top_visual = _select_article_top_visual(
                         analyzed_items,
                         article_title=row["article_title"] or "",
