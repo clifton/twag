@@ -139,6 +139,23 @@ The generated global `twag` command runs from uv's isolated tool environment. Fo
 After source dependency or entry-point changes, refresh the editable tool with
 `uv tool install --force --editable .`.
 
+### Optional: route vision through charts
+
+If the machine-wide [charts](https://github.com/clifton/charts) service is
+installed, twag can use its SHA-256 cache and spend ledger for all image
+analysis:
+
+```bash
+charts health --json
+twag config set llm.vision_provider charts
+```
+
+Keep `llm.vision_model` set to a valid Gemini model. It is used only for one
+bounded fallback call when the charts executable cannot start, times out after
+90 seconds, or returns no valid contract JSON. charts rejections and structured
+analysis failures do not trigger fallback. `twag doctor` verifies both the
+charts executable and the fallback Gemini key when this provider is selected.
+
 ## Step 6: Initialize
 
 ```bash

@@ -2,6 +2,8 @@
 
 import logging
 import sqlite3
+import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -10,7 +12,21 @@ from typing import Any
 from twag.config import load_config
 from twag.taxonomy import categories_line
 
-from .llm_client import _call_llm, _call_llm_vision, _parse_json_response
+from .charts_client import (
+    CHARTS_MODEL_KEY,
+    CHARTS_PROVIDER,
+    ChartsAnalysis,
+    ChartsAnalysisError,
+    ChartsUnavailableError,
+    analyze_with_charts,
+)
+from .llm_client import (
+    _call_llm,
+    _call_llm_vision,
+    _call_llm_vision_once,
+    _parse_json_response,
+    _record_llm_usage,
+)
 from .prompts import (
     ARTICLE_SUMMARY_PROMPT,
     BATCH_TRIAGE_PROMPT,
@@ -34,6 +50,7 @@ PLAYBOOK_TRIGGERS = [
     "dat_mnav",
     "defensive_break",
 ]
+_CHARTS_FALLBACK_SEMAPHORE = threading.BoundedSemaphore(2)
 
 TRIAGE_BATCH_SCHEMA: dict[str, Any] = {
     "type": "array",
@@ -108,6 +125,11 @@ class MediaAnalysisResult:
     prose_summary: str
     chart: dict[str, Any] = field(default_factory=dict)
     table: dict[str, Any] = field(default_factory=dict)
+    charts_id: str | None = None
+    cdn_url: str | None = None
+    charts_cached: bool | None = None
+    analysis_provider: str | None = None
+    analysis_model: str | None = None
 
 
 @dataclass
@@ -547,28 +569,13 @@ def summarize_x_article(
     )
 
 
-def analyze_image(
-    image_url: str,
-    model: str | None = None,
-    provider: str | None = None,
-    usage_recorder: Callable[[dict[str, Any]], None] | None = None,
+def _media_result_from_llm_data(
+    data: dict[str, Any] | list[dict[str, Any]],
+    *,
+    provider: str,
+    model: str,
 ) -> MediaAnalysisResult:
-    """Analyze a chart or image from a tweet."""
-    config = load_config()
-    model = model or config["llm"]["vision_model"]
-    provider = provider or config["llm"].get("vision_provider", "anthropic")
-
-    text = _call_llm_vision(
-        provider,
-        model,
-        image_url,
-        MEDIA_PROMPT,
-        max_tokens=4096,
-        component="vision",
-        usage_recorder=usage_recorder,
-    )
-    data = _parse_json_response(text)
-
+    """Map twag's direct-provider JSON shape onto the shared media result."""
     if isinstance(data, list):
         data = data[0]
 
@@ -600,6 +607,196 @@ def analyze_image(
             "summary": table.get("summary", ""),
             "tickers": table.get("tickers", []),
         },
+        analysis_provider=provider,
+        analysis_model=model,
+    )
+
+
+def _media_result_from_charts(result: ChartsAnalysis) -> MediaAnalysisResult:
+    """Map the charts consumer contract onto twag's media fields.
+
+    charts owns classification and OCR. Its transcript becomes searchable prose,
+    while its insight supplies the concise summary/description. Chart and table
+    payloads retain the normalized tag object and promote ticker tags into the
+    existing fields consumed by twag renderers.
+    """
+    title = (result.title or "").strip()
+    transcript = (result.transcript or "").strip()
+    insight = (result.insight or "").strip()
+    short_description = insight or title or transcript
+    chart: dict[str, Any] = {}
+    table: dict[str, Any] = {}
+    if result.kind == "chart":
+        chart = {
+            "type": "",
+            "description": title or transcript,
+            "insight": insight,
+            "implication": "",
+            "tickers": result.tags["tickers"],
+            "tags": result.tags,
+        }
+    elif result.kind == "table":
+        table = {
+            "title": title,
+            "description": transcript,
+            "columns": [],
+            "rows": [],
+            "summary": insight,
+            "tickers": result.tags["tickers"],
+            "tags": result.tags,
+        }
+
+    return MediaAnalysisResult(
+        kind=result.kind,
+        short_description=short_description,
+        prose_text=transcript,
+        prose_summary=insight,
+        chart=chart,
+        table=table,
+        charts_id=result.id,
+        cdn_url=result.cdn_url,
+        charts_cached=result.cached,
+        analysis_provider=CHARTS_PROVIDER,
+        analysis_model=CHARTS_MODEL_KEY,
+    )
+
+
+def _record_charts_usage(
+    *,
+    caption: str,
+    latency_seconds: float,
+    success: bool,
+    result: ChartsAnalysis | None = None,
+    error: Exception | None = None,
+    metadata: dict[str, Any] | None = None,
+    usage_recorder: Callable[[dict[str, Any]], None] | None = None,
+) -> None:
+    details = dict(metadata or {})
+    if result is not None:
+        details.update(
+            {
+                "charts_id": result.id,
+                "cdn_url": result.cdn_url,
+                "cached": result.cached,
+                "status": result.status,
+                "tag_status": result.tag_status,
+                "kind": result.kind,
+            },
+        )
+    _record_llm_usage(
+        component="vision",
+        provider=CHARTS_PROVIDER,
+        model=CHARTS_MODEL_KEY,
+        prompt=caption,
+        max_tokens=0,
+        latency_seconds=latency_seconds,
+        success=success,
+        is_vision=True,
+        response_text=result.transcript if result else None,
+        error=error,
+        metadata=details or None,
+        usage_recorder=usage_recorder,
+    )
+
+
+def _positive_float(value: Any, default: float) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed > 0 else default
+
+
+def analyze_image(
+    image_url: str,
+    model: str | None = None,
+    provider: str | None = None,
+    usage_recorder: Callable[[dict[str, Any]], None] | None = None,
+    *,
+    caption: str = "",
+    local_path: str | None = None,
+) -> MediaAnalysisResult:
+    """Analyze a chart or image from a tweet."""
+    config = load_config()
+    model = model or config["llm"]["vision_model"]
+    provider = provider or config["llm"].get("vision_provider", "anthropic")
+
+    if provider == CHARTS_PROVIDER:
+        charts_input = local_path or image_url
+        deadline_seconds = _positive_float(config["llm"].get("charts_deadline_seconds"), 90.0)
+        executable = str(config["llm"].get("charts_executable") or "charts")
+        started = time.monotonic()
+        try:
+            charts_result = analyze_with_charts(
+                charts_input,
+                caption=caption,
+                executable=executable,
+                deadline_seconds=deadline_seconds,
+            )
+        except ChartsAnalysisError as exc:
+            _record_charts_usage(
+                caption=caption,
+                latency_seconds=time.monotonic() - started,
+                success=False,
+                error=exc,
+                metadata={"failure": "structured", "details": exc.details},
+                usage_recorder=usage_recorder,
+            )
+            raise
+        except ChartsUnavailableError as exc:
+            from twag.metrics import get_collector
+
+            get_collector().inc(f"scorer.charts.unavailable.{exc.reason}")
+            _record_charts_usage(
+                caption=caption,
+                latency_seconds=time.monotonic() - started,
+                success=False,
+                error=exc,
+                metadata={"unavailable_reason": exc.reason},
+                usage_recorder=usage_recorder,
+            )
+            # The central service was unavailable, so make one bounded direct
+            # Gemini call without the generic retry loop. Cache metadata below
+            # identifies the real provider, preventing this degraded result
+            # from being stored under the charts L1 key.
+            with _CHARTS_FALLBACK_SEMAPHORE:
+                text = _call_llm_vision_once(
+                    "gemini",
+                    model,
+                    image_url,
+                    MEDIA_PROMPT,
+                    max_tokens=4096,
+                    component="vision",
+                    usage_recorder=usage_recorder,
+                )
+            return _media_result_from_llm_data(
+                _parse_json_response(text),
+                provider="gemini",
+                model=model,
+            )
+        else:
+            _record_charts_usage(
+                caption=caption,
+                latency_seconds=time.monotonic() - started,
+                success=True,
+                result=charts_result,
+                usage_recorder=usage_recorder,
+            )
+            return _media_result_from_charts(charts_result)
+
+    text = _call_llm_vision(
+        provider,
+        model,
+        image_url,
+        MEDIA_PROMPT,
+        max_tokens=4096,
+        component="vision",
+        usage_recorder=usage_recorder,
+    )
+    return _media_result_from_llm_data(
+        _parse_json_response(text),
+        provider=provider,
+        model=model,
     )
 
 
@@ -608,6 +805,9 @@ def analyze_media(
     model: str | None = None,
     provider: str | None = None,
     usage_recorder: Callable[[dict[str, Any]], None] | None = None,
+    *,
+    caption: str = "",
+    local_path: str | None = None,
 ) -> MediaAnalysisResult:
     """Analyze any tweet media image with OCR and classification."""
     return analyze_image(
@@ -615,4 +815,6 @@ def analyze_media(
         model=model,
         provider=provider,
         usage_recorder=usage_recorder,
+        caption=caption,
+        local_path=local_path,
     )

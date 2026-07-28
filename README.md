@@ -378,10 +378,30 @@ twag web --no-reload            # Disable auto-reload on code changes
 twag config show                # Show current config
 twag config path                # Show config file path
 twag config set llm.triage_model gemini-2.0-flash
+twag config set llm.vision_provider charts
 twag config set scoring.alert_threshold 8
 twag config set scoring.min_score_for_analysis 6
 twag config set scoring.max_article_summary_chars 20000
 ```
+
+### charts vision provider
+
+Set `llm.vision_provider` to `charts` to route tweet images through the local
+`charts analyze` service and its machine-wide SHA-256 cache:
+
+```bash
+twag config set llm.vision_provider charts
+twag config set llm.vision_model gemini-3-flash-preview
+```
+
+`charts` must be on `PATH` (or configured with `llm.charts_executable`). twag
+keeps its URL-keyed media cache as L1 and charts is the content-keyed system of
+record. Successful results carry `charts_id`, `cdn_url`, and `charts_cached` on
+the stored media item. `vision_model` remains the model for one bounded direct
+Gemini fallback, used only if the charts executable cannot start, exceeds its
+90-second deadline, or fails to emit valid contract JSON. Rejected media and
+structured charts failures never fall back, preventing retry-cap bypass and
+double billing.
 
 ## Data Paths
 

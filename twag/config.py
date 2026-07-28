@@ -18,6 +18,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "enrichment_provider": "gemini",
         "vision_model": "gemini-3-flash-preview",
         "vision_provider": "gemini",
+        "charts_executable": "charts",
+        "charts_deadline_seconds": 90,
         "max_concurrency_triage": 6,
         "max_concurrency_text": 12,
         "max_concurrency_vision": 6,

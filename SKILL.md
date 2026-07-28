@@ -226,6 +226,18 @@ twag spine emit              # Append eligible signal-event v1 records
 twag eval run                # Run the versioned scoring golden set
 ```
 
+When the local charts service is installed, route vision through its
+machine-wide content cache with:
+
+```bash
+twag config set llm.vision_provider charts
+```
+
+Keep `llm.vision_model` configured as the bounded Gemini fallback model. charts
+rejections and structured failures never fall back; only spawn failures,
+90-second deadlines, or invalid contract output do. Stored media items include
+`charts_id`, `cdn_url`, and `charts_cached` when charts handled the image.
+
 ### Digest
 
 ```bash
