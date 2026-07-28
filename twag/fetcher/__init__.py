@@ -1,6 +1,7 @@
 """Bird CLI wrapper for fetching tweets."""
 
 from .bird_cli import (
+    UserNotFoundError,
     _parse_bird_output,
     fetch_bookmarks,
     fetch_home_timeline,
@@ -17,6 +18,7 @@ from .extractors import Tweet
 
 __all__ = [
     "Tweet",
+    "UserNotFoundError",
     "_parse_bird_output",
     "fetch_bookmarks",
     "fetch_home_timeline",

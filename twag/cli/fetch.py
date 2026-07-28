@@ -1,5 +1,6 @@
 """Fetch command."""
 
+import logging
 import sys
 
 import rich_click as click
@@ -8,6 +9,8 @@ from ..db import get_accounts, get_connection, init_db
 from ._console import console
 from ._helpers import _normalize_status_id_or_url
 from ._progress import RichProgressReporter, create_progress, make_callbacks
+
+log = logging.getLogger(__name__)
 
 
 @click.command()
@@ -37,7 +40,14 @@ def fetch(
     stagger: int | None,
 ):
     """Fetch tweets from Twitter/X."""
-    from ..fetcher import fetch_bookmarks, fetch_home_timeline, fetch_search, fetch_user_tweets, read_tweet
+    from ..fetcher import (
+        UserNotFoundError,
+        fetch_bookmarks,
+        fetch_home_timeline,
+        fetch_search,
+        fetch_user_tweets,
+        read_tweet,
+    )
     from ..processor import auto_promote_bookmarked_authors, store_bookmarked_tweets, store_fetched_tweets
 
     init_db()
@@ -180,6 +190,12 @@ def fetch(
                             update_account_last_fetched(conn, account["handle"])
                             conn.commit()
 
+                    except UserNotFoundError:
+                        log.warning("tier-1 account %s not found; skipping", handle_label)
+                        console.print(f"[yellow]  Warning: {handle_label} not found; skipping[/yellow]")
+                        with get_connection() as conn:
+                            update_account_last_fetched(conn, account["handle"])
+                            conn.commit()
                     except RuntimeError as e:
                         console.print(f"[red]  @{account['handle']}: {e}[/red]")
                         tier1_errors += 1
