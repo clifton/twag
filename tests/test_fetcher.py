@@ -736,7 +736,11 @@ class TestRunBird:
 
     def test_run_bird_does_not_retry_not_found(self, mock_subprocess, mock_auth_env):
         """Unavailable users should not be retried as transient failures."""
+        from twag.metrics import get_collector
+
         mock_subprocess.return_value = MagicMock(stderr="User @missing not found", returncode=1)
+        metrics = get_collector()
+        errors_before = metrics.counter_value("fetcher.errors")
 
         stdout, stderr, code = run_bird(["user-tweets", "@missing", "-n", "1", "--json"])
 
@@ -744,6 +748,7 @@ class TestRunBird:
         assert stderr == "User @missing not found"
         assert code == 1
         mock_subprocess.assert_called_once()
+        assert metrics.counter_value("fetcher.errors") == errors_before
 
 
 # ============================================================================

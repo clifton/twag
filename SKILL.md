@@ -212,6 +212,9 @@ twag fetch --source search -q "query"  # Search tweets
 twag fetch --stagger 5        # Rotate: fetch 5 least-recent tier-1
 twag fetch --delay 5.0        # Pacing between tier-1 fetches (default: 3s)
 
+Missing tier-1 users are warned and skipped without failing the fetch; transient
+Bird errors still retry and fail normally.
+
 twag process                  # Score unprocessed (no alerts by default)
 twag process -n 100           # Limit batch
 twag process --dry-run        # Preview

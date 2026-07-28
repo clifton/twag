@@ -190,6 +190,10 @@ twag fetch --stagger 5          # Only fetch 5 least-recent tier-1 accounts
 twag fetch --delay 5.0          # 5s delay between tier-1 fetches (default: 3s)
 ```
 
+Tier-1 accounts that Bird reports as not found are logged as warnings and skipped
+without failing the fetch. Transient Bird failures keep their normal retry and
+error behavior.
+
 ### Process Commands
 
 ```bash

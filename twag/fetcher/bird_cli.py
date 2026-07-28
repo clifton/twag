@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -62,9 +63,22 @@ class ReadTweetResult:
     failure: ReadTweetFailure | None = None
 
 
+class UserNotFoundError(RuntimeError):
+    """Raised when ``bird user-tweets`` reports a permanently unavailable user."""
+
+    def __init__(self, handle: str):
+        self.handle = handle
+        super().__init__(f"bird user-tweets failed for {handle}: user not found")
+
+
 def _is_rate_limited(stderr: str) -> bool:
     """Check if bird CLI stderr indicates a 429 rate limit."""
     return "429" in stderr or "Rate limit" in stderr or "rate limit" in stderr
+
+
+def _is_user_not_found(stderr: str) -> bool:
+    """Identify Bird's terminal missing-user response without matching a missing CLI."""
+    return re.search(r"\buser\b[^\n]*\bnot found\b", stderr, flags=re.IGNORECASE) is not None
 
 
 def _is_retryable_bird_failure(stderr: str) -> bool:
@@ -128,13 +142,14 @@ def _run_bird_once(
             )
             tmp.seek(0)
             stdout = tmp.read()
+        user_not_found = args[:1] == ["user-tweets"] and _is_user_not_found(result.stderr)
         if result.stderr.strip():
             lines = result.stderr.strip().splitlines()
             meaningful = [ln for ln in lines if not ln.strip().startswith("\u2139")]
             if meaningful and log_failures:
-                level = logging.WARNING if result.returncode == 0 else logging.ERROR
+                level = logging.WARNING if result.returncode == 0 or user_not_found else logging.ERROR
                 log.log(level, "bird %s stderr: %s", args[0] if args else "?", _redact_stderr("\n".join(meaningful)))
-        if result.returncode != 0 and log_failures:
+        if result.returncode != 0 and log_failures and not user_not_found:
             log.error("bird %s exited with code %d", args[0] if args else "?", result.returncode)
         return stdout, result.stderr, result.returncode
     except subprocess.TimeoutExpired:
@@ -181,7 +196,8 @@ def run_bird(args: list[str], timeout: int = 60, *, log_failures: bool = True) -
 
         if returncode == 0 or not _is_retryable_bird_failure(stderr):
             m.observe("fetcher.latency_seconds", time.monotonic() - t0)
-            if returncode != 0:
+            user_not_found = args[:1] == ["user-tweets"] and _is_user_not_found(stderr)
+            if returncode != 0 and not user_not_found:
                 m.inc("fetcher.errors")
             return stdout, stderr, returncode
 
@@ -379,15 +395,26 @@ def fetch_home_timeline(count: int = 100) -> list[Tweet]:
     return _hydrate_truncated_retweets(tweets)
 
 
-def fetch_user_tweets(handle: str, count: int = 50) -> list[Tweet]:
+def fetch_user_tweets(
+    handle: str,
+    count: int = 50,
+    *,
+    bird_runner: Callable[[list[str]], tuple[str, str, int]] | None = None,
+) -> list[Tweet]:
     """Fetch tweets from a specific user."""
     # Normalize handle
     if not handle.startswith("@"):
         handle = f"@{handle}"
 
-    stdout, stderr, code = run_bird(["user-tweets", handle, "-n", str(count), "--json"])
+    runner = bird_runner or run_bird
+    stdout, stderr, code = runner(["user-tweets", handle, "-n", str(count), "--json"])
 
     if code != 0:
+        if _is_user_not_found(stderr):
+            from twag.metrics import get_collector
+
+            get_collector().inc("fetch.accounts.not_found")
+            raise UserNotFoundError(handle)
         raise RuntimeError(f"bird user-tweets failed for {handle} (exit {code}): {stderr.strip()}")
 
     tweets = _parse_bird_output(stdout)
