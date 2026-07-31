@@ -288,7 +288,7 @@ def triage_tweets_batch(
     config = load_config()
     model = model or config["llm"]["triage_model"]
     provider = provider or config["llm"].get("triage_provider", "anthropic")
-    max_tokens = int(config["llm"].get("triage_max_tokens") or 4096)
+    max_tokens = int(config["llm"].get("triage_max_tokens") or 16_384)
     reasoning = config["llm"].get("triage_reasoning")
     if provider != "deepseek":
         reasoning = None

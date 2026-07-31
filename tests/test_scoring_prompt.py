@@ -69,7 +69,7 @@ def test_high_reasoning_triage_prompt_embeds_complete_json_shape(monkeypatch):
     assert captured["model"] == "deepseek-v4-flash"
     assert captured["kwargs"]["reasoning"] == "high"
     assert captured["kwargs"]["component"] == "triage"
-    assert captured["kwargs"]["max_tokens"] == 4096
+    assert captured["kwargs"]["max_tokens"] == 16_384
     assert captured["kwargs"]["json_schema"] is TRIAGE_BATCH_SCHEMA
     assert "Return a JSON array with one object per tweet, in order:" in captured["prompt"]
     for field in TRIAGE_BATCH_SCHEMA["items"]["required"]:

@@ -15,6 +15,7 @@ from twag.db.inference import record_llm_usage as record_llm_usage
 
 _T = TypeVar("_T")
 UsageRecorder = Callable[[dict[str, Any]], None]
+_DEEPSEEK_REASONING_MIN_MAX_TOKENS = 16_384
 
 _NON_RETRYABLE_ERROR_PATTERNS = (
     "api key",
@@ -465,8 +466,11 @@ def _call_deepseek(
     total_tokens = 0
     reasoning_tokens = 0
     cached_tokens = 0
+    finish_reason: str | None = None
     try:
         effort = _normalize_deepseek_reasoning(reasoning)
+        if effort:
+            max_tokens = max(max_tokens, _DEEPSEEK_REASONING_MIN_MAX_TOKENS)
         request_timeout = _configured_llm_timeout_seconds()
         api_key = get_deepseek_api_key()
         payload: dict[str, Any] = {
@@ -567,6 +571,9 @@ def _call_deepseek(
             if isinstance(choices, list) and choices:
                 first_choice = choices[0]
                 if isinstance(first_choice, dict):
+                    raw_finish_reason = first_choice.get("finish_reason")
+                    if isinstance(raw_finish_reason, str):
+                        finish_reason = raw_finish_reason
                     message = first_choice.get("message")
                     if isinstance(message, dict):
                         tool_calls = message.get("tool_calls")
@@ -621,7 +628,14 @@ def _call_deepseek(
                             )
                             return content
 
-        raise RuntimeError("DeepSeek response did not contain message content")
+        m.inc("scorer.deepseek.empty_content")
+        m.observe("scorer.deepseek.empty_content.completion_tokens", output_tokens)
+        m.observe("scorer.deepseek.empty_content.reasoning_tokens", reasoning_tokens)
+        raise RuntimeError(
+            "DeepSeek response did not contain message content "
+            f"(finish_reason={finish_reason or 'unknown'}, completion_tokens={output_tokens}, "
+            f"reasoning_tokens={reasoning_tokens}, max_tokens={max_tokens})",
+        )
     except Exception as exc:
         m.inc("scorer.deepseek.errors")
         _record_llm_usage(
@@ -639,7 +653,11 @@ def _call_deepseek(
             cached_input_tokens=cached_tokens,
             total_tokens=total_tokens,
             error=exc,
-            metadata={"usage": usage} if usage else None,
+            metadata={
+                **({"usage": usage} if usage else {}),
+                **({"finish_reason": finish_reason} if finish_reason else {}),
+            }
+            or None,
         )
         raise
 

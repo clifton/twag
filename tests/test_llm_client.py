@@ -3,6 +3,7 @@
 import httpx
 import pytest
 
+from twag.metrics import get_collector
 from twag.scorer import llm_client
 from twag.scorer.prompts import BATCH_TRIAGE_PROMPT
 from twag.scorer.scoring import TRIAGE_BATCH_SCHEMA
@@ -234,7 +235,7 @@ def test_call_deepseek_uses_json_mode_for_high_reasoning_triage(monkeypatch) -> 
     assert seen["url"] == "https://api.deepseek.com/chat/completions"
     assert seen["payload"]["model"] == "deepseek-v4-flash"
     assert seen["payload"]["messages"] == [{"role": "user", "content": BATCH_TRIAGE_PROMPT}]
-    assert seen["payload"]["max_tokens"] == 4096
+    assert seen["payload"]["max_tokens"] == 16_384
     assert seen["payload"]["thinking"] == {"type": "enabled"}
     assert seen["payload"]["reasoning_effort"] == "high"
     assert seen["payload"]["response_format"] == {"type": "json_object"}
@@ -242,8 +243,65 @@ def test_call_deepseek_uses_json_mode_for_high_reasoning_triage(monkeypatch) -> 
     assert "tool_choice" not in seen["payload"]
     assert completed["component"] == "triage"
     assert completed["model"] == "deepseek-v4-flash"
+    assert completed["max_tokens"] == 16_384
     assert completed["reasoning_tokens"] == 169
     assert completed["success"] is True
+
+
+def test_call_deepseek_empty_content_reports_budget_diagnostics(monkeypatch) -> None:
+    completed: dict = {}
+
+    class EmptyContentResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {
+                "choices": [{"message": {"content": ""}, "finish_reason": "length"}],
+                "usage": {
+                    "prompt_tokens": 800,
+                    "completion_tokens": 16_384,
+                    "total_tokens": 17_184,
+                    "completion_tokens_details": {"reasoning_tokens": 16_384},
+                },
+            }
+
+    monkeypatch.setattr(llm_client, "get_deepseek_api_key", lambda: "test-key")
+    monkeypatch.setattr(llm_client, "load_config", lambda: {"llm": {}})
+    monkeypatch.setattr(httpx, "post", lambda *args, **kwargs: EmptyContentResponse())
+    monkeypatch.setattr(llm_client, "begin_llm_usage_attempt", lambda **kwargs: 123)
+    monkeypatch.setattr(
+        llm_client,
+        "complete_llm_usage_attempt",
+        lambda attempt_id, **kwargs: completed.update({"attempt_id": attempt_id, **kwargs}),
+    )
+    metrics = get_collector()
+    empty_content_before = metrics.counter_value("scorer.deepseek.empty_content")
+
+    with pytest.raises(
+        RuntimeError,
+        match=(
+            r"finish_reason=length, completion_tokens=16384, "
+            r"reasoning_tokens=16384, max_tokens=16384"
+        ),
+    ):
+        llm_client._call_deepseek(
+            "deepseek-v4-flash",
+            BATCH_TRIAGE_PROMPT,
+            max_tokens=4096,
+            reasoning="high",
+            component="triage",
+            json_schema=TRIAGE_BATCH_SCHEMA,
+        )
+
+    assert metrics.counter_value("scorer.deepseek.empty_content") == empty_content_before + 1
+    assert metrics.histogram_stats("scorer.deepseek.empty_content.completion_tokens")["max"] == 16_384
+    assert metrics.histogram_stats("scorer.deepseek.empty_content.reasoning_tokens")["max"] == 16_384
+    assert completed["component"] == "triage"
+    assert completed["max_tokens"] == 16_384
+    assert completed["success"] is False
+    assert completed["metadata"]["finish_reason"] == "length"
+    assert "finish_reason=length" in completed["error_message"]
 
 
 def test_call_deepseek_treats_low_reasoning_as_non_thinking(monkeypatch) -> None:
