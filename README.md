@@ -388,7 +388,7 @@ twag config set scoring.min_score_for_analysis 6
 twag config set scoring.max_article_summary_chars 20000
 ```
 
-New configurations default triage to `deepseek-v4-flash` with reasoning disabled; enrichment settings are unchanged.
+New configurations default triage to `deepseek-v4-flash` with reasoning high; enrichment settings are unchanged.
 
 ### charts vision provider
 

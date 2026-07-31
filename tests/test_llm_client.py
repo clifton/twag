@@ -4,6 +4,8 @@ import httpx
 import pytest
 
 from twag.scorer import llm_client
+from twag.scorer.prompts import BATCH_TRIAGE_PROMPT
+from twag.scorer.scoring import TRIAGE_BATCH_SCHEMA
 
 
 class _FakeDeepSeekResponse:
@@ -183,6 +185,65 @@ def test_call_deepseek_uses_json_mode_for_schema_with_reasoning(monkeypatch) -> 
     assert seen["json"]["response_format"] == {"type": "json_object"}
     assert seen["json"]["thinking"] == {"type": "enabled"}
     assert seen["json"]["reasoning_effort"] == "high"
+
+
+def test_call_deepseek_uses_json_mode_for_high_reasoning_triage(monkeypatch) -> None:
+    seen: dict = {}
+    completed: dict = {}
+
+    class TriageJsonResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {
+                "choices": [{"message": {"content": '{"items":[]}'}, "finish_reason": "stop"}],
+                "usage": {
+                    "prompt_tokens": 800,
+                    "completion_tokens": 180,
+                    "total_tokens": 980,
+                    "completion_tokens_details": {"reasoning_tokens": 169},
+                },
+            }
+
+    def fake_post(url, *, headers, json, timeout):
+        seen.update(url=url, payload=json, timeout=timeout)
+        return TriageJsonResponse()
+
+    monkeypatch.setattr(llm_client, "get_deepseek_api_key", lambda: "test-key")
+    monkeypatch.setattr(llm_client, "load_config", lambda: {"llm": {}})
+    monkeypatch.setattr(httpx, "post", fake_post)
+    monkeypatch.setattr(llm_client, "begin_llm_usage_attempt", lambda **kwargs: 123)
+    monkeypatch.setattr(
+        llm_client,
+        "complete_llm_usage_attempt",
+        lambda attempt_id, **kwargs: completed.update({"attempt_id": attempt_id, **kwargs}),
+    )
+
+    result = llm_client._call_deepseek(
+        "deepseek-v4-flash",
+        BATCH_TRIAGE_PROMPT,
+        max_tokens=4096,
+        reasoning="high",
+        component="triage",
+        json_schema=TRIAGE_BATCH_SCHEMA,
+        json_tool_name="emit_triage_batch",
+    )
+
+    assert result == '{"items":[]}'
+    assert seen["url"] == "https://api.deepseek.com/chat/completions"
+    assert seen["payload"]["model"] == "deepseek-v4-flash"
+    assert seen["payload"]["messages"] == [{"role": "user", "content": BATCH_TRIAGE_PROMPT}]
+    assert seen["payload"]["max_tokens"] == 4096
+    assert seen["payload"]["thinking"] == {"type": "enabled"}
+    assert seen["payload"]["reasoning_effort"] == "high"
+    assert seen["payload"]["response_format"] == {"type": "json_object"}
+    assert "tools" not in seen["payload"]
+    assert "tool_choice" not in seen["payload"]
+    assert completed["component"] == "triage"
+    assert completed["model"] == "deepseek-v4-flash"
+    assert completed["reasoning_tokens"] == 169
+    assert completed["success"] is True
 
 
 def test_call_deepseek_treats_low_reasoning_as_non_thinking(monkeypatch) -> None:

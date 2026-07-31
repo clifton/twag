@@ -47,6 +47,37 @@ def test_prompt_contains_author_context_fund_context_and_categories(monkeypatch)
     assert results[0].catalyst_status is None
 
 
+def test_high_reasoning_triage_prompt_embeds_complete_json_shape(monkeypatch):
+    captured = {}
+
+    def fake_call(provider, model, prompt, **kwargs):
+        captured.update(provider=provider, model=model, prompt=prompt, kwargs=kwargs)
+        return (
+            '[{"id":"1","score":7,"surprise":1,"is_stale_repeat":false,'
+            '"categories":["macro_data"],"themes":["ai-memory"],"playbook_trigger":"none",'
+            '"catalyst":"none","direction":"long","tickers":["MU"],"summary":"fact"}]'
+        )
+
+    monkeypatch.setattr("twag.scorer.scoring._call_llm", fake_call)
+
+    results = triage_tweets_batch(
+        [{"id": "1", "handle": "source", "text": "new print"}],
+        fund_context="LIVE THEMES: ai-memory",
+    )
+
+    assert captured["provider"] == "deepseek"
+    assert captured["model"] == "deepseek-v4-flash"
+    assert captured["kwargs"]["reasoning"] == "high"
+    assert captured["kwargs"]["component"] == "triage"
+    assert captured["kwargs"]["max_tokens"] == 4096
+    assert captured["kwargs"]["json_schema"] is TRIAGE_BATCH_SCHEMA
+    assert "Return a JSON array with one object per tweet, in order:" in captured["prompt"]
+    for field in TRIAGE_BATCH_SCHEMA["items"]["required"]:
+        assert f'"{field}"' in captured["prompt"]
+    assert results[0].tweet_id == "1"
+    assert results[0].summary == "fact"
+
+
 def test_parser_tolerates_old_missing_fields(monkeypatch):
     monkeypatch.setattr(
         "twag.scorer.scoring._call_llm",
