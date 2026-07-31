@@ -12,8 +12,9 @@ APP_NAME = "twag"
 # Default configuration
 DEFAULT_CONFIG: dict[str, Any] = {
     "llm": {
-        "triage_model": "gemini-3-flash-preview",
-        "triage_provider": "gemini",
+        "triage_model": "deepseek-v4-flash",
+        "triage_provider": "deepseek",
+        "triage_reasoning": "disabled",
         "enrichment_model": "gemini-3.1-pro-preview",
         "enrichment_provider": "gemini",
         "vision_model": "gemini-3-flash-preview",
