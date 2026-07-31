@@ -255,10 +255,12 @@ def test_call_deepseek_uses_strict_beta_tool_for_json_schema(monkeypatch) -> Non
 
     assert result == '[{"id": "1"}]'
     assert seen["url"] == "https://api.deepseek.com/beta/chat/completions"
+    assert seen["payload"]["model"] == "deepseek-v4-flash"
     assert seen["payload"]["thinking"] == {"type": "disabled"}
     assert "reasoning_effort" not in seen["payload"]
     assert seen["payload"]["tools"][0]["function"]["strict"] is True
     assert seen["payload"]["tools"][0]["function"]["parameters"]["properties"]["result"] == schema
+    assert seen["payload"]["tool_choice"] == {"type": "function", "function": {"name": "emit_result"}}
 
 
 def test_call_gemini_uses_standard_response_json_schema(monkeypatch) -> None:
