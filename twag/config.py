@@ -18,7 +18,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "triage_max_tokens": 16_384,
         "enrichment_model": "gemini-3.1-pro-preview",
         "enrichment_provider": "gemini",
-        "vision_model": "gemini-3.7-flash",
+        "vision_model": "gemini-3.6-flash",
         "vision_provider": "gemini",
         "charts_executable": "charts",
         "charts_deadline_seconds": 90,

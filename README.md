@@ -399,14 +399,14 @@ Set `llm.vision_provider` to `charts` to route tweet images through the local
 
 ```bash
 twag config set llm.vision_provider charts
-twag config set llm.vision_model gemini-3.7-flash
+twag config set llm.vision_model gemini-3.6-flash
 ```
 
 `charts` must be on `PATH` (or configured with `llm.charts_executable`). twag
 keeps its URL-keyed media cache as L1 and charts is the content-keyed system of
 record. Successful results carry `charts_id`, `cdn_url`, and `charts_cached` on
 the stored media item. New configurations default `vision_model` to
-`gemini-3.7-flash`; it remains the model for one bounded direct
+`gemini-3.6-flash`; it remains the model for one bounded direct
 Gemini fallback, used only if the charts executable cannot start, exceeds its
 90-second deadline, or fails to emit valid contract JSON. Rejected media and
 structured charts failures never fall back, preventing retry-cap bypass and

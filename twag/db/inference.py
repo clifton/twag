@@ -93,8 +93,10 @@ MODEL_PRICES: dict[tuple[str, str], ModelPrice] = {
     ("gemini", "gemini-3-flash-preview"): ModelPrice(0.50, 3.00, 0.05),
     ("gemini", "gemini-3.1-flash-lite-preview"): ModelPrice(0.25, 1.50, 0.025),
     ("gemini", "gemini-3.1-pro-preview"): ModelPrice(2.00, 12.00, 0.20),
-    # Introductory rates through 2026-12-31; from 2027-01-01 the published
-    # input/output/cached-input rates become $1.50/$7.50/$0.15 per 1M tokens.
+    ("gemini", "gemini-3.6-flash"): ModelPrice(1.50, 7.50, 0.15),
+    # Evaluated 2026-08-13: regressed against 3.6 accuracy gates and is not
+    # deployed. Intro rates run through 2026-12-31; from 2027-01-01 the
+    # published input/output/cached-input rates become $1.50/$7.50/$0.15.
     ("gemini", "gemini-3.7-flash"): ModelPrice(0.75, 3.75, 0.075),
 }
 
