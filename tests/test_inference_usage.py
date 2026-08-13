@@ -8,6 +8,7 @@ from twag.db.inference import (
     begin_llm_usage_attempt,
     complete_llm_usage_attempt,
     estimate_cost_usd,
+    get_model_price,
     record_llm_usage,
     summarize_llm_usage,
 )
@@ -16,7 +17,7 @@ from twag.db.inference import (
 def test_estimate_gemini_cost_includes_reasoning_tokens() -> None:
     cost, price = estimate_cost_usd(
         "gemini",
-        "gemini-3-flash-preview",
+        "gemini-3.6-flash",
         input_tokens=1_000_000,
         output_tokens=100_000,
         reasoning_tokens=100_000,
@@ -24,7 +25,28 @@ def test_estimate_gemini_cost_includes_reasoning_tokens() -> None:
     )
 
     assert price is not None
-    assert round(cost, 4) == 1.055
+    assert round(cost, 4) == 2.865
+    assert price.input_per_million == 1.50
+    assert price.cached_input_per_million == 0.15
+    assert price.output_per_million == 7.50
+
+
+def test_historical_gemini_flash_price_is_retained() -> None:
+    price = get_model_price("gemini", "gemini-3-flash-preview")
+
+    assert price is not None
+    assert price.input_per_million == 0.50
+    assert price.cached_input_per_million == 0.05
+    assert price.output_per_million == 3.00
+
+
+def test_evaluated_gemini_37_flash_price_is_retained() -> None:
+    price = get_model_price("gemini", "gemini-3.7-flash")
+
+    assert price is not None
+    assert price.input_per_million == 0.75
+    assert price.cached_input_per_million == 0.075
+    assert price.output_per_million == 3.75
 
 
 def test_record_and_summarize_llm_usage(tmp_path) -> None:
@@ -34,7 +56,7 @@ def test_record_and_summarize_llm_usage(tmp_path) -> None:
     record_llm_usage(
         component="triage",
         provider="gemini",
-        model="gemini-3-flash-preview",
+        model="gemini-3.6-flash",
         input_tokens=1000,
         output_tokens=200,
         reasoning_tokens=50,
@@ -109,7 +131,7 @@ def test_usage_command_shows_only_logged_rows(monkeypatch) -> None:
             {
                 "component": "triage",
                 "provider": "gemini",
-                "model": "gemini-3-flash-preview",
+                "model": "gemini-3.6-flash",
                 "calls": 2,
                 "failures": 0,
                 "input_tokens": 100,
@@ -126,7 +148,7 @@ def test_usage_command_shows_only_logged_rows(monkeypatch) -> None:
 
     assert result.exit_code == 0
     assert "LLM Inference Usage - last 7d" in result.output
-    assert "gemini-3-flash-preview" in result.output
+    assert "gemini-3.6-flash" in result.output
     assert "$0.0010" in result.output
 
 

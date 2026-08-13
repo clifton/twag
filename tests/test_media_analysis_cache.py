@@ -16,7 +16,7 @@ def test_record_and_read_media_analysis_cache(tmp_path) -> None:
     record_media_analysis(
         "https://example.com/chart.png",
         provider="gemini",
-        model="gemini-3-flash-preview",
+        model="gemini-3.6-flash",
         result={
             "kind": "chart",
             "short_description": "Chart",
@@ -31,7 +31,7 @@ def test_record_and_read_media_analysis_cache(tmp_path) -> None:
     cached = get_cached_media_analysis(
         "https://example.com/chart.png",
         provider="gemini",
-        model="gemini-3-flash-preview",
+        model="gemini-3.6-flash",
         db_path=db_path,
     )
 
@@ -55,7 +55,7 @@ def test_cache_write_uses_callers_locked_transaction(tmp_path) -> None:
         record_media_analysis(
             "https://example.com/transactional.png",
             provider="gemini",
-            model="gemini-3-flash-preview",
+            model="gemini-3.6-flash",
             result={"kind": "chart"},
             conn=batch_conn,
         )
@@ -85,7 +85,7 @@ def test_cache_write_uses_callers_locked_transaction(tmp_path) -> None:
     cached = get_cached_media_analysis(
         "https://example.com/transactional.png",
         provider="gemini",
-        model="gemini-3-flash-preview",
+        model="gemini-3.6-flash",
         db_path=db_path,
     )
     assert cached == {"kind": "chart"}
@@ -110,7 +110,7 @@ def test_analyze_media_items_reuses_cache(monkeypatch) -> None:
         "load_config",
         lambda: {
             "llm": {
-                "vision_model": "gemini-3-flash-preview",
+                "vision_model": "gemini-3.6-flash",
                 "vision_provider": "gemini",
             },
         },

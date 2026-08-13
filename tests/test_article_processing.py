@@ -288,7 +288,7 @@ def test_summarize_x_article_falls_back_to_triage_provider(monkeypatch) -> None:
             "llm": {
                 "enrichment_model": "opus",
                 "enrichment_provider": "anthropic",
-                "triage_model": "gemini-3-flash-preview",
+                "triage_model": "gemini-3.6-flash",
                 "triage_provider": "gemini",
             },
         },
@@ -301,7 +301,7 @@ def test_summarize_x_article_falls_back_to_triage_provider(monkeypatch) -> None:
     )
 
     assert ("anthropic", "opus") in calls
-    assert ("gemini", "gemini-3-flash-preview") in calls
+    assert ("gemini", "gemini-3.6-flash") in calls
     assert result.short_summary == "Structured summary"
     assert len(result.primary_points) == 1
 

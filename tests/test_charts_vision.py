@@ -54,7 +54,7 @@ def _charts_analysis(**overrides) -> ChartsAnalysis:
 def _charts_config() -> dict:
     return {
         "llm": {
-            "vision_model": "gemini-fallback",
+            "vision_model": "gemini-3.6-flash",
             "vision_provider": "charts",
             "charts_executable": "/usr/local/bin/charts",
             "charts_deadline_seconds": 90,
@@ -228,9 +228,9 @@ def test_unavailable_charts_falls_back_to_exactly_one_direct_call(monkeypatch) -
     )
 
     assert len(calls) == 1
-    assert calls[0][0][:3] == ("gemini", "gemini-fallback", "https://example.com/fallback.jpg")
+    assert calls[0][0][:3] == ("gemini", "gemini-3.6-flash", "https://example.com/fallback.jpg")
     assert result.analysis_provider == "gemini"
-    assert result.analysis_model == "gemini-fallback"
+    assert result.analysis_model == "gemini-3.6-flash"
     assert result.charts_id is None
     assert len(usage) == 1
     assert usage[0]["provider"] == "charts"

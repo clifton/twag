@@ -47,7 +47,7 @@ def test_stale_tweets_are_triaged_without_vision(monkeypatch, tmp_path) -> None:
                     "max_concurrency_text": 1,
                     "max_concurrency_triage": 1,
                     "max_concurrency_vision": 1,
-                    "vision_model": "gemini-3-flash-preview",
+                    "vision_model": "gemini-3.6-flash",
                     "vision_provider": "gemini",
                 },
                 "scoring": {
@@ -215,7 +215,7 @@ def test_gemini_vision_usage_is_recorded_even_when_parsing_fails(
     if parse_succeeds:
         result = scoring_mod.analyze_media(
             "https://example.com/chart.png",
-            model="gemini-3-flash-preview",
+            model="gemini-3.6-flash",
             provider="gemini",
             usage_recorder=usage_records.append,
         )
@@ -224,7 +224,7 @@ def test_gemini_vision_usage_is_recorded_even_when_parsing_fails(
         with pytest.raises(ValueError, match="Could not parse JSON"):
             scoring_mod.analyze_media(
                 "https://example.com/chart.png",
-                model="gemini-3-flash-preview",
+                model="gemini-3.6-flash",
                 provider="gemini",
                 usage_recorder=usage_records.append,
             )
@@ -244,7 +244,7 @@ def test_gemini_vision_usage_is_recorded_even_when_parsing_fails(
         ).fetchone()
     assert row["component"] == "vision"
     assert row["provider"] == "gemini"
-    assert row["model"] == "gemini-3-flash-preview"
+    assert row["model"] == "gemini-3.6-flash"
     assert row["input_tokens"] == 120
     assert row["output_tokens"] == 30
     assert row["is_vision"] == 1
